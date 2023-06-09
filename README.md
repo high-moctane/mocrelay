@@ -1,0 +1,2 @@
+# nostr-mocrelay
+Nostr relay
