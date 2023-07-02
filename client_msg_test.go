@@ -369,6 +369,202 @@ func TestParseEventJSON(t *testing.T) {
 	}
 }
 
+func TestEventJSON_Verify(t *testing.T) {
+	type args struct {
+		event *EventJSON
+	}
+	type want struct {
+		ok  bool
+		err error
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			"ok",
+			args{
+				&EventJSON{
+					ID:        "a3cc6206905faa34cdfb4849ecaceb4bd62a0d99d953f06fbc01d98d87ea8626",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1688314828,
+					Kind:      1,
+					Tags: [][]string{
+						{"e",
+							"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+							"",
+							"root",
+						},
+						{
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						},
+					},
+					Content: "ぽわ〜",
+					Sig:     "5acc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631",
+				},
+			},
+			want{
+				true,
+				nil,
+			},
+		},
+		{
+			"ng: incorrect id",
+			args{
+				&EventJSON{
+					ID:        "b3cc6206905faa34cdfb4849ecaceb4bd62a0d99d953f06fbc01d98d87ea8626",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1688314828,
+					Kind:      1,
+					Tags: [][]string{
+						{"e",
+							"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+							"",
+							"root",
+						},
+						{
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						},
+					},
+					Content: "ぽわ〜",
+					Sig:     "5acc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631",
+				},
+			},
+			want{
+				false,
+				nil,
+			},
+		},
+		{
+			"ng: incorrect sig",
+			args{
+				&EventJSON{
+					ID:        "a3cc6206905faa34cdfb4849ecaceb4bd62a0d99d953f06fbc01d98d87ea8626",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1688314828,
+					Kind:      1,
+					Tags: [][]string{
+						{"e",
+							"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+							"",
+							"root",
+						},
+						{
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						},
+					},
+					Content: "ぽわ〜",
+					Sig:     "6acc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631",
+				},
+			},
+			want{
+				false,
+				nil,
+			},
+		},
+		{
+			"ng: incorrect id and sig",
+			args{
+				&EventJSON{
+					ID:        "b3cc6206905faa34cdfb4849ecaceb4bd62a0d99d953f06fbc01d98d87ea8626",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1688314828,
+					Kind:      1,
+					Tags: [][]string{
+						{"e",
+							"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+							"",
+							"root",
+						},
+						{
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						},
+					},
+					Content: "ぽわ〜",
+					Sig:     "6acc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631",
+				},
+			},
+			want{
+				false,
+				nil,
+			},
+		},
+		{
+			"ng: non hex id",
+			args{
+				&EventJSON{
+					ID:        "Z3cc6206905faa34cdfb4849ecaceb4bd62a0d99d953f06fbc01d98d87ea8626",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1688314828,
+					Kind:      1,
+					Tags: [][]string{
+						{"e",
+							"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+							"",
+							"root",
+						},
+						{
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						},
+					},
+					Content: "ぽわ〜",
+					Sig:     "5acc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631",
+				},
+			},
+			want{
+				false,
+				assert.AnError,
+			},
+		},
+		{
+			"ng: non hex sig",
+			args{
+				&EventJSON{
+					ID:        "a3cc6206905faa34cdfb4849ecaceb4bd62a0d99d953f06fbc01d98d87ea8626",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1688314828,
+					Kind:      1,
+					Tags: [][]string{
+						{"e",
+							"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+							"",
+							"root",
+						},
+						{
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						},
+					},
+					Content: "ぽわ〜",
+					Sig:     "Zacc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631",
+				},
+			},
+			want{
+				false,
+				assert.AnError,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ok, err := tt.args.event.Verify()
+			if tt.want.err == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+			assert.Equal(t, tt.want.ok, ok)
+		})
+	}
+}
+
 func TestParseFilterJSON(t *testing.T) {
 	type args struct {
 		json string

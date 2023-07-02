@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/tidwall/gjson"
 )
@@ -114,6 +118,61 @@ type EventJSON struct {
 	Tags      [][]string `json:"tags"`
 	Content   string     `json:"content"`
 	Sig       string     `json:"sig"`
+}
+
+func (e *EventJSON) Verify() (bool, error) {
+	ser, err := e.Serialize()
+	if err != nil {
+		return false, fmt.Errorf("failed to serialize event: %w", err)
+	}
+
+	// ID
+	hash := sha256.Sum256(ser)
+
+	idBin, err := hex.DecodeString(e.ID)
+	if err != nil {
+		return false, fmt.Errorf("invalid event id: %w", err)
+	}
+
+	if !bytes.Equal(hash[:], idBin) {
+		return false, nil
+	}
+
+	// Sig
+	pKeyBin, err := hex.DecodeString(e.Pubkey)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode public key: %w", err)
+	}
+
+	pKey, err := schnorr.ParsePubKey(pKeyBin)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse public key: %w", err)
+	}
+
+	sigBin, err := hex.DecodeString(e.Sig)
+	if err != nil {
+		return false, fmt.Errorf("invalid event sig: %w", err)
+	}
+
+	sig, err := schnorr.ParseSignature(sigBin)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse event sig: %w", err)
+	}
+
+	return sig.Verify(hash[:], pKey), nil
+}
+
+func (e *EventJSON) Serialize() ([]byte, error) {
+	arr := []interface{}{0, e.Pubkey, e.CreatedAt, e.Kind, e.Tags, e.Content}
+
+	ji := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	res, err := ji.Marshal(arr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize event: %w", err)
+	}
+
+	return res, nil
 }
 
 type ClientReqMsgJSON struct {
