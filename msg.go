@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	jsoniter "github.com/json-iterator/go"
@@ -209,3 +211,87 @@ type ClientCloseMsgJSON struct {
 }
 
 func (ClientCloseMsgJSON) clientMsgJSON() {}
+
+type Event struct {
+	*EventJSON
+	ReceivedAt time.Time
+}
+
+type Filter struct {
+	FilterJSON
+}
+
+func (fil *Filter) Match(event *Event) bool {
+	return true &&
+		fil.MatchIDs(event) &&
+		fil.MatchAuthors(event) &&
+		fil.MatchKinds(event) &&
+		fil.MatchEtags(event) &&
+		fil.MatchPtags(event) &&
+		fil.MatchSince(event) &&
+		fil.MatchUntil(event) &&
+		true
+}
+
+func (fil *Filter) MatchIDs(event *Event) bool {
+	for _, prefix := range fil.IDs {
+		if strings.HasPrefix(event.ID, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (fil *Filter) MatchAuthors(event *Event) bool {
+	for _, prefix := range fil.Authors {
+		if strings.HasPrefix(event.Pubkey, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (fil *Filter) MatchKinds(event *Event) bool {
+	for _, k := range fil.Kinds {
+		if event.Kind == k {
+			return true
+		}
+	}
+	return false
+}
+
+func (fil *Filter) MatchEtags(event *Event) bool {
+	for _, id := range fil.Etags {
+		for _, tag := range event.Tags {
+			if len(tag) < 2 {
+				continue
+			}
+			if tag[0] == "e" && strings.HasPrefix(tag[1], id) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (fil *Filter) MatchPtags(event *Event) bool {
+	for _, id := range fil.Ptags {
+		for _, tag := range event.Tags {
+			if len(tag) < 2 {
+				continue
+			}
+			if tag[0] == "p" && strings.HasPrefix(tag[1], id) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (fil *Filter) MatchSince(event *Event) bool {
+	return event.CreatedAt > fil.Since
+}
+
+func (fil *Filter) MatchUntil(event *Event) bool {
+	return event.CreatedAt < fil.Until
+}
