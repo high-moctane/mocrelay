@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -220,6 +221,81 @@ type ClientCloseMsgJSON struct {
 }
 
 func (ClientCloseMsgJSON) clientMsgJSON() {}
+
+type ServerMsg interface {
+	serverMsg()
+	json.Marshaler
+}
+
+type ServerEventMsg struct {
+	SubscriptionID string
+	*EventJSON
+}
+
+func (ServerEventMsg) serverMsg() {}
+
+func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, errors.New("cannot marshal nil server event msg")
+	}
+
+	payload := []interface{}{"EVENT", msg.SubscriptionID, msg.EventJSON}
+
+	ji := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	res, err := ji.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal server event msg: %v", msg)
+	}
+
+	return res, nil
+}
+
+type ServerEOSEMsg struct {
+	SubscriptionID string
+}
+
+func (ServerEOSEMsg) serverMsg() {}
+
+func (msg *ServerEOSEMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, errors.New("cannot marshal nil server eose msg")
+	}
+
+	payload := []string{"EOSE", msg.SubscriptionID}
+
+	ji := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	res, err := ji.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal eose msg: %v", msg)
+	}
+
+	return res, nil
+}
+
+type ServerNoticeMsg struct {
+	Message string
+}
+
+func (ServerNoticeMsg) serverMsg() {}
+
+func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, errors.New("cannot marshal nil server notice msg")
+	}
+
+	payload := []string{"NOTICE", msg.Message}
+
+	ji := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	res, err := ji.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal notice msg: %v", msg)
+	}
+
+	return res, nil
+}
 
 type Event struct {
 	*EventJSON
