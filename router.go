@@ -10,12 +10,12 @@ type Router struct {
 	subscribers []*subscriber
 }
 
-func (rtr *Router) Subscribe(connID, subID string, recv chan<- *Event, filter *Filter) {
+func (rtr *Router) Subscribe(connID, subID string, recv chan<- *Event, filters Filters) {
 	newSubscr := &subscriber{
 		ConnectionID: connID,
 		SubscriptID:  subID,
 		RecvCh:       recv,
-		Filter:       filter,
+		Filters:      filters,
 	}
 
 	rtr.mu.Lock()
@@ -80,11 +80,11 @@ type subscriber struct {
 	ConnectionID string
 	SubscriptID  string
 	RecvCh       chan<- *Event
-	Filter       *Filter
+	Filters      Filters
 }
 
 func (sb *subscriber) Receive(event *Event) bool {
-	if sb.Filter.Match(event) {
+	if sb.Filters.Match(event) {
 		select {
 		case sb.RecvCh <- event:
 			return true

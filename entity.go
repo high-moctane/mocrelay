@@ -322,3 +322,14 @@ func (fil *Filter) MatchSince(event *Event) bool {
 func (fil *Filter) MatchUntil(event *Event) bool {
 	return fil == nil || event.CreatedAt < fil.Until
 }
+
+type Filters []Filter
+
+func (fils Filters) Match(event *Event) bool {
+	for _, fil := range fils {
+		if fil.Match(event) {
+			return true
+		}
+	}
+	return false
+}
