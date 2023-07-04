@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -123,6 +124,10 @@ type EventJSON struct {
 }
 
 func (e *EventJSON) Verify() (bool, error) {
+	if e == nil {
+		return false, errors.New("empty event cannot be verified")
+	}
+
 	ser, err := e.Serialize()
 	if err != nil {
 		return false, fmt.Errorf("failed to serialize event: %w", err)
@@ -165,6 +170,10 @@ func (e *EventJSON) Verify() (bool, error) {
 }
 
 func (e *EventJSON) Serialize() ([]byte, error) {
+	if e == nil {
+		return nil, errors.New("empty event json cannot be serialized")
+	}
+
 	arr := []interface{}{0, e.Pubkey, e.CreatedAt, e.Kind, e.Tags, e.Content}
 
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
@@ -222,18 +231,20 @@ type Filter struct {
 }
 
 func (fil *Filter) Match(event *Event) bool {
-	return true &&
-		fil.MatchIDs(event) &&
+	return fil.MatchIDs(event) &&
 		fil.MatchAuthors(event) &&
 		fil.MatchKinds(event) &&
 		fil.MatchEtags(event) &&
 		fil.MatchPtags(event) &&
 		fil.MatchSince(event) &&
-		fil.MatchUntil(event) &&
-		true
+		fil.MatchUntil(event)
 }
 
 func (fil *Filter) MatchIDs(event *Event) bool {
+	if fil == nil {
+		return true
+	}
+
 	for _, prefix := range fil.IDs {
 		if strings.HasPrefix(event.ID, prefix) {
 			return true
@@ -243,6 +254,10 @@ func (fil *Filter) MatchIDs(event *Event) bool {
 }
 
 func (fil *Filter) MatchAuthors(event *Event) bool {
+	if fil == nil {
+		return true
+	}
+
 	for _, prefix := range fil.Authors {
 		if strings.HasPrefix(event.Pubkey, prefix) {
 			return true
@@ -252,6 +267,10 @@ func (fil *Filter) MatchAuthors(event *Event) bool {
 }
 
 func (fil *Filter) MatchKinds(event *Event) bool {
+	if fil == nil {
+		return true
+	}
+
 	for _, k := range fil.Kinds {
 		if event.Kind == k {
 			return true
@@ -261,6 +280,10 @@ func (fil *Filter) MatchKinds(event *Event) bool {
 }
 
 func (fil *Filter) MatchEtags(event *Event) bool {
+	if fil == nil {
+		return true
+	}
+
 	for _, id := range fil.Etags {
 		for _, tag := range event.Tags {
 			if len(tag) < 2 {
@@ -275,6 +298,10 @@ func (fil *Filter) MatchEtags(event *Event) bool {
 }
 
 func (fil *Filter) MatchPtags(event *Event) bool {
+	if fil == nil {
+		return true
+	}
+
 	for _, id := range fil.Ptags {
 		for _, tag := range event.Tags {
 			if len(tag) < 2 {
@@ -289,9 +316,9 @@ func (fil *Filter) MatchPtags(event *Event) bool {
 }
 
 func (fil *Filter) MatchSince(event *Event) bool {
-	return event.CreatedAt > fil.Since
+	return fil == nil || event.CreatedAt > fil.Since
 }
 
 func (fil *Filter) MatchUntil(event *Event) bool {
-	return event.CreatedAt < fil.Until
+	return fil == nil || event.CreatedAt < fil.Until
 }

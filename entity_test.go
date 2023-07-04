@@ -550,6 +550,16 @@ func TestEventJSON_Verify(t *testing.T) {
 				assert.AnError,
 			},
 		},
+		{
+			"ng: nil",
+			args{
+				nil,
+			},
+			want{
+				false,
+				assert.AnError,
+			},
+		},
 	}
 
 	for _, tt := range tests {
