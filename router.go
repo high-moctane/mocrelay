@@ -10,7 +10,7 @@ type Router struct {
 	subscribers []*subscriber
 }
 
-func (rtr *Router) Subscribe(connID, subID string, recv chan<- *Event, filters Filters) {
+func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- *Event) {
 	newSubscr := &subscriber{
 		ConnectionID: connID,
 		SubscriptID:  subID,

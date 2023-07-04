@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/gobwas/ws v1.2.1
+	github.com/google/uuid v1.3.0
 	github.com/json-iterator/go v1.1.12
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/gjson v1.14.4
