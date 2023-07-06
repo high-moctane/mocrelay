@@ -206,14 +206,14 @@ func ParseFilterJSON(json string) (*FilterJSON, error) {
 }
 
 type FilterJSON struct {
-	IDs     []string `json:"ids"`
-	Authors []string `json:"authors"`
-	Kinds   []int    `json:"kinds"`
-	Etags   []string `json:"#e"`
-	Ptags   []string `json:"#p"`
-	Since   int      `json:"since"`
-	Until   int      `json:"until"`
-	Limit   int      `json:"limit"`
+	IDs     *[]string `json:"ids"`
+	Authors *[]string `json:"authors"`
+	Kinds   *[]int    `json:"kinds"`
+	Etags   *[]string `json:"#e"`
+	Ptags   *[]string `json:"#p"`
+	Since   *int      `json:"since"`
+	Until   *int      `json:"until"`
+	Limit   *int      `json:"limit"`
 }
 
 type ClientCloseMsgJSON struct {
@@ -303,7 +303,7 @@ type Event struct {
 }
 
 type Filter struct {
-	FilterJSON
+	*FilterJSON
 }
 
 func (fil *Filter) Match(event *Event) bool {
@@ -317,11 +317,11 @@ func (fil *Filter) Match(event *Event) bool {
 }
 
 func (fil *Filter) MatchIDs(event *Event) bool {
-	if fil == nil || len(fil.IDs) == 0 {
+	if fil == nil || fil.IDs == nil {
 		return true
 	}
 
-	for _, prefix := range fil.IDs {
+	for _, prefix := range *fil.IDs {
 		if strings.HasPrefix(event.ID, prefix) {
 			return true
 		}
@@ -330,11 +330,11 @@ func (fil *Filter) MatchIDs(event *Event) bool {
 }
 
 func (fil *Filter) MatchAuthors(event *Event) bool {
-	if fil == nil || len(fil.Authors) == 0 {
+	if fil == nil || fil.Authors == nil {
 		return true
 	}
 
-	for _, prefix := range fil.Authors {
+	for _, prefix := range *fil.Authors {
 		if strings.HasPrefix(event.Pubkey, prefix) {
 			return true
 		}
@@ -343,11 +343,11 @@ func (fil *Filter) MatchAuthors(event *Event) bool {
 }
 
 func (fil *Filter) MatchKinds(event *Event) bool {
-	if fil == nil || len(fil.Kinds) == 0 {
+	if fil == nil || fil.Kinds == nil {
 		return true
 	}
 
-	for _, k := range fil.Kinds {
+	for _, k := range *fil.Kinds {
 		if event.Kind == k {
 			return true
 		}
@@ -356,11 +356,11 @@ func (fil *Filter) MatchKinds(event *Event) bool {
 }
 
 func (fil *Filter) MatchEtags(event *Event) bool {
-	if fil == nil || len(fil.Etags) == 0 {
+	if fil == nil || fil.Etags == nil {
 		return true
 	}
 
-	for _, id := range fil.Etags {
+	for _, id := range *fil.Etags {
 		for _, tag := range event.Tags {
 			if len(tag) < 2 {
 				continue
@@ -374,11 +374,11 @@ func (fil *Filter) MatchEtags(event *Event) bool {
 }
 
 func (fil *Filter) MatchPtags(event *Event) bool {
-	if fil == nil || len(fil.Ptags) == 0 {
+	if fil == nil || fil.Ptags == nil {
 		return true
 	}
 
-	for _, id := range fil.Ptags {
+	for _, id := range *fil.Ptags {
 		for _, tag := range event.Tags {
 			if len(tag) < 2 {
 				continue
@@ -392,19 +392,18 @@ func (fil *Filter) MatchPtags(event *Event) bool {
 }
 
 func (fil *Filter) MatchSince(event *Event) bool {
-	return fil == nil || fil.Since == 0 || event.CreatedAt > fil.Since
+	return fil == nil || fil.Since == nil || event.CreatedAt > *fil.Since
 }
 
 func (fil *Filter) MatchUntil(event *Event) bool {
-	// FIXME(high-moctane) may be a bag
-	return fil == nil || fil.Until == 0 || event.CreatedAt < fil.Until
+	return fil == nil || fil.Until == nil || event.CreatedAt < *fil.Until
 }
 
 func NewFiltersFromFilterJSONs(jsons []*FilterJSON) Filters {
 	res := make(Filters, len(jsons))
 
 	for i, json := range jsons {
-		res[i] = &Filter{*json}
+		res[i] = &Filter{json}
 	}
 
 	return res
