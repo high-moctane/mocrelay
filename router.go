@@ -6,11 +6,11 @@ import (
 )
 
 type Router struct {
-	mu          *sync.RWMutex
+	mu          sync.RWMutex
 	subscribers []*subscriber
 }
 
-func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- *Event) {
+func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- ServerMsg) {
 	newSubscr := &subscriber{
 		ConnectionID: connID,
 		SubscriptID:  subID,
@@ -60,8 +60,8 @@ func (rtr *Router) Delete(connID string) {
 		if rtr.subscribers[i].ConnectionID == connID {
 			rtr.subscribers[i], rtr.subscribers[len(rtr.subscribers)-1] =
 				rtr.subscribers[len(rtr.subscribers)-1], rtr.subscribers[i]
+			rtr.subscribers = rtr.subscribers[:len(rtr.subscribers)-1]
 		}
-		rtr.subscribers = rtr.subscribers[:len(rtr.subscribers)-1]
 	}
 }
 
@@ -79,14 +79,14 @@ func (rtr *Router) Publish(event *Event) error {
 type subscriber struct {
 	ConnectionID string
 	SubscriptID  string
-	RecvCh       chan<- *Event
+	RecvCh       chan<- ServerMsg
 	Filters      Filters
 }
 
 func (sb *subscriber) Receive(event *Event) bool {
 	if sb.Filters.Match(event) {
 		select {
-		case sb.RecvCh <- event:
+		case sb.RecvCh <- &ServerEventMsg{sb.SubscriptID, event.EventJSON}:
 			return true
 		default:
 			return false

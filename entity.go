@@ -101,7 +101,7 @@ type ClientEventMsgJSON struct {
 	EventJSON *EventJSON
 }
 
-func (ClientEventMsgJSON) clientMsgJSON() {}
+func (*ClientEventMsgJSON) clientMsgJSON() {}
 
 func ParseEventJSON(json string) (*EventJSON, error) {
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
@@ -192,7 +192,7 @@ type ClientReqMsgJSON struct {
 	FilterJSONs    []*FilterJSON
 }
 
-func (ClientReqMsgJSON) clientMsgJSON() {}
+func (*ClientReqMsgJSON) clientMsgJSON() {}
 
 func ParseFilterJSON(json string) (*FilterJSON, error) {
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
@@ -220,7 +220,7 @@ type ClientCloseMsgJSON struct {
 	SubscriptionID string
 }
 
-func (ClientCloseMsgJSON) clientMsgJSON() {}
+func (*ClientCloseMsgJSON) clientMsgJSON() {}
 
 type ServerMsg interface {
 	serverMsg()
@@ -317,7 +317,7 @@ func (fil *Filter) Match(event *Event) bool {
 }
 
 func (fil *Filter) MatchIDs(event *Event) bool {
-	if fil == nil {
+	if fil == nil || len(fil.IDs) == 0 {
 		return true
 	}
 
@@ -330,7 +330,7 @@ func (fil *Filter) MatchIDs(event *Event) bool {
 }
 
 func (fil *Filter) MatchAuthors(event *Event) bool {
-	if fil == nil {
+	if fil == nil || len(fil.Authors) == 0 {
 		return true
 	}
 
@@ -343,7 +343,7 @@ func (fil *Filter) MatchAuthors(event *Event) bool {
 }
 
 func (fil *Filter) MatchKinds(event *Event) bool {
-	if fil == nil {
+	if fil == nil || len(fil.Kinds) == 0 {
 		return true
 	}
 
@@ -356,7 +356,7 @@ func (fil *Filter) MatchKinds(event *Event) bool {
 }
 
 func (fil *Filter) MatchEtags(event *Event) bool {
-	if fil == nil {
+	if fil == nil || len(fil.Etags) == 0 {
 		return true
 	}
 
@@ -374,7 +374,7 @@ func (fil *Filter) MatchEtags(event *Event) bool {
 }
 
 func (fil *Filter) MatchPtags(event *Event) bool {
-	if fil == nil {
+	if fil == nil || len(fil.Ptags) == 0 {
 		return true
 	}
 
@@ -392,11 +392,12 @@ func (fil *Filter) MatchPtags(event *Event) bool {
 }
 
 func (fil *Filter) MatchSince(event *Event) bool {
-	return fil == nil || event.CreatedAt > fil.Since
+	return fil == nil || fil.Since == 0 || event.CreatedAt > fil.Since
 }
 
 func (fil *Filter) MatchUntil(event *Event) bool {
-	return fil == nil || event.CreatedAt < fil.Until
+	// FIXME(high-moctane) may be a bag
+	return fil == nil || fil.Until == 0 || event.CreatedAt < fil.Until
 }
 
 func NewFiltersFromFilterJSONs(jsons []*FilterJSON) Filters {

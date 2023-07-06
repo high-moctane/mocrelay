@@ -3,34 +3,29 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
+	"github.com/google/uuid"
 )
 
+var logStdout = log.New(os.Stdout, "I: ", log.Default().Flags())
+var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
+
 func main() {
-	log.Printf("start")
-	http.ListenAndServe("127.0.0.1:8234", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	log.Printf("server start")
+
+	router := new(Router)
+
+	http.ListenAndServe(":80", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connID := uuid.NewString()
+
 		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
-			log.Printf("failed to upgrade http: %v", err)
+			log.Printf("[%v]: failed to upgrade http: %v", connID, err)
 			return
 		}
-		go func() {
-			defer conn.Close()
 
-			for {
-				msg, op, err := wsutil.ReadClientData(conn)
-				if err != nil {
-					log.Printf("failed to read client data: %v", err)
-					return
-				}
-				err = wsutil.WriteServerMessage(conn, op, msg)
-				if err != nil {
-					log.Printf("failed to write server message: %v", err)
-					return
-				}
-			}
-		}()
+		HandleWebsocket(r.Context(), r, connID, conn, router)
 	}))
 }
