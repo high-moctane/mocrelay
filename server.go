@@ -13,7 +13,7 @@ import (
 	"github.com/gobwas/ws/wsutil"
 )
 
-func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router) {
+func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) {
 	defer func() {
 		if err := recover(); err != nil {
 			logStderr.Printf("[%v]: paniced: %v", connID, err)
@@ -30,7 +30,7 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 
 	go wsSender(ctx, req, connID, conn, router, sender)
 
-	if err := wsReceiver(ctx, req, connID, conn, router, sender); err != nil {
+	if err := wsReceiver(ctx, req, connID, conn, router, db, sender); err != nil {
 		if !errors.Is(err, io.EOF) {
 			logStderr.Printf("[%v]: network error: %v", connID, err)
 			return
@@ -38,7 +38,15 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 	}
 }
 
-func wsReceiver(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, sender chan<- ServerMsg) error {
+func wsReceiver(
+	ctx context.Context,
+	req *http.Request,
+	connID string,
+	conn net.Conn,
+	router *Router,
+	db *DB,
+	sender chan<- ServerMsg,
+) error {
 	for {
 		payload, err := wsutil.ReadClientText(conn)
 		if err != nil {
@@ -61,7 +69,7 @@ func wsReceiver(ctx context.Context, req *http.Request, connID string, conn net.
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
-			if err := serveClientReqMsgJSON(connID, router, sender, msg); err != nil {
+			if err := serveClientReqMsgJSON(connID, router, db, sender, msg); err != nil {
 				logStderr.Printf("[%v]: failed to serve client req msg %v", connID, err)
 				continue
 			}
@@ -73,7 +81,7 @@ func wsReceiver(ctx context.Context, req *http.Request, connID string, conn net.
 			}
 
 		case *ClientEventMsgJSON:
-			if err := serveClientEventMsgJSON(router, msg); err != nil {
+			if err := serveClientEventMsgJSON(router, db, msg); err != nil {
 				logStderr.Printf("[%v]: failed to serve client event msg %v", connID, err)
 				continue
 			}
@@ -81,10 +89,22 @@ func wsReceiver(ctx context.Context, req *http.Request, connID string, conn net.
 	}
 }
 
-func serveClientReqMsgJSON(connID string, router *Router, sender chan<- ServerMsg, msg *ClientReqMsgJSON) error {
+func serveClientReqMsgJSON(
+	connID string,
+	router *Router,
+	db *DB,
+	sender chan<- ServerMsg,
+	msg *ClientReqMsgJSON,
+) error {
 	filters := NewFiltersFromFilterJSONs(msg.FilterJSONs)
-	router.Subscribe(connID, msg.SubscriptionID, filters, sender)
+
+	for _, event := range db.FindAll(filters) {
+		fmt.Println(event.EventJSON.Content)
+		sender <- &ServerEventMsg{msg.SubscriptionID, event.EventJSON}
+	}
 	sender <- &ServerEOSEMsg{msg.SubscriptionID}
+
+	router.Subscribe(connID, msg.SubscriptionID, filters, sender)
 	return nil
 }
 
@@ -95,7 +115,7 @@ func serveClientCloseMsgJSON(connID string, router *Router, msg *ClientCloseMsgJ
 	return nil
 }
 
-func serveClientEventMsgJSON(router *Router, msg *ClientEventMsgJSON) error {
+func serveClientEventMsgJSON(router *Router, db *DB, msg *ClientEventMsgJSON) error {
 	ok, err := msg.EventJSON.Verify()
 	if err != nil {
 		return fmt.Errorf("failed to verify event json: %v", msg)
@@ -106,6 +126,8 @@ func serveClientEventMsgJSON(router *Router, msg *ClientEventMsgJSON) error {
 	}
 
 	event := &Event{msg.EventJSON, time.Now()}
+
+	db.Save(event)
 
 	if err := router.Publish(event); err != nil {
 		return fmt.Errorf("failed to publish event: %v", event)

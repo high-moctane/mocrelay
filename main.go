@@ -16,6 +16,7 @@ func main() {
 	log.Printf("server start")
 
 	router := new(Router)
+	db := NewDB(5)
 
 	http.ListenAndServe(":80", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		connID := uuid.NewString()
@@ -26,6 +27,6 @@ func main() {
 			return
 		}
 
-		HandleWebsocket(r.Context(), r, connID, conn, router)
+		HandleWebsocket(r.Context(), r, connID, conn, router, db)
 	}))
 }
