@@ -27,7 +27,6 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 	defer router.Delete(connID)
 
 	sender := make(chan ServerMsg, 3)
-	defer close(sender)
 
 	go wsSender(ctx, req, connID, conn, router, sender)
 
@@ -115,16 +114,22 @@ func serveClientEventMsgJSON(router *Router, msg *ClientEventMsgJSON) error {
 }
 
 func wsSender(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, sender <-chan ServerMsg) {
-	for msg := range sender {
-		jsonMsg, err := msg.MarshalJSON()
-		if err != nil {
-			logStderr.Printf("[%v]: failed to marshal server msg: %v", connID, msg)
-		}
+	for {
+		select {
+		case <-ctx.Done():
+			return
 
-		if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
-			logStderr.Printf("[%v]: failed to write server text: %v", connID, err)
-		}
+		case msg := <-sender:
+			jsonMsg, err := msg.MarshalJSON()
+			if err != nil {
+				logStderr.Printf("[%v]: failed to marshal server msg: %v", connID, msg)
+			}
 
-		logStdout.Printf("[%v]: send: %v", connID, string(jsonMsg))
+			if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
+				logStderr.Printf("[%v]: failed to write server text: %v", connID, err)
+			}
+
+			logStdout.Printf("[%v]: send: %v", connID, string(jsonMsg))
+		}
 	}
 }
