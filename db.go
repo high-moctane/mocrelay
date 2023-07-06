@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -30,8 +29,6 @@ func (db *DB) Save(event *Event) {
 		db.events[db.ptr] = event
 	}
 	db.ptr = (db.ptr + 1) % db.Size
-
-	fmt.Println(db.events)
 }
 
 func (db *DB) FindAll(fils Filters) []*Event {
