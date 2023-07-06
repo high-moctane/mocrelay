@@ -32,12 +32,10 @@ func (db *DB) Save(event *Event) {
 }
 
 func (db *DB) FindAll(fils Filters) []*Event {
-	mod := func(v int) int { return (v + len(db.events)) % len(db.events) }
-
 	var res []*Event
+
 	counts := make([]*int, len(fils))
 	var sum *int
-
 	for i, fil := range fils {
 		counts[i] = fil.Limit
 		if counts[i] != nil {
@@ -54,6 +52,8 @@ func (db *DB) FindAll(fils Filters) []*Event {
 	if len(db.events) == 0 {
 		return nil
 	}
+
+	mod := func(v int) int { return (v + len(db.events)) % len(db.events) }
 
 	i := mod(db.ptr - 1)
 	for {

@@ -31,10 +31,11 @@ func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- 
 }
 
 func (rtr *Router) Close(connID, subID string) error {
+	found := false
+
 	rtr.mu.Lock()
 	defer rtr.mu.Unlock()
 
-	found := false
 	for i, subscr := range rtr.subscribers {
 		if subscr.ConnectionID == connID && subscr.SubscriptID == subID {
 			rtr.subscribers[i], rtr.subscribers[len(rtr.subscribers)-1] =
