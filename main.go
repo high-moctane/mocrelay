@@ -18,7 +18,7 @@ func main() {
 	router := new(Router)
 	db := NewDB(5)
 
-	http.ListenAndServe(":80", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.ListenAndServe("127.0.0.1:8234", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		connID := uuid.NewString()
 
 		conn, _, _, err := ws.UpgradeHTTP(r, w)
@@ -26,7 +26,10 @@ func main() {
 			log.Printf("[%v]: failed to upgrade http: %v", connID, err)
 			return
 		}
+		defer conn.Close()
 
-		HandleWebsocket(r.Context(), r, connID, conn, router, db)
+		if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
+			log.Printf("[%v]: websocket error: %v", connID, err)
+		}
 	}))
 }

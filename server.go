@@ -10,10 +10,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
 
-func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) {
+func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) error {
 	defer func() {
 		if err := recover(); err != nil {
 			logStderr.Printf("[%v]: paniced: %v", connID, err)
@@ -31,11 +32,13 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 	go wsSender(ctx, req, connID, conn, router, sender)
 
 	if err := wsReceiver(ctx, req, connID, conn, router, db, sender); err != nil {
-		if !errors.Is(err, io.EOF) {
-			logStderr.Printf("[%v]: network error: %v", connID, err)
-			return
+		if errors.Is(err, io.EOF) {
+			return nil
 		}
+		return fmt.Errorf("receive error: %w", err)
 	}
+
+	return nil
 }
 
 func wsReceiver(
@@ -47,8 +50,10 @@ func wsReceiver(
 	db *DB,
 	sender chan<- ServerMsg,
 ) error {
+	reader := wsutil.NewServerSideReader(conn)
+
 	for {
-		payload, err := wsutil.ReadClientText(conn)
+		payload, err := wsRead(reader)
 		if err != nil {
 			return fmt.Errorf("[%v]: receive error: %w", connID, err)
 		}
@@ -87,6 +92,25 @@ func wsReceiver(
 			}
 		}
 	}
+}
+
+func wsRead(wsr *wsutil.Reader) ([]byte, error) {
+	limit := 10000 + 1
+
+	hdr, err := wsr.NextFrame()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get next frame: %w", err)
+	}
+	if hdr.OpCode == ws.OpClose {
+		return nil, io.EOF
+	}
+
+	r := io.LimitReader(wsr, int64(limit))
+	res, err := io.ReadAll(r)
+	if len(res) == limit {
+		return res, fmt.Errorf("websocket message is too long (len=%v): %s", len(res), res)
+	}
+	return res, err
 }
 
 func serveClientReqMsgJSON(
