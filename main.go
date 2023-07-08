@@ -83,8 +83,8 @@ func Run(ctx context.Context) error {
 			}
 			defer conn.Close()
 
-			logStdout.Printf("[%v, %v]: connect websocket", r.RemoteAddr, connID)
-			defer logStdout.Printf("[%v, %v]: disconnect websocket", r.RemoteAddr, connID)
+			DoAccessLog(r.RemoteAddr, connID, AccessLogConnect, "")
+			defer DoAccessLog(r.RemoteAddr, connID, AccessLogDisconnect, "")
 
 			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
 				logStderr.Printf("[%v, %v]: websocket error: %v", r.RemoteAddr, connID, err)

@@ -102,7 +102,7 @@ func wsReceiver(
 			continue
 		}
 
-		logStdout.Printf("[%v, %v]: recv: %v", req.RemoteAddr, connID, strMsg)
+		DoAccessLog(req.RemoteAddr, connID, AccessLogRecv, strMsg)
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
@@ -229,7 +229,7 @@ func wsSender(
 				return fmt.Errorf("failed to write server text: %w", err)
 			}
 
-			logStdout.Printf("[%v, %v]: send: %v", req.RemoteAddr, connID, string(jsonMsg))
+			DoAccessLog(req.RemoteAddr, connID, AccessLogSend, string(jsonMsg))
 		}
 	}
 }
