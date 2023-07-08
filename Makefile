@@ -9,4 +9,6 @@ run:
 
 
 .PHONY: all
-all: build run
+all:
+	$(MAKE) build
+	$(MAKE) run
