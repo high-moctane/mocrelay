@@ -29,13 +29,23 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 
 	sender := make(chan ServerMsg, 3)
 
-	go wsSender(ctx, req, connID, conn, router, sender)
+	errCh := make(chan error)
 
-	if err := wsReceiver(ctx, req, connID, conn, router, db, sender); err != nil {
+	go func() {
+		errCh <- wsSender(ctx, req, connID, conn, router, sender)
+	}()
+
+	go func() {
+		errCh <- wsReceiver(ctx, req, connID, conn, router, db, sender)
+	}()
+
+	err := <-errCh
+
+	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
-		return fmt.Errorf("receive error: %w", err)
+		return fmt.Errorf("handle websocket error: %w", err)
 	}
 
 	return nil
@@ -159,11 +169,27 @@ func serveClientEventMsgJSON(router *Router, db *DB, msg *ClientEventMsgJSON) er
 	return nil
 }
 
-func wsSender(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, sender <-chan ServerMsg) {
+func wsSender(
+	ctx context.Context,
+	req *http.Request,
+	connID string,
+	conn net.Conn,
+	router *Router,
+	sender <-chan ServerMsg,
+) (err error) {
+	defer func() {
+		if _, e := conn.Write(ws.CompiledCloseNormalClosure); e != nil {
+			if errors.Is(e, net.ErrClosed) {
+				return
+			}
+			err = fmt.Errorf("failed to send close frame: %w", e)
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 
 		case msg := <-sender:
 			jsonMsg, err := msg.MarshalJSON()
@@ -172,7 +198,10 @@ func wsSender(ctx context.Context, req *http.Request, connID string, conn net.Co
 			}
 
 			if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
-				logStderr.Printf("[%v]: failed to write server text: %v", connID, err)
+				if errors.Is(err, net.ErrClosed) {
+					return nil
+				}
+				return fmt.Errorf("failed to write server text: %w", err)
 			}
 
 			logStdout.Printf("[%v]: send: %v", connID, string(jsonMsg))
