@@ -13,6 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	DBSize = 10000
+)
+
 var logStdout = log.New(os.Stdout, "I: ", log.Default().Flags())
 var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
 
@@ -33,7 +37,7 @@ func Run(ctx context.Context) error {
 	}}}}
 
 	router := NewRouter(filters)
-	db := NewDB(5, filters)
+	db := NewDB(DBSize, filters)
 
 	mux := http.NewServeMux()
 

@@ -15,6 +15,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const SenderLen = 3
+
+const (
+	RateLimitRate  = 20
+	RateLimitBurst = 10
+)
+
+const MaxClientMessageLen = 10000
+
 func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) error {
 	defer func() {
 		if err := recover(); err != nil {
@@ -28,7 +37,7 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 
 	defer router.Delete(connID)
 
-	sender := make(chan ServerMsg, 3)
+	sender := make(chan ServerMsg, SenderLen)
 
 	errCh := make(chan error)
 
@@ -61,7 +70,7 @@ func wsReceiver(
 	db *DB,
 	sender chan<- ServerMsg,
 ) error {
-	lim := rate.NewLimiter(20, 10)
+	lim := rate.NewLimiter(RateLimitRate, RateLimitBurst)
 	reader := wsutil.NewServerSideReader(conn)
 
 	for {
@@ -111,7 +120,7 @@ func wsReceiver(
 }
 
 func wsRead(wsr *wsutil.Reader) ([]byte, error) {
-	limit := 10000 + 1
+	limit := MaxClientMessageLen + 1
 
 	hdr, err := wsr.NextFrame()
 	if err != nil {
