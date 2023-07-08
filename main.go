@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,10 +19,12 @@ const (
 	DefaultDBSize       = 10000
 	DefaultAddr         = ":80"
 	DefaultClientMsgLen = 1048576
+	DefaultPprofAddr    = ":8396"
 )
 
 var DBSize = flag.Int("db", DefaultDBSize, "in-memory db size")
 var Addr = flag.String("addr", DefaultAddr, "relay addr")
+var PprofAddr = flag.String("pprof", DefaultPprofAddr, "relay addr")
 var MaxClientMesLen = flag.Int("msglen", DefaultClientMsgLen, "max client message length")
 var Verbose = flag.Bool("v", false, "enable verbose log")
 
@@ -45,9 +48,13 @@ func init() {
 
 func main() {
 	logStdout.Printf("server start")
+
+	go http.ListenAndServe(*PprofAddr, nil)
+
 	if err := Run(context.Background()); err != nil {
 		logStderr.Fatalf("server terminated with error: %v", err)
 	}
+
 	logStdout.Printf("server stop")
 }
 
