@@ -23,6 +23,7 @@ const (
 var DBSize = flag.Int("db", DefaultDBSize, "in-memory db size")
 var Addr = flag.String("addr", DefaultAddr, "relay addr")
 var MaxClientMesLen = flag.Int("msglen", DefaultClientMsgLen, "max client message length")
+var Verbose = flag.Bool("v", false, "enable verbose log")
 
 var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
 	0, 1, 6, 7,
@@ -30,6 +31,17 @@ var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
 
 var logStdout = log.New(os.Stdout, "I: ", log.Default().Flags())
 var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
+
+func init() {
+	flag.Parse()
+	if !*Verbose {
+		f, err := os.Create(os.DevNull)
+		if err != nil {
+			panic(err)
+		}
+		logStdout = log.New(f, "", 0)
+	}
+}
 
 func main() {
 	logStdout.Printf("server start")
@@ -42,8 +54,6 @@ func main() {
 func Run(ctx context.Context) error {
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
-
-	flag.Parse()
 
 	router := NewRouter(DefaultFilters)
 	db := NewDB(*DBSize, DefaultFilters)
@@ -65,7 +75,7 @@ func Run(ctx context.Context) error {
 		default:
 			conn, _, _, err := ws.UpgradeHTTP(r, w)
 			if err != nil {
-				log.Printf("[%v]: failed to upgrade http: %v", connID, err)
+				logStderr.Printf("[%v]: failed to upgrade http: %v", connID, err)
 				return
 			}
 			defer conn.Close()
@@ -74,7 +84,7 @@ func Run(ctx context.Context) error {
 			defer logStdout.Printf("[%v]: disconnect websocket", connID)
 
 			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
-				log.Printf("[%v]: websocket error: %v", connID, err)
+				logStderr.Printf("[%v]: websocket error: %v", connID, err)
 			}
 		}
 	}))
