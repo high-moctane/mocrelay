@@ -78,21 +78,21 @@ func Run(ctx context.Context) error {
 		} else if r.Header.Get("Upgrade") != "" {
 			conn, _, _, err := ws.UpgradeHTTP(r, w)
 			if err != nil {
-				logStderr.Printf("[%v]: failed to upgrade http: %v", connID, err)
+				logStderr.Printf("[%v, %v]: failed to upgrade http: %v", r.RemoteAddr, connID, err)
 				return
 			}
 			defer conn.Close()
 
-			logStdout.Printf("[%v]: connect websocket", connID)
-			defer logStdout.Printf("[%v]: disconnect websocket", connID)
+			logStdout.Printf("[%v, %v]: connect websocket", r.RemoteAddr, connID)
+			defer logStdout.Printf("[%v, %v]: disconnect websocket", r.RemoteAddr, connID)
 
 			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
-				logStderr.Printf("[%v]: websocket error: %v", connID, err)
+				logStderr.Printf("[%v, %v]: websocket error: %v", r.RemoteAddr, connID, err)
 			}
 
 		} else if r.Header.Get("Accept") == "application/nostr+json" {
 			if err := HandleNip11(ctx, w, r, connID); err != nil {
-				logStderr.Printf("[%v]: failed to serve nip11: %v", connID, err)
+				logStderr.Printf("[%v, %v]: failed to serve nip11: %v", r.RemoteAddr, connID, err)
 				return
 			}
 
