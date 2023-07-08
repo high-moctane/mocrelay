@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -30,20 +31,27 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	defer router.Delete(connID)
 
 	sender := make(chan ServerMsg, SenderLen)
 
-	errCh := make(chan error)
+	errCh := make(chan error, 2)
 
+	wg := new(sync.WaitGroup)
+	defer wg.Wait()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		errCh <- wsSender(ctx, req, connID, conn, router, sender)
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		errCh <- wsReceiver(ctx, req, connID, conn, router, db, sender)
 	}()
 
@@ -146,7 +154,6 @@ func serveClientReqMsgJSON(
 	filters := NewFiltersFromFilterJSONs(msg.FilterJSONs)
 
 	for _, event := range db.FindAll(filters) {
-		fmt.Println(event.EventJSON.Content)
 		sender <- &ServerEventMsg{msg.SubscriptionID, event.EventJSON}
 	}
 	sender <- &ServerEOSEMsg{msg.SubscriptionID}

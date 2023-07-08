@@ -70,6 +70,9 @@ func Run(ctx context.Context) error {
 			}
 			defer conn.Close()
 
+			logStdout.Printf("[%v]: connect websocket", connID)
+			defer logStdout.Printf("[%v]: disconnect websocket", connID)
+
 			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
 				log.Printf("[%v]: websocket error: %v", connID, err)
 			}
