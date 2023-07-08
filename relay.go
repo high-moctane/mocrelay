@@ -21,6 +21,7 @@ const SenderLen = 3
 const (
 	RateLimitRate  = 20
 	RateLimitBurst = 10
+	MaxFilterLen   = 50
 )
 
 func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) error {
@@ -152,6 +153,10 @@ func serveClientReqMsgJSON(
 	msg *ClientReqMsgJSON,
 ) error {
 	filters := NewFiltersFromFilterJSONs(msg.FilterJSONs)
+
+	if len(filters) > MaxFilterLen+2 {
+		return fmt.Errorf("filter is too long: %v", msg)
+	}
 
 	for _, event := range db.FindAll(filters) {
 		sender <- &ServerEventMsg{msg.SubscriptionID, event.EventJSON}
