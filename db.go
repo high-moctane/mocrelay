@@ -5,21 +5,28 @@ import (
 )
 
 type DB struct {
+	Size int
+	fil  Filters
+
 	mu     sync.RWMutex
 	events []*Event
-	Size   int
 	ptr    int
 }
 
-func NewDB(size int) *DB {
+func NewDB(size int, fil Filters) *DB {
 	return &DB{
 		events: nil,
 		Size:   size,
 		ptr:    0,
+		fil:    fil,
 	}
 }
 
 func (db *DB) Save(event *Event) {
+	if !db.fil.Match(event) {
+		return
+	}
+
 	db.mu.Lock()
 	defer db.mu.Unlock()
 

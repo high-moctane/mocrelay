@@ -5,9 +5,14 @@ import (
 	"sync"
 )
 
+func NewRouter(fil Filters) *Router {
+	return &Router{filters: fil}
+}
+
 type Router struct {
 	mu          sync.RWMutex
 	subscribers []*subscriber
+	filters     Filters
 }
 
 func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- ServerMsg) {
@@ -67,6 +72,10 @@ func (rtr *Router) Delete(connID string) {
 }
 
 func (rtr *Router) Publish(event *Event) error {
+	if !rtr.filters.Match(event) {
+		return nil
+	}
+
 	rtr.mu.RLock()
 	defer rtr.mu.RUnlock()
 

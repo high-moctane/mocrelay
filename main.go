@@ -28,8 +28,12 @@ func Run(ctx context.Context) error {
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
 
-	router := new(Router)
-	db := NewDB(5)
+	filters := Filters{&Filter{&FilterJSON{Kinds: &[]int{
+		0, 1, 6, 7,
+	}}}}
+
+	router := NewRouter(filters)
+	db := NewDB(5, filters)
 
 	mux := http.NewServeMux()
 
