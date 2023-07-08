@@ -38,15 +38,24 @@ func Run(ctx context.Context) error {
 
 		connID := uuid.NewString()
 
-		conn, _, _, err := ws.UpgradeHTTP(r, w)
-		if err != nil {
-			log.Printf("[%v]: failed to upgrade http: %v", connID, err)
-			return
-		}
-		defer conn.Close()
+		switch r.Header.Get("Accept") {
+		case "application/nostr+json":
+			if err := HandleNip11(ctx, w, r, connID); err != nil {
+				logStderr.Printf("[%v]: failed to serve nip11: %v", connID, err)
+				return
+			}
 
-		if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
-			log.Printf("[%v]: websocket error: %v", connID, err)
+		default:
+			conn, _, _, err := ws.UpgradeHTTP(r, w)
+			if err != nil {
+				log.Printf("[%v]: failed to upgrade http: %v", connID, err)
+				return
+			}
+			defer conn.Close()
+
+			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
+				log.Printf("[%v]: websocket error: %v", connID, err)
+			}
 		}
 	}))
 
