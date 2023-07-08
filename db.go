@@ -44,8 +44,9 @@ func (db *DB) FindAll(fils Filters) []*Event {
 	counts := make([]*int, len(fils))
 	var sum *int
 	for i, fil := range fils {
-		counts[i] = fil.Limit
-		if counts[i] != nil {
+		if fil.Limit != nil {
+			counts[i] = func() *int { v := 0; return &v }()
+
 			if sum == nil {
 				sum = func() *int { v := 0; return &v }()
 			}
