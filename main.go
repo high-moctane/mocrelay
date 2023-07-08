@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -14,8 +15,18 @@ import (
 )
 
 const (
-	DBSize = 10000
+	DefaultDBSize       = 10000
+	DefaultAddr         = ":80"
+	DefaultClientMsgLen = 1048576
 )
+
+var DBSize = flag.Int("db", DefaultDBSize, "in-memory db size")
+var Addr = flag.String("addr", DefaultAddr, "relay addr")
+var MaxClientMesLen = flag.Int("msglen", DefaultClientMsgLen, "max client message length")
+
+var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
+	0, 1, 6, 7,
+}}}}
 
 var logStdout = log.New(os.Stdout, "I: ", log.Default().Flags())
 var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
@@ -32,12 +43,10 @@ func Run(ctx context.Context) error {
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
 
-	filters := Filters{&Filter{&FilterJSON{Kinds: &[]int{
-		0, 1, 6, 7,
-	}}}}
+	flag.Parse()
 
-	router := NewRouter(filters)
-	db := NewDB(DBSize, filters)
+	router := NewRouter(DefaultFilters)
+	db := NewDB(*DBSize, DefaultFilters)
 
 	mux := http.NewServeMux()
 
@@ -68,7 +77,7 @@ func Run(ctx context.Context) error {
 	}))
 
 	srv := &http.Server{
-		Addr:    "127.0.0.1:8234",
+		Addr:    *Addr,
 		Handler: mux,
 	}
 

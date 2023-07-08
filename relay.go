@@ -22,8 +22,6 @@ const (
 	RateLimitBurst = 10
 )
 
-const MaxClientMessageLen = 10000
-
 func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) error {
 	defer func() {
 		if err := recover(); err != nil {
@@ -120,7 +118,7 @@ func wsReceiver(
 }
 
 func wsRead(wsr *wsutil.Reader) ([]byte, error) {
-	limit := MaxClientMessageLen + 1
+	limit := *MaxClientMesLen + 1
 
 	hdr, err := wsr.NextFrame()
 	if err != nil {
