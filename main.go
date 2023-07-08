@@ -72,14 +72,10 @@ func Run(ctx context.Context) error {
 
 		connID := uuid.NewString()
 
-		switch r.Header.Get("Accept") {
-		case "application/nostr+json":
-			if err := HandleNip11(ctx, w, r, connID); err != nil {
-				logStderr.Printf("[%v]: failed to serve nip11: %v", connID, err)
-				return
-			}
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
 
-		default:
+		} else if r.Header.Get("Upgrade") != "" {
 			conn, _, _, err := ws.UpgradeHTTP(r, w)
 			if err != nil {
 				logStderr.Printf("[%v]: failed to upgrade http: %v", connID, err)
@@ -93,6 +89,15 @@ func Run(ctx context.Context) error {
 			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
 				logStderr.Printf("[%v]: websocket error: %v", connID, err)
 			}
+
+		} else if r.Header.Get("Accept") == "application/nostr+json" {
+			if err := HandleNip11(ctx, w, r, connID); err != nil {
+				logStderr.Printf("[%v]: failed to serve nip11: %v", connID, err)
+				return
+			}
+
+		} else {
+			w.Write([]byte("Welcome to mocrelay (｀･ω･´) !"))
 		}
 	}))
 
