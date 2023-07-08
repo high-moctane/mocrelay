@@ -12,6 +12,7 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
+	"golang.org/x/time/rate"
 )
 
 func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) error {
@@ -60,9 +61,14 @@ func wsReceiver(
 	db *DB,
 	sender chan<- ServerMsg,
 ) error {
+	lim := rate.NewLimiter(20, 10)
 	reader := wsutil.NewServerSideReader(conn)
 
 	for {
+		if err := lim.Wait(ctx); err != nil {
+			return fmt.Errorf("rate limiter returns error: %w", err)
+		}
+
 		payload, err := wsRead(reader)
 		if err != nil {
 			return fmt.Errorf("[%v]: receive error: %w", connID, err)
