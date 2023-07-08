@@ -32,11 +32,11 @@ var logStdout = log.New(os.Stdout, "I: ", log.Default().Flags())
 var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
 
 func main() {
-	logStderr.Printf("server start")
+	logStdout.Printf("server start")
 	if err := Run(context.Background()); err != nil {
 		logStderr.Fatalf("server terminated with error: %v", err)
 	}
-	logStderr.Printf("server stop")
+	logStdout.Printf("server stop")
 }
 
 func Run(ctx context.Context) error {
