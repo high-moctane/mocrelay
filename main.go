@@ -91,6 +91,15 @@ func Run(ctx context.Context) error {
 			}
 
 		} else if r.Header.Get("Accept") == "application/nostr+json" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "HEAD,OPTIONS,GET")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
 			if err := HandleNip11(ctx, w, r, connID); err != nil {
 				logStderr.Printf("[%v, %v]: failed to serve nip11: %v", r.RemoteAddr, connID, err)
 				return

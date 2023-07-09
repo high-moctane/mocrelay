@@ -1,6 +1,8 @@
+LDFLAGS := "-s -w"
+
 .PHONY: build
 build:
-	go build -o mocrelay
+	go build -ldflags=$(LDFLAGS) -o mocrelay
 
 
 .PHONY: run

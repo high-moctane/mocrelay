@@ -16,6 +16,8 @@ func HandleNip11(ctx context.Context, w http.ResponseWriter, r *http.Request, co
 		panic(fmt.Sprintf("invalid nip11 json: %v", err))
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+
 	if _, err := w.Write(nip11); err != nil {
 		return fmt.Errorf("failed to send nip11: %w", err)
 	}
@@ -23,9 +25,12 @@ func HandleNip11(ctx context.Context, w http.ResponseWriter, r *http.Request, co
 }
 
 var DefaultNip11 *Nip11 = &Nip11{
-	Name:        "mocrelay",
-	Description: "high-moctane nostr relay",
-	Software:    "https://github.com/high-moctane/nostr-mocrelay",
+	Name:          "mocrelay",
+	Description:   "high-moctane nostr relay",
+	Pubkey:        "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+	Contact:       "mailto:high.moctane@moctane.com",
+	SupportedNips: []int{1, 18, 25},
+	Software:      "https://github.com/high-moctane/nostr-mocrelay",
 }
 
 type Nip11 struct {
