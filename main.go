@@ -13,6 +13,7 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/google/uuid"
+	"github.com/tomasen/realip"
 )
 
 const (
@@ -78,16 +79,16 @@ func Run(ctx context.Context) error {
 		} else if r.Header.Get("Upgrade") != "" {
 			conn, _, _, err := ws.UpgradeHTTP(r, w)
 			if err != nil {
-				logStderr.Printf("[%v, %v]: failed to upgrade http: %v", r.RemoteAddr, connID, err)
+				logStderr.Printf("[%v, %v]: failed to upgrade http: %v", realip.FromRequest(r), connID, err)
 				return
 			}
 			defer conn.Close()
 
-			DoAccessLog(r.RemoteAddr, connID, AccessLogConnect, "")
-			defer DoAccessLog(r.RemoteAddr, connID, AccessLogDisconnect, "")
+			DoAccessLog(realip.FromRequest(r), connID, AccessLogConnect, "")
+			defer DoAccessLog(realip.FromRequest(r), connID, AccessLogDisconnect, "")
 
 			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
-				logStderr.Printf("[%v, %v]: websocket error: %v", r.RemoteAddr, connID, err)
+				logStderr.Printf("[%v, %v]: websocket error: %v", realip.FromRequest(r), connID, err)
 			}
 
 		} else if r.Header.Get("Accept") == "application/nostr+json" {
@@ -101,7 +102,7 @@ func Run(ctx context.Context) error {
 			}
 
 			if err := HandleNip11(ctx, w, r, connID); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve nip11: %v", r.RemoteAddr, connID, err)
+				logStderr.Printf("[%v, %v]: failed to serve nip11: %v", realip.FromRequest(r), connID, err)
 				return
 			}
 

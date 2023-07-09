@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,8 +24,7 @@ var promActiveWebsocket *PromActiveWebsocket = (*PromActiveWebsocket)(promauto.N
 
 type PromActiveWebsocket prometheus.GaugeVec
 
-func (pc *PromActiveWebsocket) WithLabelValues(addr, connID string) prometheus.Gauge {
-	host, _, _ := net.SplitHostPort(addr)
+func (pc *PromActiveWebsocket) WithLabelValues(host, connID string) prometheus.Gauge {
 	return (*prometheus.GaugeVec)(pc).WithLabelValues(host, connID)
 }
 
@@ -40,9 +38,7 @@ var promWSSendCounter *PromWSSendCounter = (*PromWSSendCounter)(promauto.NewCoun
 
 type PromWSSendCounter prometheus.CounterVec
 
-func (pc *PromWSSendCounter) WithLabelValues(addr, connID string, msg ServerMsg) prometheus.Counter {
-	host, _, _ := net.SplitHostPort(addr)
-
+func (pc *PromWSSendCounter) WithLabelValues(host, connID string, msg ServerMsg) prometheus.Counter {
 	var msgType string
 
 	switch msg.(type) {
@@ -67,9 +63,7 @@ var promWSRecvCounter *PromWSRecvCounter = (*PromWSRecvCounter)(promauto.NewCoun
 
 type PromWSRecvCounter prometheus.CounterVec
 
-func (pc *PromWSRecvCounter) WithLabelValues(addr, connID string, msg ClientMsgJSON) prometheus.Counter {
-	host, _, _ := net.SplitHostPort(addr)
-
+func (pc *PromWSRecvCounter) WithLabelValues(host, connID string, msg ClientMsgJSON) prometheus.Counter {
 	var msgType string
 
 	switch msg.(type) {
