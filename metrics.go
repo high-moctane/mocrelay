@@ -17,7 +17,7 @@ func StartMetricsServer() error {
 
 var promActiveWebsocket *PromActiveWebsocket = (*PromActiveWebsocket)(promauto.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "mocrelay_active_websocket",
+		Name: "mocrelay_active_websocket_count",
 		Help: "active websocket",
 	},
 	[]string{"host", "conn_id"},
@@ -32,7 +32,7 @@ func (pc *PromActiveWebsocket) WithLabelValues(addr, connID string) prometheus.G
 
 var promWSSendCounter *PromWSSendCounter = (*PromWSSendCounter)(promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "mocrelay_send",
+		Name: "mocrelay_msg_send_count",
 		Help: "message send counter",
 	},
 	[]string{"host", "conn_id", "msg_type"},
@@ -59,7 +59,7 @@ func (pc *PromWSSendCounter) WithLabelValues(addr, connID string, msg ServerMsg)
 
 var promWSRecvCounter *PromWSRecvCounter = (*PromWSRecvCounter)(promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "mocrelay_recv",
+		Name: "mocrelay_msg_recv_count",
 		Help: "message recv counter",
 	},
 	[]string{"host", "conn_id", "msg_type"},
@@ -86,7 +86,7 @@ func (pc *PromWSRecvCounter) WithLabelValues(addr, connID string, msg ClientMsgJ
 
 var promEventCounter *PromEventCounter = (*PromEventCounter)(promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "mocrelay_receive_event",
+		Name: "mocrelay_event_recv_count",
 		Help: "received events",
 	},
 	[]string{"pubkey", "kind"},
@@ -100,7 +100,7 @@ func (pc *PromEventCounter) WithLabelValues(event *EventJSON) prometheus.Counter
 
 var promRouterPublishTime *PromRouterPublishTime = (*PromRouterPublishTime)(promauto.NewHistogramVec(
 	prometheus.HistogramOpts{
-		Name: "mocrelay_router_publish_time",
+		Name: "mocrelay_router_publish_second",
 		Help: "consumption of publishing events",
 	},
 	[]string{"kind"},
@@ -114,7 +114,7 @@ func (pc *PromRouterPublishTime) WithLabelValues(event *Event) prometheus.Observ
 
 var promReceiveFail *PromReceiveFail = (*PromReceiveFail)(promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "mocrelay_receive_failed",
+		Name: "mocrelay_receive_failed_count",
 		Help: "receive failed events",
 	},
 	[]string{"conn_id", "sub_id"},
@@ -128,7 +128,7 @@ func (pc *PromReceiveFail) WithLabelValues(connID, subID string) prometheus.Coun
 
 var promDBQueryTime prometheus.Histogram = promauto.NewHistogram(
 	prometheus.HistogramOpts{
-		Name: "mocrelay_db_query_time",
+		Name: "mocrelay_db_query_second",
 		Help: "consumption of query req",
 	},
 )
