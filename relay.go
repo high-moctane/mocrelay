@@ -27,13 +27,13 @@ const (
 func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) error {
 	defer func() {
 		if err := recover(); err != nil {
-			logStderr.Printf("[%v, %v]: paniced: %v", req.RemoteAddr, connID, err)
+			logStderr.Printf("[%v, %v]: paniced: %v", RealIP(req), connID, err)
 			panic(err)
 		}
 	}()
 
-	promActiveWebsocket.WithLabelValues(req.RemoteAddr, connID).Inc()
-	defer promActiveWebsocket.WithLabelValues(req.RemoteAddr, connID).Dec()
+	promActiveWebsocket.WithLabelValues(RealIP(req), connID).Inc()
+	defer promActiveWebsocket.WithLabelValues(RealIP(req), connID).Dec()
 
 	defer router.Delete(connID)
 
@@ -94,36 +94,36 @@ func wsReceiver(
 		}
 
 		if !utf8.Valid(payload) {
-			logStderr.Printf("[%v, %v]: payload is not utf8: %v", req.RemoteAddr, connID, payload)
+			logStderr.Printf("[%v, %v]: payload is not utf8: %v", RealIP(req), connID, payload)
 			continue
 		}
 
 		strMsg := string(payload)
 		jsonMsg, err := ParseClientMsgJSON(strMsg)
 		if err != nil {
-			logStderr.Printf("[%v, %v]: received invalid msg: %v", req.RemoteAddr, connID, err)
+			logStderr.Printf("[%v, %v]: received invalid msg: %v", RealIP(req), connID, err)
 			continue
 		}
 
-		DoAccessLog(req.RemoteAddr, connID, AccessLogRecv, strMsg)
-		promWSRecvCounter.WithLabelValues(req.RemoteAddr, connID, jsonMsg).Inc()
+		DoAccessLog(RealIP(req), connID, AccessLogRecv, strMsg)
+		promWSRecvCounter.WithLabelValues(RealIP(req), connID, jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
 			if err := serveClientReqMsgJSON(connID, router, db, sender, msg); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve client req msg %v", req.RemoteAddr, connID, err)
+				logStderr.Printf("[%v, %v]: failed to serve client req msg %v", RealIP(req), connID, err)
 				continue
 			}
 
 		case *ClientCloseMsgJSON:
 			if err := serveClientCloseMsgJSON(connID, router, msg); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve client close msg %v", req.RemoteAddr, connID, err)
+				logStderr.Printf("[%v, %v]: failed to serve client close msg %v", RealIP(req), connID, err)
 				continue
 			}
 
 		case *ClientEventMsgJSON:
 			if err := serveClientEventMsgJSON(router, db, msg); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve client event msg %v", req.RemoteAddr, connID, err)
+				logStderr.Printf("[%v, %v]: failed to serve client event msg %v", RealIP(req), connID, err)
 				continue
 			}
 		}
@@ -223,11 +223,11 @@ func wsSender(
 			return nil
 
 		case msg := <-sender:
-			promWSSendCounter.WithLabelValues(req.RemoteAddr, connID, msg).Inc()
+			promWSSendCounter.WithLabelValues(RealIP(req), connID, msg).Inc()
 
 			jsonMsg, err := msg.MarshalJSON()
 			if err != nil {
-				logStderr.Printf("[%v, %v]: failed to marshal server msg: %v", req.RemoteAddr, connID, msg)
+				logStderr.Printf("[%v, %v]: failed to marshal server msg: %v", RealIP(req), connID, msg)
 			}
 
 			if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
@@ -237,7 +237,7 @@ func wsSender(
 				return fmt.Errorf("failed to write server text: %w", err)
 			}
 
-			DoAccessLog(req.RemoteAddr, connID, AccessLogSend, string(jsonMsg))
+			DoAccessLog(RealIP(req), connID, AccessLogSend, string(jsonMsg))
 		}
 	}
 }
