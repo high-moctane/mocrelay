@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -66,6 +67,10 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
+		if errors.Is(err, syscall.ECONNRESET) {
+			return nil
+		}
+
 		return fmt.Errorf("handle websocket error: %w", err)
 	}
 
