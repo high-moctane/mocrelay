@@ -49,8 +49,6 @@ func init() {
 func main() {
 	logStdout.Printf("server start")
 
-	go http.ListenAndServe(*PprofAddr, nil)
-
 	if err := Run(context.Background()); err != nil {
 		logStderr.Fatalf("server terminated with error: %v", err)
 	}
@@ -61,6 +59,8 @@ func main() {
 func Run(ctx context.Context) error {
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
+
+	go StartMetricsServer()
 
 	router := NewRouter(DefaultFilters)
 	db := NewDB(*DBSize, DefaultFilters)

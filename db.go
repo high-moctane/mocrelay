@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"time"
 )
 
 type DB struct {
@@ -39,6 +40,9 @@ func (db *DB) Save(event *Event) {
 }
 
 func (db *DB) FindAll(fils Filters) []*Event {
+	start := time.Now()
+	defer promDBQueryTime.Observe(time.Since(start).Seconds())
+
 	var res []*Event
 
 	counts := make([]*int, len(fils))

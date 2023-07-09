@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 func NewRouter(fil Filters) *Router {
@@ -76,6 +77,9 @@ func (rtr *Router) Publish(event *Event) error {
 		return nil
 	}
 
+	start := time.Now()
+	defer promRouterPublishTime.WithLabelValues(event).Observe(time.Since(start).Seconds())
+
 	rtr.mu.RLock()
 	defer rtr.mu.RUnlock()
 
@@ -99,6 +103,7 @@ func (sb *subscriber) Receive(event *Event) bool {
 		case sb.RecvCh <- &ServerEventMsg{sb.SubscriptID, event.EventJSON}:
 			return true
 		default:
+			promReceiveFail.WithLabelValues(sb.ConnectionID, sb.SubscriptID).Inc()
 			return false
 		}
 	}

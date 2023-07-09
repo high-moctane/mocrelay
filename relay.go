@@ -32,6 +32,9 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 		}
 	}()
 
+	promActiveWebsocket.WithLabelValues(req.RemoteAddr, connID).Inc()
+	defer promActiveWebsocket.WithLabelValues(req.RemoteAddr, connID).Dec()
+
 	defer router.Delete(connID)
 
 	sender := make(chan ServerMsg, SenderLen)
@@ -103,6 +106,7 @@ func wsReceiver(
 		}
 
 		DoAccessLog(req.RemoteAddr, connID, AccessLogRecv, strMsg)
+		promWSRecvCounter.WithLabelValues(req.RemoteAddr, connID, jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
@@ -184,6 +188,8 @@ func serveClientEventMsgJSON(router *Router, db *DB, msg *ClientEventMsgJSON) er
 		return fmt.Errorf("invalid signature: %v", msg)
 	}
 
+	promEventCounter.WithLabelValues(msg.EventJSON).Inc()
+
 	event := &Event{msg.EventJSON, time.Now()}
 
 	db.Save(event)
@@ -217,6 +223,8 @@ func wsSender(
 			return nil
 
 		case msg := <-sender:
+			promWSSendCounter.WithLabelValues(req.RemoteAddr, connID, msg).Inc()
+
 			jsonMsg, err := msg.MarshalJSON()
 			if err != nil {
 				logStderr.Printf("[%v, %v]: failed to marshal server msg: %v", req.RemoteAddr, connID, msg)
