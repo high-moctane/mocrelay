@@ -54,7 +54,7 @@ func (db *DB) FindAll(fils Filters) []*Event {
 			if sum == nil {
 				sum = func() *int { v := 0; return &v }()
 			}
-			*sum += *counts[i]
+			*sum += *fil.Limit
 		}
 	}
 
