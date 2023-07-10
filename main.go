@@ -22,6 +22,7 @@ const (
 	DefaultClientMsgLen   = 1048576
 	DefaultPprofAddr      = ":8396"
 	DefaultMaxReqSubIDNum = 20
+	DefaultMaxConnections = 10000
 )
 
 var DBSize = flag.Int("db", DefaultDBSize, "in-memory db size")
@@ -37,6 +38,8 @@ var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
 
 var logStdout = log.New(os.Stdout, "I: ", log.Default().Flags())
 var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
+
+var ConnSema = make(chan struct{}, DefaultMaxConnections)
 
 func init() {
 	flag.Parse()
@@ -74,6 +77,14 @@ func Run(ctx context.Context) error {
 		r = r.WithContext(sigCtx)
 
 		connID := uuid.NewString()
+
+		select {
+		case ConnSema <- struct{}{}:
+			defer func() { <-ConnSema }()
+		default:
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
 
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
