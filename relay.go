@@ -173,7 +173,10 @@ func serveClientReqMsgJSON(
 	}
 	sender <- &ServerEOSEMsg{msg.SubscriptionID}
 
-	router.Subscribe(connID, msg.SubscriptionID, filters, sender)
+	// TODO(high-moctane) handle error, impl is not good
+	if err := router.Subscribe(connID, msg.SubscriptionID, filters, sender); err != nil {
+		return nil
+	}
 	return nil
 }
 

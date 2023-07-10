@@ -1,22 +1,24 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 )
 
-func NewRouter(fil Filters) *Router {
-	return &Router{filters: fil}
+func NewRouter(fil Filters, maxSubIDNum int) *Router {
+	return &Router{filters: fil, maxSubIDNum: maxSubIDNum}
 }
 
 type Router struct {
 	mu          sync.RWMutex
 	subscribers []*subscriber
 	filters     Filters
+	maxSubIDNum int
 }
 
-func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- ServerMsg) {
+func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- ServerMsg) error {
 	newSubscr := &subscriber{
 		ConnectionID: connID,
 		SubscriptID:  subID,
@@ -27,13 +29,20 @@ func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- 
 	rtr.mu.Lock()
 	defer rtr.mu.Unlock()
 
+	cnt := 0
 	for i, subscr := range rtr.subscribers {
-		if subscr.ConnectionID == connID && subscr.SubscriptID == subID {
-			rtr.subscribers[i] = newSubscr
-			return
+		if subscr.ConnectionID == connID {
+			cnt++
+			if subscr.SubscriptID == subID {
+				rtr.subscribers[i] = newSubscr
+				return nil
+			} else if rtr.maxSubIDNum > 0 && cnt >= rtr.maxSubIDNum {
+				return errors.New("too much req")
+			}
 		}
 	}
 	rtr.subscribers = append(rtr.subscribers, newSubscr)
+	return nil
 }
 
 func (rtr *Router) Close(connID, subID string) error {

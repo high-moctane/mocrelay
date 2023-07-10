@@ -17,16 +17,18 @@ import (
 )
 
 const (
-	DefaultDBSize       = 10000
-	DefaultAddr         = ":80"
-	DefaultClientMsgLen = 1048576
-	DefaultPprofAddr    = ":8396"
+	DefaultDBSize         = 10000
+	DefaultAddr           = ":80"
+	DefaultClientMsgLen   = 1048576
+	DefaultPprofAddr      = ":8396"
+	DefaultMaxReqSubIDNum = 20
 )
 
 var DBSize = flag.Int("db", DefaultDBSize, "in-memory db size")
 var Addr = flag.String("addr", DefaultAddr, "relay addr")
 var PprofAddr = flag.String("pprof", DefaultPprofAddr, "relay addr")
 var MaxClientMesLen = flag.Int("msglen", DefaultClientMsgLen, "max client message length")
+var MaxReqSubIDNum = flag.Int("subid", DefaultMaxReqSubIDNum, "max simultaneous sub_id per connection")
 var Verbose = flag.Bool("v", false, "enable verbose log")
 
 var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
@@ -63,7 +65,7 @@ func Run(ctx context.Context) error {
 
 	go StartMetricsServer()
 
-	router := NewRouter(DefaultFilters)
+	router := NewRouter(DefaultFilters, *MaxReqSubIDNum)
 	db := NewDB(*DBSize, DefaultFilters)
 
 	mux := http.NewServeMux()
