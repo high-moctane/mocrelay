@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/gobwas/ws"
 	"github.com/google/uuid"
 	"github.com/tomasen/realip"
+	"go.uber.org/zap"
 )
 
 const (
@@ -31,40 +31,33 @@ var Addr = flag.String("addr", DefaultAddr, "relay addr")
 var PprofAddr = flag.String("pprof", DefaultPprofAddr, "relay addr")
 var MaxClientMesLen = flag.Int("msglen", DefaultClientMsgLen, "max client message length")
 var MaxReqSubIDNum = flag.Int("subid", DefaultMaxReqSubIDNum, "max simultaneous sub_id per connection")
-var Verbose = flag.Bool("v", false, "enable verbose log")
 
 var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
 	0, 1, 6, 7,
 }}}}
 
-var logStdout = log.New(os.Stdout, "I: ", log.Default().Flags())
-var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
+var logger *zap.SugaredLogger
 
 var ConnSema = make(chan struct{}, DefaultMaxConnections)
 
 func init() {
 	testing.Init()
 	flag.Parse()
-	if !*Verbose {
-		f, err := os.Create(os.DevNull)
-		if err != nil {
-			panic(err)
-		}
-		logStdout = log.New(f, "", 0)
-	}
 }
 
 func main() {
-	logStdout.Printf("server start")
-
 	if err := Run(context.Background()); err != nil {
-		logStderr.Fatalf("server terminated with error: %v", err)
+		logger.Fatal("server terminated with error", zap.Error(err))
 	}
 
-	logStdout.Printf("server stop")
 }
 
 func Run(ctx context.Context) error {
+	logger = zap.Must(zap.NewDevelopment()).Sugar()
+	defer logger.Sync()
+
+	logger.Info("server starting")
+
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
 
@@ -95,16 +88,26 @@ func Run(ctx context.Context) error {
 		} else if r.Header.Get("Upgrade") != "" {
 			conn, _, _, err := ws.UpgradeHTTP(r, w)
 			if err != nil {
-				logStderr.Printf("[%v, %v]: failed to upgrade http: %v", realip.FromRequest(r), connID, err)
+				logger.Errorw("failed to upgrade http",
+					"addr", realip.FromRequest(r),
+					"conn_id", connID,
+					"error", err)
 				return
 			}
 			defer conn.Close()
 
-			DoAccessLog(realip.FromRequest(r), connID, AccessLogConnect, "")
-			defer DoAccessLog(realip.FromRequest(r), connID, AccessLogDisconnect, "")
+			logger.Infow("connect websocket",
+				"addr", realip.FromRequest(r),
+				"conn", connID)
+			defer logger.Infow("disconnect websocket",
+				"addr", realip.FromRequest(r),
+				"conn", connID)
 
 			if err := relay.HandleWebsocket(r.Context(), r, connID, conn, router, cache); err != nil {
-				logStderr.Printf("[%v, %v]: websocket error: %v", realip.FromRequest(r), connID, err)
+				logger.Errorw("websocket error",
+					"addr", realip.FromRequest(r),
+					"conn_id", connID,
+					"error", err)
 			}
 
 		} else if r.Header.Get("Accept") == "application/nostr+json" {
@@ -118,7 +121,10 @@ func Run(ctx context.Context) error {
 			}
 
 			if err := HandleNip11(ctx, w, r, connID); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve nip11: %v", realip.FromRequest(r), connID, err)
+				logger.Errorw("failed to serve nip11",
+					"addr", realip.FromRequest(r),
+					"conn_id", connID,
+					"error", err)
 				return
 			}
 
@@ -141,5 +147,10 @@ func Run(ctx context.Context) error {
 		srv.Shutdown(ctx)
 	}()
 
-	return srv.ListenAndServe()
+	if err := srv.ListenAndServe(); err != nil {
+		return err
+	}
+
+	logger.Info("server stop")
+	return nil
 }

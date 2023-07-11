@@ -31,8 +31,10 @@ type Relay struct{}
 func (relay *Relay) HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, cache *Cache) error {
 	defer func() {
 		if err := recover(); err != nil {
-			logStderr.Printf("[%v, %v]: paniced: %v", realip.FromRequest(req), connID, err)
-			panic(err)
+			logger.Panicw("paniced",
+				"addr", realip.FromRequest(req),
+				"conn_id", connID,
+				"error", err)
 		}
 	}()
 
@@ -102,36 +104,55 @@ func (relay *Relay) wsReceiver(
 		}
 
 		if !utf8.Valid(payload) {
-			logStderr.Printf("[%v, %v]: payload is not utf8: %v", realip.FromRequest(req), connID, payload)
+			logger.Infow("payload is not utf8",
+				"addr", realip.FromRequest(req),
+				"conn_id", connID,
+				"payload", payload)
 			continue
 		}
 
 		strMsg := string(payload)
 		jsonMsg, err := ParseClientMsgJSON(strMsg)
 		if err != nil {
-			logStderr.Printf("[%v, %v]: received invalid msg: %v", realip.FromRequest(req), connID, err)
+			logger.Infow("received invalid msg",
+				"addr", realip.FromRequest(req),
+				"conn_id", connID,
+				"msg", strMsg,
+				"error", err)
 			continue
 		}
 
-		DoAccessLog(realip.FromRequest(req), connID, AccessLogRecv, strMsg)
+		logger.Infow("recv msg",
+			"addr", realip.FromRequest(req),
+			"conn_id", connID,
+			"msg", strMsg)
 		promWSRecvCounter.WithLabelValues(realip.FromRequest(req), connID, jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
 			if err := relay.serveClientReqMsgJSON(connID, router, cache, sender, msg); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve client req msg %v", realip.FromRequest(req), connID, err)
+				logger.Infow("failed to serve client req msg",
+					"addr", realip.FromRequest(req),
+					"conn_id", connID,
+					"error", err)
 				continue
 			}
 
 		case *ClientCloseMsgJSON:
 			if err := relay.serveClientCloseMsgJSON(connID, router, msg); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve client close msg %v", realip.FromRequest(req), connID, err)
+				logger.Infow("failed to serve client close msg",
+					"addr", realip.FromRequest(req),
+					"conn_id", connID,
+					"error", err)
 				continue
 			}
 
 		case *ClientEventMsgJSON:
 			if err := relay.serveClientEventMsgJSON(router, cache, msg); err != nil {
-				logStderr.Printf("[%v, %v]: failed to serve client event msg %v", realip.FromRequest(req), connID, err)
+				logger.Infow("failed to serve client event msg",
+					"addr", realip.FromRequest(req),
+					"conn_id", connID,
+					"error", err)
 				continue
 			}
 		}
@@ -242,7 +263,12 @@ func (*Relay) wsSender(
 
 			jsonMsg, err := msg.MarshalJSON()
 			if err != nil {
-				logStderr.Printf("[%v, %v]: failed to marshal server msg: %v", realip.FromRequest(req), connID, msg)
+				logger.Infow("failed to marshal server msg",
+					"addr", realip.FromRequest(req),
+					"conn_id", connID,
+					"msg", msg,
+					"error", err)
+				continue
 			}
 
 			if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
@@ -252,7 +278,10 @@ func (*Relay) wsSender(
 				return fmt.Errorf("failed to write server text: %w", err)
 			}
 
-			DoAccessLog(realip.FromRequest(req), connID, AccessLogSend, string(jsonMsg))
+			logger.Infow("send msg",
+				"addr", realip.FromRequest(req),
+				"conn_id", connID,
+				"msg", string(jsonMsg))
 		}
 	}
 }
