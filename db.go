@@ -11,19 +11,21 @@ type DB struct {
 
 	mu     sync.RWMutex
 	events []*Event
+	ids    map[string]bool
 	ptr    int
 }
 
 func NewDB(size int, fil Filters) *DB {
 	return &DB{
 		events: nil,
+		ids:    make(map[string]bool),
 		Size:   size,
 		ptr:    0,
 		fil:    fil,
 	}
 }
 
-func (db *DB) Save(event *Event) {
+func (db *DB) Save(event *Event) (saved bool) {
 	if !db.fil.Match(event) {
 		return
 	}
@@ -31,12 +33,22 @@ func (db *DB) Save(event *Event) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
+	if db.ids[event.ID] {
+		return
+	}
+
 	if len(db.events) < db.Size {
 		db.events = append(db.events, event)
+		db.ids[event.ID] = true
 	} else {
+		delete(db.ids, db.events[db.ptr].ID)
 		db.events[db.ptr] = event
+		db.ids[event.ID] = true
 	}
 	db.ptr = (db.ptr + 1) % db.Size
+
+	saved = true
+	return
 }
 
 func (db *DB) FindAll(fils Filters) []*Event {
