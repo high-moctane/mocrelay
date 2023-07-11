@@ -307,7 +307,7 @@ type Event struct {
 }
 
 func (e *Event) ValidCreatedAt() bool {
-	sub := time.Since(e.CreatedAtToTime())
+	sub := time.Until(e.CreatedAtToTime())
 	// TODO(high-moctane) no magic number
 	return -10*time.Minute <= sub && sub <= 5*time.Minute
 }
