@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type DB struct {
+type Cache struct {
 	Size int
 	fil  Filters
 
@@ -15,8 +15,8 @@ type DB struct {
 	ptr    int
 }
 
-func NewDB(size int, fil Filters) *DB {
-	return &DB{
+func NewCache(size int, fil Filters) *Cache {
+	return &Cache{
 		events: nil,
 		ids:    make(map[string]bool),
 		Size:   size,
@@ -25,35 +25,35 @@ func NewDB(size int, fil Filters) *DB {
 	}
 }
 
-func (db *DB) Save(event *Event) (saved bool) {
-	if !db.fil.Match(event) {
+func (cache *Cache) Save(event *Event) (saved bool) {
+	if !cache.fil.Match(event) {
 		return
 	}
 
-	db.mu.Lock()
-	defer db.mu.Unlock()
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
 
-	if db.ids[event.ID] {
+	if cache.ids[event.ID] {
 		return
 	}
 
-	if len(db.events) < db.Size {
-		db.events = append(db.events, event)
-		db.ids[event.ID] = true
+	if len(cache.events) < cache.Size {
+		cache.events = append(cache.events, event)
+		cache.ids[event.ID] = true
 	} else {
-		delete(db.ids, db.events[db.ptr].ID)
-		db.events[db.ptr] = event
-		db.ids[event.ID] = true
+		delete(cache.ids, cache.events[cache.ptr].ID)
+		cache.events[cache.ptr] = event
+		cache.ids[event.ID] = true
 	}
-	db.ptr = (db.ptr + 1) % db.Size
+	cache.ptr = (cache.ptr + 1) % cache.Size
 
 	saved = true
 	return
 }
 
-func (db *DB) FindAll(fils Filters) []*Event {
+func (cache *Cache) FindAll(fils Filters) []*Event {
 	start := time.Now()
-	defer promDBQueryTime.Observe(time.Since(start).Seconds())
+	defer promCacheQueryTime.Observe(time.Since(start).Seconds())
 
 	var res []*Event
 
@@ -70,18 +70,18 @@ func (db *DB) FindAll(fils Filters) []*Event {
 		}
 	}
 
-	db.mu.RLock()
-	defer db.mu.RUnlock()
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
 
-	if len(db.events) == 0 {
+	if len(cache.events) == 0 {
 		return nil
 	}
 
-	mod := func(v int) int { return (v + len(db.events)) % len(db.events) }
+	mod := func(v int) int { return (v + len(cache.events)) % len(cache.events) }
 
-	i := mod(db.ptr - 1)
+	i := mod(cache.ptr - 1)
 	for {
-		ev := db.events[i]
+		ev := cache.events[i]
 
 		for j, fil := range fils {
 			if fil.Match(ev) {
@@ -97,7 +97,7 @@ func (db *DB) FindAll(fils Filters) []*Event {
 			}
 		}
 
-		if mod(i) == mod(db.ptr) || (sum != nil && len(res) >= *sum) {
+		if mod(i) == mod(cache.ptr) || (sum != nil && len(res) >= *sum) {
 			break
 		}
 

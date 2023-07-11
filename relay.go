@@ -26,7 +26,7 @@ const (
 	MaxFilterLen   = 50
 )
 
-func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, db *DB) error {
+func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, cache *Cache) error {
 	defer func() {
 		if err := recover(); err != nil {
 			logStderr.Printf("[%v, %v]: paniced: %v", realip.FromRequest(req), connID, err)
@@ -58,7 +58,7 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- wsReceiver(ctx, req, connID, conn, router, db, sender)
+		errCh <- wsReceiver(ctx, req, connID, conn, router, cache, sender)
 	}()
 
 	err := <-errCh
@@ -83,7 +83,7 @@ func wsReceiver(
 	connID string,
 	conn net.Conn,
 	router *Router,
-	db *DB,
+	cache *Cache,
 	sender chan<- ServerMsg,
 ) error {
 	lim := rate.NewLimiter(RateLimitRate, RateLimitBurst)
@@ -116,7 +116,7 @@ func wsReceiver(
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
-			if err := serveClientReqMsgJSON(connID, router, db, sender, msg); err != nil {
+			if err := serveClientReqMsgJSON(connID, router, cache, sender, msg); err != nil {
 				logStderr.Printf("[%v, %v]: failed to serve client req msg %v", realip.FromRequest(req), connID, err)
 				continue
 			}
@@ -128,7 +128,7 @@ func wsReceiver(
 			}
 
 		case *ClientEventMsgJSON:
-			if err := serveClientEventMsgJSON(router, db, msg); err != nil {
+			if err := serveClientEventMsgJSON(router, cache, msg); err != nil {
 				logStderr.Printf("[%v, %v]: failed to serve client event msg %v", realip.FromRequest(req), connID, err)
 				continue
 			}
@@ -158,7 +158,7 @@ func wsRead(wsr *wsutil.Reader) ([]byte, error) {
 func serveClientReqMsgJSON(
 	connID string,
 	router *Router,
-	db *DB,
+	cache *Cache,
 	sender chan<- ServerMsg,
 	msg *ClientReqMsgJSON,
 ) error {
@@ -168,7 +168,7 @@ func serveClientReqMsgJSON(
 		return fmt.Errorf("filter is too long: %v", msg)
 	}
 
-	for _, event := range db.FindAll(filters) {
+	for _, event := range cache.FindAll(filters) {
 		sender <- &ServerEventMsg{msg.SubscriptionID, event.EventJSON}
 	}
 	sender <- &ServerEOSEMsg{msg.SubscriptionID}
@@ -187,7 +187,7 @@ func serveClientCloseMsgJSON(connID string, router *Router, msg *ClientCloseMsgJ
 	return nil
 }
 
-func serveClientEventMsgJSON(router *Router, db *DB, msg *ClientEventMsgJSON) error {
+func serveClientEventMsgJSON(router *Router, cache *Cache, msg *ClientEventMsgJSON) error {
 	ok, err := msg.EventJSON.Verify()
 	if err != nil {
 		return fmt.Errorf("failed to verify event json: %v", msg)
@@ -201,7 +201,7 @@ func serveClientEventMsgJSON(router *Router, db *DB, msg *ClientEventMsgJSON) er
 
 	event := &Event{msg.EventJSON, time.Now()}
 
-	db.Save(event)
+	cache.Save(event)
 
 	if err := router.Publish(event); err != nil {
 		return fmt.Errorf("failed to publish event: %v", event)

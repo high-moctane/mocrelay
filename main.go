@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/gobwas/ws"
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	DefaultDBSize         = 10000
+	DefaultCacheSize      = 10000
 	DefaultAddr           = ":80"
 	DefaultClientMsgLen   = 1048576
 	DefaultPprofAddr      = ":8396"
@@ -25,7 +26,7 @@ const (
 	DefaultMaxConnections = 10000
 )
 
-var DBSize = flag.Int("db", DefaultDBSize, "in-memory db size")
+var CacheSize = flag.Int("cache", DefaultCacheSize, "in-memory cache size")
 var Addr = flag.String("addr", DefaultAddr, "relay addr")
 var PprofAddr = flag.String("pprof", DefaultPprofAddr, "relay addr")
 var MaxClientMesLen = flag.Int("msglen", DefaultClientMsgLen, "max client message length")
@@ -42,6 +43,7 @@ var logStderr = log.New(os.Stderr, "E: ", log.Default().Flags())
 var ConnSema = make(chan struct{}, DefaultMaxConnections)
 
 func init() {
+	testing.Init()
 	flag.Parse()
 	if !*Verbose {
 		f, err := os.Create(os.DevNull)
@@ -69,7 +71,7 @@ func Run(ctx context.Context) error {
 	go StartMetricsServer()
 
 	router := NewRouter(DefaultFilters, *MaxReqSubIDNum)
-	db := NewDB(*DBSize, DefaultFilters)
+	cache := NewCache(*CacheSize, DefaultFilters)
 
 	mux := http.NewServeMux()
 
@@ -100,7 +102,7 @@ func Run(ctx context.Context) error {
 			DoAccessLog(realip.FromRequest(r), connID, AccessLogConnect, "")
 			defer DoAccessLog(realip.FromRequest(r), connID, AccessLogDisconnect, "")
 
-			if err := HandleWebsocket(r.Context(), r, connID, conn, router, db); err != nil {
+			if err := HandleWebsocket(r.Context(), r, connID, conn, router, cache); err != nil {
 				logStderr.Printf("[%v, %v]: websocket error: %v", realip.FromRequest(r), connID, err)
 			}
 

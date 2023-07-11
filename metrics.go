@@ -120,9 +120,9 @@ func (pc *PromReceiveFail) WithLabelValues(connID, subID string) prometheus.Coun
 	return (*prometheus.CounterVec)(pc).WithLabelValues(connID, subID)
 }
 
-var promDBQueryTime prometheus.Histogram = promauto.NewHistogram(
+var promCacheQueryTime prometheus.Histogram = promauto.NewHistogram(
 	prometheus.HistogramOpts{
-		Name: "mocrelay_db_query_second",
+		Name: "mocrelay_cache_query_second",
 		Help: "consumption of query req",
 	},
 )
