@@ -26,7 +26,7 @@ func HandleNip11(ctx context.Context, w http.ResponseWriter, r *http.Request, co
 
 var DefaultNip11 *Nip11 = &Nip11{
 	Name:          "mocrelay",
-	Description:   "high-moctane nostr relay",
+	Description:   "high-moctane nostr relay. By using this service, you agree that we are not liable for any damages or responsibilities.",
 	Pubkey:        "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 	Contact:       "mailto:high.moctane@moctane.com",
 	SupportedNips: []int{1, 18, 25},
