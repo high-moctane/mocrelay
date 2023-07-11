@@ -70,6 +70,7 @@ func Run(ctx context.Context) error {
 
 	go StartMetricsServer()
 
+	relay := new(Relay)
 	router := NewRouter(DefaultFilters, *MaxReqSubIDNum)
 	cache := NewCache(*CacheSize, DefaultFilters)
 
@@ -102,7 +103,7 @@ func Run(ctx context.Context) error {
 			DoAccessLog(realip.FromRequest(r), connID, AccessLogConnect, "")
 			defer DoAccessLog(realip.FromRequest(r), connID, AccessLogDisconnect, "")
 
-			if err := HandleWebsocket(r.Context(), r, connID, conn, router, cache); err != nil {
+			if err := relay.HandleWebsocket(r.Context(), r, connID, conn, router, cache); err != nil {
 				logStderr.Printf("[%v, %v]: websocket error: %v", realip.FromRequest(r), connID, err)
 			}
 

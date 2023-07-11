@@ -26,7 +26,9 @@ const (
 	MaxFilterLen   = 50
 )
 
-func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, cache *Cache) error {
+type Relay struct{}
+
+func (relay *Relay) HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn net.Conn, router *Router, cache *Cache) error {
 	defer func() {
 		if err := recover(); err != nil {
 			logStderr.Printf("[%v, %v]: paniced: %v", realip.FromRequest(req), connID, err)
@@ -52,13 +54,13 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- wsSender(ctx, req, connID, conn, router, sender)
+		errCh <- relay.wsSender(ctx, req, connID, conn, router, sender)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- wsReceiver(ctx, req, connID, conn, router, cache, sender)
+		errCh <- relay.wsReceiver(ctx, req, connID, conn, router, cache, sender)
 	}()
 
 	err := <-errCh
@@ -77,7 +79,7 @@ func HandleWebsocket(ctx context.Context, req *http.Request, connID string, conn
 	return nil
 }
 
-func wsReceiver(
+func (relay *Relay) wsReceiver(
 	ctx context.Context,
 	req *http.Request,
 	connID string,
@@ -94,7 +96,7 @@ func wsReceiver(
 			return fmt.Errorf("rate limiter returns error: %w", err)
 		}
 
-		payload, err := wsRead(reader)
+		payload, err := relay.wsRead(reader)
 		if err != nil {
 			return fmt.Errorf("receive error: %w", err)
 		}
@@ -116,19 +118,19 @@ func wsReceiver(
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
-			if err := serveClientReqMsgJSON(connID, router, cache, sender, msg); err != nil {
+			if err := relay.serveClientReqMsgJSON(connID, router, cache, sender, msg); err != nil {
 				logStderr.Printf("[%v, %v]: failed to serve client req msg %v", realip.FromRequest(req), connID, err)
 				continue
 			}
 
 		case *ClientCloseMsgJSON:
-			if err := serveClientCloseMsgJSON(connID, router, msg); err != nil {
+			if err := relay.serveClientCloseMsgJSON(connID, router, msg); err != nil {
 				logStderr.Printf("[%v, %v]: failed to serve client close msg %v", realip.FromRequest(req), connID, err)
 				continue
 			}
 
 		case *ClientEventMsgJSON:
-			if err := serveClientEventMsgJSON(router, cache, msg); err != nil {
+			if err := relay.serveClientEventMsgJSON(router, cache, msg); err != nil {
 				logStderr.Printf("[%v, %v]: failed to serve client event msg %v", realip.FromRequest(req), connID, err)
 				continue
 			}
@@ -136,7 +138,7 @@ func wsReceiver(
 	}
 }
 
-func wsRead(wsr *wsutil.Reader) ([]byte, error) {
+func (*Relay) wsRead(wsr *wsutil.Reader) ([]byte, error) {
 	limit := *MaxClientMesLen + 1
 
 	hdr, err := wsr.NextFrame()
@@ -155,7 +157,7 @@ func wsRead(wsr *wsutil.Reader) ([]byte, error) {
 	return res, err
 }
 
-func serveClientReqMsgJSON(
+func (*Relay) serveClientReqMsgJSON(
 	connID string,
 	router *Router,
 	cache *Cache,
@@ -180,14 +182,14 @@ func serveClientReqMsgJSON(
 	return nil
 }
 
-func serveClientCloseMsgJSON(connID string, router *Router, msg *ClientCloseMsgJSON) error {
+func (*Relay) serveClientCloseMsgJSON(connID string, router *Router, msg *ClientCloseMsgJSON) error {
 	if err := router.Close(connID, msg.SubscriptionID); err != nil {
 		return fmt.Errorf("cannot close conn %v", msg.SubscriptionID)
 	}
 	return nil
 }
 
-func serveClientEventMsgJSON(router *Router, cache *Cache, msg *ClientEventMsgJSON) error {
+func (*Relay) serveClientEventMsgJSON(router *Router, cache *Cache, msg *ClientEventMsgJSON) error {
 	ok, err := msg.EventJSON.Verify()
 	if err != nil {
 		return fmt.Errorf("failed to verify event json: %v", msg)
@@ -209,7 +211,7 @@ func serveClientEventMsgJSON(router *Router, cache *Cache, msg *ClientEventMsgJS
 	return nil
 }
 
-func wsSender(
+func (*Relay) wsSender(
 	ctx context.Context,
 	req *http.Request,
 	connID string,
