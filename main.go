@@ -120,7 +120,7 @@ func Run(ctx context.Context) error {
 			}
 
 		} else {
-			w.Write([]byte("Welcome to mocrelay (｀･ω･´) !"))
+			w.Write([]byte("Welcome to mocrelay (｀･ω･´) !\n\nBy using this service, you agree that we are not liable for any damages or responsibilities.\n"))
 		}
 	}))
 
