@@ -203,6 +203,10 @@ func (*Relay) serveClientEventMsgJSON(router *Router, cache *Cache, msg *ClientE
 
 	event := &Event{msg.EventJSON, time.Now()}
 
+	if !event.ValidCreatedAt() {
+		return fmt.Errorf("invalid created_at: %v", event.CreatedAtToTime())
+	}
+
 	cache.Save(event)
 
 	if err := router.Publish(event); err != nil {

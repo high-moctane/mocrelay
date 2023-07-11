@@ -187,6 +187,10 @@ func (e *EventJSON) Serialize() ([]byte, error) {
 	return res, nil
 }
 
+func (e *EventJSON) CreatedAtToTime() time.Time {
+	return time.Unix(int64(e.CreatedAt), 0)
+}
+
 type ClientReqMsgJSON struct {
 	SubscriptionID string
 	FilterJSONs    []*FilterJSON
@@ -300,6 +304,12 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 type Event struct {
 	*EventJSON
 	ReceivedAt time.Time
+}
+
+func (e *Event) ValidCreatedAt() bool {
+	sub := time.Since(e.CreatedAtToTime())
+	// TODO(high-moctane) no magic number
+	return -10*time.Minute <= sub && sub <= 5*time.Minute
 }
 
 type Filter struct {
