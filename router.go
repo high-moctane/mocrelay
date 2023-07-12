@@ -63,6 +63,7 @@ func (rtr *Router) Close(connID, subID string) error {
 		return fmt.Errorf("subscr not found (connID=%q, subID=%q)", connID, subID)
 	}
 
+	rtr.subscribers[len(rtr.subscribers)-1] = nil
 	rtr.subscribers = rtr.subscribers[:len(rtr.subscribers)-1]
 
 	return nil
@@ -76,6 +77,8 @@ func (rtr *Router) Delete(connID string) {
 		if rtr.subscribers[i].ConnectionID == connID {
 			rtr.subscribers[i], rtr.subscribers[len(rtr.subscribers)-1] =
 				rtr.subscribers[len(rtr.subscribers)-1], rtr.subscribers[i]
+
+			rtr.subscribers[len(rtr.subscribers)-1] = nil
 			rtr.subscribers = rtr.subscribers[:len(rtr.subscribers)-1]
 		}
 	}
