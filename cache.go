@@ -17,8 +17,8 @@ type Cache struct {
 
 func NewCache(size int, fil Filters) *Cache {
 	return &Cache{
-		events: nil,
-		ids:    make(map[string]bool),
+		events: make([]*Event, 0, size),
+		ids:    make(map[string]bool, size),
 		Size:   size,
 		ptr:    0,
 		fil:    fil,
