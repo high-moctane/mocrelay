@@ -73,7 +73,7 @@ func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
 
 	switch arr[0].Str {
 	case "EVENT":
-		return &ClientEventMsgJSON{EventJSON: parsed[0].(*EventJSON)}, nil
+		return &ClientEventMsgJSON{EventJSON: parsed[0].(*EventJSON), raw: json}, nil
 
 	case "REQ":
 		if len(parsed) < 2 {
@@ -83,10 +83,10 @@ func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
 		for idx, elem := range parsed[1:] {
 			filters[idx] = elem.(*FilterJSON)
 		}
-		return &ClientReqMsgJSON{SubscriptionID: parsed[0].(string), FilterJSONs: filters}, nil
+		return &ClientReqMsgJSON{SubscriptionID: parsed[0].(string), FilterJSONs: filters, raw: json}, nil
 
 	case "CLOSE":
-		return &ClientCloseMsgJSON{SubscriptionID: parsed[0].(string)}, nil
+		return &ClientCloseMsgJSON{SubscriptionID: parsed[0].(string), raw: json}, nil
 
 	default:
 		panic("unreachable")
@@ -95,13 +95,19 @@ func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
 
 type ClientMsgJSON interface {
 	clientMsgJSON()
+	Raw() string
 }
 
 type ClientEventMsgJSON struct {
 	EventJSON *EventJSON
+	raw       string
 }
 
 func (*ClientEventMsgJSON) clientMsgJSON() {}
+
+func (m *ClientEventMsgJSON) Raw() string {
+	return m.raw
+}
 
 func ParseEventJSON(json string) (*EventJSON, error) {
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
@@ -194,9 +200,14 @@ func (e *EventJSON) CreatedAtToTime() time.Time {
 type ClientReqMsgJSON struct {
 	SubscriptionID string
 	FilterJSONs    []*FilterJSON
+	raw            string
 }
 
 func (*ClientReqMsgJSON) clientMsgJSON() {}
+
+func (m *ClientReqMsgJSON) Raw() string {
+	return m.raw
+}
 
 func ParseFilterJSON(json string) (*FilterJSON, error) {
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
@@ -222,9 +233,14 @@ type FilterJSON struct {
 
 type ClientCloseMsgJSON struct {
 	SubscriptionID string
+	raw            string
 }
 
 func (*ClientCloseMsgJSON) clientMsgJSON() {}
+
+func (m *ClientCloseMsgJSON) Raw() string {
+	return m.raw
+}
 
 type ServerMsg interface {
 	serverMsg()
@@ -233,7 +249,7 @@ type ServerMsg interface {
 
 type ServerEventMsg struct {
 	SubscriptionID string
-	*EventJSON
+	*Event
 }
 
 func (ServerEventMsg) serverMsg() {}
@@ -243,7 +259,7 @@ func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
 		return nil, errors.New("cannot marshal nil server event msg")
 	}
 
-	payload := []interface{}{"EVENT", msg.SubscriptionID, msg.EventJSON}
+	payload := []interface{}{"EVENT", msg.SubscriptionID, msg.Event}
 
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
 
@@ -304,12 +320,17 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 type Event struct {
 	*EventJSON
 	ReceivedAt time.Time
+	Raw        string
 }
 
 func (e *Event) ValidCreatedAt() bool {
 	sub := time.Until(e.CreatedAtToTime())
 	// TODO(high-moctane) no magic number
 	return -10*time.Minute <= sub && sub <= 5*time.Minute
+}
+
+func (e *Event) MarshalJSON() ([]byte, error) {
+	return []byte(e.Raw), nil
 }
 
 type Filter struct {

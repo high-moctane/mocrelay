@@ -192,7 +192,7 @@ func (*Relay) serveClientReqMsgJSON(
 	}
 
 	for _, event := range cache.FindAll(filters) {
-		sender <- &ServerEventMsg{msg.SubscriptionID, event.EventJSON}
+		sender <- &ServerEventMsg{msg.SubscriptionID, event}
 	}
 	sender <- &ServerEOSEMsg{msg.SubscriptionID}
 
@@ -222,7 +222,7 @@ func (*Relay) serveClientEventMsgJSON(router *Router, cache *Cache, msg *ClientE
 
 	promEventCounter.WithLabelValues(msg.EventJSON).Inc()
 
-	event := &Event{msg.EventJSON, time.Now()}
+	event := &Event{msg.EventJSON, time.Now(), msg.Raw()}
 
 	if !event.ValidCreatedAt() {
 		return fmt.Errorf("invalid created_at: %v", event.CreatedAtToTime())
