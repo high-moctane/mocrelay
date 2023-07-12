@@ -109,7 +109,7 @@ type subscriber struct {
 func (sb *subscriber) Receive(event *Event) bool {
 	if sb.Filters.Match(event) {
 		select {
-		case sb.RecvCh <- &ServerEventMsg{sb.SubscriptID, event}:
+		case sb.RecvCh <- NewServerEventMsg(sb.SubscriptID, event):
 			return true
 		default:
 			promReceiveFail.WithLabelValues(sb.ConnectionID, sb.SubscriptID).Inc()

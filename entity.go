@@ -73,7 +73,7 @@ func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
 
 	switch arr[0].Str {
 	case "EVENT":
-		return &ClientEventMsgJSON{EventJSON: parsed[0].(*EventJSON), raw: json}, nil
+		return NewClientEventMsgJSON(json, parsed[0].(*EventJSON)), nil
 
 	case "REQ":
 		if len(parsed) < 2 {
@@ -83,10 +83,10 @@ func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
 		for idx, elem := range parsed[1:] {
 			filters[idx] = elem.(*FilterJSON)
 		}
-		return &ClientReqMsgJSON{SubscriptionID: parsed[0].(string), FilterJSONs: filters, raw: json}, nil
+		return NewClientReqMsgJSON(json, parsed[0].(string), filters), nil
 
 	case "CLOSE":
-		return &ClientCloseMsgJSON{SubscriptionID: parsed[0].(string), raw: json}, nil
+		return NewClientCloseMsgJSON(json, parsed[0].(string)), nil
 
 	default:
 		panic("unreachable")
@@ -98,9 +98,16 @@ type ClientMsgJSON interface {
 	Raw() string
 }
 
+func NewClientEventMsgJSON(raw string, json *EventJSON) *ClientEventMsgJSON {
+	return &ClientEventMsgJSON{
+		raw:       raw,
+		EventJSON: json,
+	}
+}
+
 type ClientEventMsgJSON struct {
-	EventJSON *EventJSON
 	raw       string
+	EventJSON *EventJSON
 }
 
 func (*ClientEventMsgJSON) clientMsgJSON() {}
@@ -197,6 +204,14 @@ func (e *EventJSON) CreatedAtToTime() time.Time {
 	return time.Unix(int64(e.CreatedAt), 0)
 }
 
+func NewClientReqMsgJSON(raw string, subID string, filters []*FilterJSON) *ClientReqMsgJSON {
+	return &ClientReqMsgJSON{
+		SubscriptionID: subID,
+		FilterJSONs:    filters,
+		raw:            raw,
+	}
+}
+
 type ClientReqMsgJSON struct {
 	SubscriptionID string
 	FilterJSONs    []*FilterJSON
@@ -231,6 +246,13 @@ type FilterJSON struct {
 	Limit   *int      `json:"limit"`
 }
 
+func NewClientCloseMsgJSON(raw string, subID string) *ClientCloseMsgJSON {
+	return &ClientCloseMsgJSON{
+		SubscriptionID: subID,
+		raw:            raw,
+	}
+}
+
 type ClientCloseMsgJSON struct {
 	SubscriptionID string
 	raw            string
@@ -245,6 +267,13 @@ func (m *ClientCloseMsgJSON) Raw() string {
 type ServerMsg interface {
 	serverMsg()
 	json.Marshaler
+}
+
+func NewServerEventMsg(subID string, event *Event) *ServerEventMsg {
+	return &ServerEventMsg{
+		SubscriptionID: subID,
+		Event:          event,
+	}
 }
 
 type ServerEventMsg struct {
@@ -269,6 +298,10 @@ func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	return res, nil
+}
+
+func NewServerEOSEMsg(subID string) *ServerEOSEMsg {
+	return &ServerEOSEMsg{SubscriptionID: subID}
 }
 
 type ServerEOSEMsg struct {
@@ -317,10 +350,18 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 	return res, nil
 }
 
+func NewEvent(raw string, json *EventJSON, receivedAt time.Time) *Event {
+	return &Event{
+		Raw:        raw,
+		EventJSON:  json,
+		ReceivedAt: receivedAt,
+	}
+}
+
 type Event struct {
+	Raw string
 	*EventJSON
 	ReceivedAt time.Time
-	Raw        string
 }
 
 func (e *Event) ValidCreatedAt() bool {
@@ -331,6 +372,10 @@ func (e *Event) ValidCreatedAt() bool {
 
 func (e *Event) MarshalJSON() ([]byte, error) {
 	return []byte(e.Raw), nil
+}
+
+func NewFilter(json *FilterJSON) *Filter {
+	return &Filter{FilterJSON: json}
 }
 
 type Filter struct {
@@ -434,7 +479,7 @@ func NewFiltersFromFilterJSONs(jsons []*FilterJSON) Filters {
 	res := make(Filters, len(jsons))
 
 	for i, json := range jsons {
-		res[i] = &Filter{json}
+		res[i] = NewFilter(json)
 	}
 
 	return res
