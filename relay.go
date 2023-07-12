@@ -222,7 +222,7 @@ func (*Relay) serveClientEventMsgJSON(router *Router, cache *Cache, msg *ClientE
 
 	promEventCounter.WithLabelValues(msg.EventJSON).Inc()
 
-	event := NewEvent(msg.Raw(), msg.EventJSON, time.Now())
+	event := NewEvent(msg.EventJSON, time.Now())
 
 	if !event.ValidCreatedAt() {
 		return fmt.Errorf("invalid created_at: %v", event.CreatedAtToTime())

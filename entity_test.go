@@ -34,6 +34,7 @@ func TestParseClientMsgJSON(t *testing.T) {
 						Tags:      [][]string{},
 						Content:   "ぽわ〜",
 						Sig:       "fe5ee79be79cac4f3485d2287dc2843f06eae5a8ff1f062561503751c35041164e55e2bce744276260dff5392d3b4c1ca5ec54698acd04fa40334e2caab22a21",
+						Raw:       `{"kind":1,"pubkey":"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e","created_at":1688314821,"tags":[],"content":"ぽわ〜","id":"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844","sig":"fe5ee79be79cac4f3485d2287dc2843f06eae5a8ff1f062561503751c35041164e55e2bce744276260dff5392d3b4c1ca5ec54698acd04fa40334e2caab22a21"}`,
 					},
 					raw: `["EVENT",{"kind":1,"pubkey":"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e","created_at":1688314821,"tags":[],"content":"ぽわ〜","id":"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844","sig":"fe5ee79be79cac4f3485d2287dc2843f06eae5a8ff1f062561503751c35041164e55e2bce744276260dff5392d3b4c1ca5ec54698acd04fa40334e2caab22a21"}]`,
 				},
@@ -280,6 +281,26 @@ func TestParseEventJSON(t *testing.T) {
 					},
 					Content: "ぽわ〜",
 					Sig:     "5acc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631",
+					Raw: `{
+					"id": "a3cc6206905faa34cdfb4849ecaceb4bd62a0d99d953f06fbc01d98d87ea8626",
+					"pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					"created_at": 1688314828,
+					"kind": 1,
+					"tags": [
+						[
+							"e",
+							"00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+							"",
+							"root"
+						],
+						[
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"
+						]
+					],
+					"content": "ぽわ〜",
+					"sig": "5acc0bf523404dd5141a1cedff73448084dcda73089d1b3aee4bccacd545c44072a7d39e7726dced09de4023716a0a7a23ca57aad88db976a1541209c316e631"
+				}`,
 				},
 				nil,
 			},
@@ -306,6 +327,15 @@ func TestParseEventJSON(t *testing.T) {
 					Tags:      [][]string{},
 					Content:   "ぽわ〜",
 					Sig:       "fe5ee79be79cac4f3485d2287dc2843f06eae5a8ff1f062561503751c35041164e55e2bce744276260dff5392d3b4c1ca5ec54698acd04fa40334e2caab22a21",
+					Raw: `{
+					"kind": 1,
+					"pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					"created_at": 1688314821,
+					"tags": [],
+					"content": "ぽわ〜",
+					"id": "00a6cc6a39f88a7ee8d3ed162532b9598b2c680ac5eda764d9c5716df894e844",
+					"sig": "fe5ee79be79cac4f3485d2287dc2843f06eae5a8ff1f062561503751c35041164e55e2bce744276260dff5392d3b4c1ca5ec54698acd04fa40334e2caab22a21"
+				}`,
 				},
 				nil,
 			},

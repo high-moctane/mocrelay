@@ -124,6 +124,7 @@ func ParseEventJSON(json string) (*EventJSON, error) {
 		return nil, fmt.Errorf("failed to unmarshal event json: %q", err)
 	}
 
+	ev.Raw = json
 	return &ev, nil
 }
 
@@ -135,6 +136,8 @@ type EventJSON struct {
 	Tags      [][]string `json:"tags"`
 	Content   string     `json:"content"`
 	Sig       string     `json:"sig"`
+
+	Raw string `json:"-"`
 }
 
 func (e *EventJSON) Verify() (bool, error) {
@@ -350,16 +353,14 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 	return res, nil
 }
 
-func NewEvent(raw string, json *EventJSON, receivedAt time.Time) *Event {
+func NewEvent(json *EventJSON, receivedAt time.Time) *Event {
 	return &Event{
-		Raw:        raw,
 		EventJSON:  json,
 		ReceivedAt: receivedAt,
 	}
 }
 
 type Event struct {
-	Raw string
 	*EventJSON
 	ReceivedAt time.Time
 }
