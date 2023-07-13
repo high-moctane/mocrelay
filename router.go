@@ -19,6 +19,10 @@ type Router struct {
 }
 
 func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- ServerMsg) error {
+	if len(subID) > 64 {
+		return fmt.Errorf("too long subscriptsion_id: %v", subID)
+	}
+
 	newSubscr := &subscriber{
 		ConnectionID: connID,
 		SubscriptID:  subID,
