@@ -63,10 +63,6 @@ func Run(ctx context.Context) error {
 
 	go StartMetricsServer()
 
-	relay := new(Relay)
-	router := NewRouter(DefaultFilters, *MaxReqSubIDNum)
-	cache := NewCache(*CacheSize, DefaultFilters)
-
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +99,9 @@ func Run(ctx context.Context) error {
 				"addr", realip.FromRequest(r),
 				"conn", connID)
 
-			if err := relay.HandleWebsocket(r.Context(), r, connID, conn, router, cache); err != nil {
+			handler := DefaultRelay.NewHandler(r, connID)
+
+			if err := handler.HandleWebsocket(r.Context(), conn); err != nil {
 				logger.Errorw("websocket error",
 					"addr", realip.FromRequest(r),
 					"conn_id", connID,
