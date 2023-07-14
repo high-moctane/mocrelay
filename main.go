@@ -51,7 +51,7 @@ func main() {
 }
 
 func Run(ctx context.Context) error {
-	InitLogger(ctx)
+	ctx = InitLogger(ctx)
 
 	log.Ctx(ctx).Info().Msg("server start")
 
@@ -141,6 +141,9 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-func InitLogger(ctx context.Context) {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+func InitLogger(ctx context.Context) context.Context {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	ctx = log.With().Logger().WithContext(ctx)
+	return ctx
 }
