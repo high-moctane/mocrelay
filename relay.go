@@ -15,7 +15,6 @@ import (
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/rs/zerolog/log"
-	"github.com/tomasen/realip"
 	"golang.org/x/time/rate"
 )
 
@@ -25,20 +24,36 @@ const (
 	MaxFilterLen   = 50
 )
 
-func NewWebsocketRequest(req *http.Request, conn net.Conn, connID string) *WebsocketRequest {
+func RelayAccessHandlerFunc(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	conn, _, _, err := ws.UpgradeHTTP(r, w)
+	if err != nil {
+		log.Ctx(ctx).Error().Err(err).Msg("failed to upgrade HTTP")
+		return
+	}
+	defer conn.Close()
+
+	log.Ctx(ctx).Info().Msg("connect websocket")
+	defer log.Ctx(ctx).Info().Msg("disconnect websocket")
+
+	wreq := NewWebsocketRequest(r, conn)
+
+	if err := DefaultRelay.NewHandler().Serve(r.Context(), wreq); err != nil {
+		log.Ctx(ctx).Error().Err(err).Msg("websocket error")
+	}
+}
+
+func NewWebsocketRequest(req *http.Request, conn net.Conn) *WebsocketRequest {
 	return &WebsocketRequest{
 		HTTPReq: req,
-		RealIP:  realip.FromRequest(req),
 		Conn:    conn,
-		ConnID:  connID,
 	}
 }
 
 type WebsocketRequest struct {
 	HTTPReq *http.Request
-	RealIP  string
 	Conn    net.Conn
-	ConnID  string
 }
 
 var DefaultRelay = NewRelay()
@@ -78,10 +93,12 @@ func (rh *RelayHandler) Serve(ctx context.Context, r *WebsocketRequest) error {
 		}
 	}()
 
-	promActiveWebsocket.WithLabelValues(r.RealIP, r.ConnID).Inc()
-	defer promActiveWebsocket.WithLabelValues(r.RealIP, r.ConnID).Dec()
+	realIP := GetCtxRealIP(ctx)
+	connID := GetCtxConnID(ctx)
+	promActiveWebsocket.WithLabelValues(realIP, connID).Inc()
+	defer promActiveWebsocket.WithLabelValues(realIP, connID).Dec()
 
-	defer rh.relay.router.Delete(r.ConnID)
+	defer rh.relay.router.Delete(connID)
 
 	errCh := make(chan error, 2)
 
@@ -151,7 +168,7 @@ func (rh *RelayHandler) wsReceiver(
 		}
 
 		log.Ctx(ctx).Info().Msg("receive client msg")
-		promWSRecvCounter.WithLabelValues(r.RealIP, r.ConnID, jsonMsg).Inc()
+		promWSRecvCounter.WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
@@ -210,7 +227,7 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 	rh.sendCh <- NewServerEOSEMsg(msg.SubscriptionID)
 
 	// TODO(high-moctane) handle error, impl is not good
-	if err := rh.relay.router.Subscribe(r.ConnID, msg.SubscriptionID, filters, rh.sendCh); err != nil {
+	if err := rh.relay.router.Subscribe(GetCtxConnID(r.HTTPReq.Context()), msg.SubscriptionID, filters, rh.sendCh); err != nil {
 		return nil
 	}
 	return nil
@@ -220,7 +237,7 @@ func (rh *RelayHandler) serveClientCloseMsgJSON(
 	r *WebsocketRequest,
 	msg *ClientCloseMsgJSON,
 ) error {
-	if err := rh.relay.router.Close(r.ConnID, msg.SubscriptionID); err != nil {
+	if err := rh.relay.router.Close(GetCtxConnID(r.HTTPReq.Context()), msg.SubscriptionID); err != nil {
 		return fmt.Errorf("cannot close conn %v", msg.SubscriptionID)
 	}
 	return nil
@@ -274,7 +291,7 @@ func (rh *RelayHandler) wsSender(
 			return nil
 
 		case msg := <-rh.sendCh:
-			promWSSendCounter.WithLabelValues(r.RealIP, r.ConnID, msg).Inc()
+			promWSSendCounter.WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), msg).Inc()
 
 			jsonMsg, err := msg.MarshalJSON()
 			if err != nil {

@@ -1,27 +1,34 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/rs/zerolog/log"
 )
 
-func HandleNip11(ctx context.Context, w http.ResponseWriter, r *http.Request, connID string) error {
+func Nip11HandlerFunc(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	nip11, err := ji.Marshal(DefaultNip11)
 	if err != nil {
-		panic(fmt.Sprintf("invalid nip11 json: %v", err))
+		log.Ctx(ctx).Panic().Err(err).Msg("invalid nip11 json")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "HEAD,OPTIONS,GET")
 	if _, err := w.Write(nip11); err != nil {
-		return fmt.Errorf("failed to send nip11: %w", err)
+		log.Ctx(ctx).Info().Err(err).Msg("failed to send nip11")
 	}
-	return nil
 }
 
 var DefaultNip11 *Nip11 = &Nip11{
