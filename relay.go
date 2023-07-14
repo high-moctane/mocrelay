@@ -18,8 +18,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const SenderLen = 3
-
 const (
 	RateLimitRate  = 20
 	RateLimitBurst = 10
