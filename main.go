@@ -13,8 +13,9 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/tomasen/realip"
-	"go.uber.org/zap"
 )
 
 const (
@@ -36,8 +37,6 @@ var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
 	0, 1, 6, 7,
 }}}}
 
-var logger *zap.SugaredLogger
-
 var ConnSema = make(chan struct{}, DefaultMaxConnections)
 
 func init() {
@@ -47,16 +46,14 @@ func init() {
 
 func main() {
 	if err := Run(context.Background()); err != nil {
-		logger.Fatal("server terminated with error", zap.Error(err))
+		log.Fatal().Err(err).Msg("server terminated with error")
 	}
-
 }
 
 func Run(ctx context.Context) error {
-	logger = zap.Must(zap.NewDevelopment()).Sugar()
-	defer logger.Sync()
+	InitLogger(ctx)
 
-	logger.Info("server starting")
+	log.Ctx(ctx).Info().Msg("server start")
 
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
@@ -68,7 +65,10 @@ func Run(ctx context.Context) error {
 	mux.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(sigCtx)
 
+		realIP := realip.FromRequest(r)
 		connID := uuid.NewString()
+
+		ctx := log.Ctx(ctx).With().Str("addr", realIP).Str("conn_id", connID).Logger().WithContext(ctx)
 
 		select {
 		case ConnSema <- struct{}{}:
@@ -84,30 +84,20 @@ func Run(ctx context.Context) error {
 		} else if r.Header.Get("Upgrade") != "" {
 			conn, _, _, err := ws.UpgradeHTTP(r, w)
 			if err != nil {
-				logger.Errorw("failed to upgrade http",
-					"addr", realip.FromRequest(r),
-					"conn_id", connID,
-					"error", err)
+				log.Ctx(ctx).Error().Err(err).Msg("failed to upgrade HTTP")
 				return
 			}
 			defer conn.Close()
 
-			logger.Infow("connect websocket",
-				"addr", realip.FromRequest(r),
-				"conn", connID)
-			defer logger.Infow("disconnect websocket",
-				"addr", realip.FromRequest(r),
-				"conn", connID)
+			log.Ctx(ctx).Info().Msg("connect websocket")
+			defer log.Ctx(ctx).Info().Msg("disconnect websocket")
 
 			wreq := NewWebsocketRequest(r, conn, connID)
 
 			handler := DefaultRelay.NewHandler()
 
 			if err := handler.HandleWebsocket(r.Context(), wreq); err != nil {
-				logger.Errorw("websocket error",
-					"addr", realip.FromRequest(r),
-					"conn_id", connID,
-					"error", err)
+				log.Ctx(ctx).Error().Err(err).Msg("websocket error")
 			}
 
 		} else if r.Header.Get("Accept") == "application/nostr+json" {
@@ -121,11 +111,7 @@ func Run(ctx context.Context) error {
 			}
 
 			if err := HandleNip11(ctx, w, r, connID); err != nil {
-				logger.Errorw("failed to serve nip11",
-					"addr", realip.FromRequest(r),
-					"conn_id", connID,
-					"error", err)
-				return
+				log.Ctx(ctx).Error().Err(err).Msg("failed to serve nip11")
 			}
 
 		} else {
@@ -151,6 +137,10 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	logger.Info("server stop")
+	log.Ctx(ctx).Info().Msg("server stop")
 	return nil
+}
+
+func InitLogger(ctx context.Context) {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 }

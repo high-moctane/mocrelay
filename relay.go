@@ -14,6 +14,7 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
+	"github.com/rs/zerolog/log"
 	"github.com/tomasen/realip"
 	"golang.org/x/time/rate"
 )
@@ -73,10 +74,7 @@ type RelayHandler struct {
 func (rh *RelayHandler) HandleWebsocket(ctx context.Context, r *WebsocketRequest) error {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Panicw("paniced",
-				"addr", r.RealIP,
-				"conn_id", r.ConnID,
-				"error", err)
+			log.Ctx(ctx).Panic().Any("error", err).Msg("paniced")
 		}
 	}()
 
@@ -139,55 +137,38 @@ func (rh *RelayHandler) wsReceiver(
 		}
 
 		if !utf8.Valid(payload) {
-			logger.Infow("payload is not utf8",
-				"addr", r.RealIP,
-				"conn_id", r.ConnID,
-				"payload", payload)
+			log.Ctx(ctx).Info().Bytes("payload", payload).Msg("payload is not utf8")
 			continue
 		}
 
 		strMsg := string(payload)
+		ctx := log.Ctx(ctx).With().Str("client_msg", strMsg).Logger().WithContext(ctx)
+
 		jsonMsg, err := ParseClientMsgJSON(strMsg)
 		if err != nil {
-			logger.Infow("received invalid msg",
-				"addr", r.RealIP,
-				"conn_id", r.ConnID,
-				"msg", strMsg,
-				"error", err)
+			log.Ctx(ctx).Info().Err(err).Msg("received invalid client msg")
 			continue
 		}
 
-		logger.Infow("recv msg",
-			"addr", r.RealIP,
-			"conn_id", r.ConnID,
-			"msg", strMsg)
+		log.Ctx(ctx).Info().Msg("receive client msg")
 		promWSRecvCounter.WithLabelValues(r.RealIP, r.ConnID, jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
 			if err := rh.serveClientReqMsgJSON(r, msg); err != nil {
-				logger.Infow("failed to serve client req msg",
-					"addr", r.RealIP,
-					"conn_id", r.ConnID,
-					"error", err)
+				log.Ctx(ctx).Info().Err(err).Msg("failed to serve client req msg")
 				continue
 			}
 
 		case *ClientCloseMsgJSON:
 			if err := rh.serveClientCloseMsgJSON(r, msg); err != nil {
-				logger.Infow("failed to serve client close msg",
-					"addr", r.RealIP,
-					"conn_id", r.ConnID,
-					"error", err)
+				log.Ctx(ctx).Info().Err(err).Msg("failed to serve client close msg")
 				continue
 			}
 
 		case *ClientEventMsgJSON:
 			if err := rh.serveClientEventMsgJSON(r, msg); err != nil {
-				logger.Infow("failed to serve client event msg",
-					"addr", r.RealIP,
-					"conn_id", r.ConnID,
-					"error", err)
+				log.Ctx(ctx).Info().Err(err).Msg("failed to serve client event msg")
 				continue
 			}
 		}
@@ -297,11 +278,7 @@ func (rh *RelayHandler) wsSender(
 
 			jsonMsg, err := msg.MarshalJSON()
 			if err != nil {
-				logger.Infow("failed to marshal server msg",
-					"addr", r.RealIP,
-					"conn_id", r.ConnID,
-					"msg", msg,
-					"error", err)
+				log.Ctx(ctx).Info().Err(err).Msg("failed to marshal server msg")
 				continue
 			}
 
@@ -312,10 +289,7 @@ func (rh *RelayHandler) wsSender(
 				return fmt.Errorf("failed to write server text: %w", err)
 			}
 
-			logger.Infow("send msg",
-				"addr", r.RealIP,
-				"conn_id", r.ConnID,
-				"msg", string(jsonMsg))
+			log.Ctx(ctx).Info().Msg("send server msg")
 		}
 	}
 }
