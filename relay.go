@@ -71,7 +71,7 @@ type RelayHandler struct {
 	sendCh chan ServerMsg
 }
 
-func (rh *RelayHandler) HandleWebsocket(ctx context.Context, r *WebsocketRequest) error {
+func (rh *RelayHandler) Serve(ctx context.Context, r *WebsocketRequest) error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Ctx(ctx).Panic().Any("error", err).Msg("paniced")

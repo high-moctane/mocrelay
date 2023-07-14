@@ -96,7 +96,7 @@ func Run(ctx context.Context) error {
 
 			handler := DefaultRelay.NewHandler()
 
-			if err := handler.HandleWebsocket(r.Context(), wreq); err != nil {
+			if err := handler.Serve(r.Context(), wreq); err != nil {
 				log.Ctx(ctx).Error().Err(err).Msg("websocket error")
 			}
 
