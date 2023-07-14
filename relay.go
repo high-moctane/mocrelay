@@ -24,6 +24,22 @@ const (
 	MaxFilterLen   = 50
 )
 
+func NewWebsocketRequest(req *http.Request, conn net.Conn, connID string) *WebsocketRequest {
+	return &WebsocketRequest{
+		HTTPReq: req,
+		RealIP:  realip.FromRequest(req),
+		Conn:    conn,
+		ConnID:  connID,
+	}
+}
+
+type WebsocketRequest struct {
+	HTTPReq *http.Request
+	RealIP  string
+	Conn    net.Conn
+	ConnID  string
+}
+
 var DefaultRelay = NewRelay()
 
 func NewRelay() *Relay {
@@ -38,17 +54,13 @@ type Relay struct {
 	cache  *Cache
 }
 
-func (relay *Relay) NewHandler(req *http.Request, connID string) *RelayHandler {
+func (relay *Relay) NewHandler() *RelayHandler {
 	chanBufLen := 3
 
 	return &RelayHandler{
 		relay:  relay,
 		recvCh: make(chan ClientMsgJSON, chanBufLen),
 		sendCh: make(chan ServerMsg, chanBufLen),
-
-		req:    req,
-		realIP: realip.FromRequest(req),
-		connID: connID,
 	}
 }
 
@@ -56,26 +68,22 @@ type RelayHandler struct {
 	relay  *Relay
 	recvCh chan ClientMsgJSON
 	sendCh chan ServerMsg
-
-	req    *http.Request
-	realIP string
-	connID string
 }
 
-func (rh *RelayHandler) HandleWebsocket(ctx context.Context, conn net.Conn) error {
+func (rh *RelayHandler) HandleWebsocket(ctx context.Context, r *WebsocketRequest) error {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Panicw("paniced",
-				"addr", rh.realIP,
-				"conn_id", rh.connID,
+				"addr", r.RealIP,
+				"conn_id", r.ConnID,
 				"error", err)
 		}
 	}()
 
-	promActiveWebsocket.WithLabelValues(realip.FromRequest(rh.req), rh.connID).Inc()
-	defer promActiveWebsocket.WithLabelValues(realip.FromRequest(rh.req), rh.connID).Dec()
+	promActiveWebsocket.WithLabelValues(r.RealIP, r.ConnID).Inc()
+	defer promActiveWebsocket.WithLabelValues(r.RealIP, r.ConnID).Dec()
 
-	defer rh.relay.router.Delete(rh.connID)
+	defer rh.relay.router.Delete(r.ConnID)
 
 	errCh := make(chan error, 2)
 
@@ -88,13 +96,13 @@ func (rh *RelayHandler) HandleWebsocket(ctx context.Context, conn net.Conn) erro
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- rh.wsSender(ctx, conn)
+		errCh <- rh.wsSender(ctx, r)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- rh.wsReceiver(ctx, conn)
+		errCh <- rh.wsReceiver(ctx, r)
 	}()
 
 	err := <-errCh
@@ -115,10 +123,10 @@ func (rh *RelayHandler) HandleWebsocket(ctx context.Context, conn net.Conn) erro
 
 func (rh *RelayHandler) wsReceiver(
 	ctx context.Context,
-	conn net.Conn,
+	r *WebsocketRequest,
 ) error {
 	lim := rate.NewLimiter(RateLimitRate, RateLimitBurst)
-	reader := wsutil.NewServerSideReader(conn)
+	reader := wsutil.NewServerSideReader(r.Conn)
 
 	for {
 		if err := lim.Wait(ctx); err != nil {
@@ -132,8 +140,8 @@ func (rh *RelayHandler) wsReceiver(
 
 		if !utf8.Valid(payload) {
 			logger.Infow("payload is not utf8",
-				"addr", rh.realIP,
-				"conn_id", rh.connID,
+				"addr", r.RealIP,
+				"conn_id", r.ConnID,
 				"payload", payload)
 			continue
 		}
@@ -142,43 +150,43 @@ func (rh *RelayHandler) wsReceiver(
 		jsonMsg, err := ParseClientMsgJSON(strMsg)
 		if err != nil {
 			logger.Infow("received invalid msg",
-				"addr", rh.realIP,
-				"conn_id", rh.connID,
+				"addr", r.RealIP,
+				"conn_id", r.ConnID,
 				"msg", strMsg,
 				"error", err)
 			continue
 		}
 
 		logger.Infow("recv msg",
-			"addr", rh.realIP,
-			"conn_id", rh.connID,
+			"addr", r.RealIP,
+			"conn_id", r.ConnID,
 			"msg", strMsg)
-		promWSRecvCounter.WithLabelValues(realip.FromRequest(rh.req), rh.connID, jsonMsg).Inc()
+		promWSRecvCounter.WithLabelValues(r.RealIP, r.ConnID, jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
-			if err := rh.serveClientReqMsgJSON(msg); err != nil {
+			if err := rh.serveClientReqMsgJSON(r, msg); err != nil {
 				logger.Infow("failed to serve client req msg",
-					"addr", rh.realIP,
-					"conn_id", rh.connID,
+					"addr", r.RealIP,
+					"conn_id", r.ConnID,
 					"error", err)
 				continue
 			}
 
 		case *ClientCloseMsgJSON:
-			if err := rh.serveClientCloseMsgJSON(msg); err != nil {
+			if err := rh.serveClientCloseMsgJSON(r, msg); err != nil {
 				logger.Infow("failed to serve client close msg",
-					"addr", rh.realIP,
-					"conn_id", rh.connID,
+					"addr", r.RealIP,
+					"conn_id", r.ConnID,
 					"error", err)
 				continue
 			}
 
 		case *ClientEventMsgJSON:
-			if err := rh.serveClientEventMsgJSON(msg); err != nil {
+			if err := rh.serveClientEventMsgJSON(r, msg); err != nil {
 				logger.Infow("failed to serve client event msg",
-					"addr", rh.realIP,
-					"conn_id", rh.connID,
+					"addr", r.RealIP,
+					"conn_id", r.ConnID,
 					"error", err)
 				continue
 			}
@@ -206,6 +214,7 @@ func (*RelayHandler) wsRead(wsr *wsutil.Reader) ([]byte, error) {
 }
 
 func (rh *RelayHandler) serveClientReqMsgJSON(
+	r *WebsocketRequest,
 	msg *ClientReqMsgJSON,
 ) error {
 	filters := NewFiltersFromFilterJSONs(msg.FilterJSONs)
@@ -220,20 +229,26 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 	rh.sendCh <- NewServerEOSEMsg(msg.SubscriptionID)
 
 	// TODO(high-moctane) handle error, impl is not good
-	if err := rh.relay.router.Subscribe(rh.connID, msg.SubscriptionID, filters, rh.sendCh); err != nil {
+	if err := rh.relay.router.Subscribe(r.ConnID, msg.SubscriptionID, filters, rh.sendCh); err != nil {
 		return nil
 	}
 	return nil
 }
 
-func (rh *RelayHandler) serveClientCloseMsgJSON(msg *ClientCloseMsgJSON) error {
-	if err := rh.relay.router.Close(rh.connID, msg.SubscriptionID); err != nil {
+func (rh *RelayHandler) serveClientCloseMsgJSON(
+	r *WebsocketRequest,
+	msg *ClientCloseMsgJSON,
+) error {
+	if err := rh.relay.router.Close(r.ConnID, msg.SubscriptionID); err != nil {
 		return fmt.Errorf("cannot close conn %v", msg.SubscriptionID)
 	}
 	return nil
 }
 
-func (rh *RelayHandler) serveClientEventMsgJSON(msg *ClientEventMsgJSON) error {
+func (rh *RelayHandler) serveClientEventMsgJSON(
+	r *WebsocketRequest,
+	msg *ClientEventMsgJSON,
+) error {
 	ok, err := msg.EventJSON.Verify()
 	if err != nil {
 		return fmt.Errorf("failed to verify event json: %v", msg)
@@ -261,10 +276,10 @@ func (rh *RelayHandler) serveClientEventMsgJSON(msg *ClientEventMsgJSON) error {
 
 func (rh *RelayHandler) wsSender(
 	ctx context.Context,
-	conn net.Conn,
+	r *WebsocketRequest,
 ) (err error) {
 	defer func() {
-		if _, e := conn.Write(ws.CompiledCloseNormalClosure); e != nil {
+		if _, e := r.Conn.Write(ws.CompiledCloseNormalClosure); e != nil {
 			if errors.Is(e, net.ErrClosed) {
 				return
 			}
@@ -278,19 +293,19 @@ func (rh *RelayHandler) wsSender(
 			return nil
 
 		case msg := <-rh.sendCh:
-			promWSSendCounter.WithLabelValues(rh.realIP, rh.connID, msg).Inc()
+			promWSSendCounter.WithLabelValues(r.RealIP, r.ConnID, msg).Inc()
 
 			jsonMsg, err := msg.MarshalJSON()
 			if err != nil {
 				logger.Infow("failed to marshal server msg",
-					"addr", rh.realIP,
-					"conn_id", rh.connID,
+					"addr", r.RealIP,
+					"conn_id", r.ConnID,
 					"msg", msg,
 					"error", err)
 				continue
 			}
 
-			if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
+			if err := wsutil.WriteServerText(r.Conn, jsonMsg); err != nil {
 				if errors.Is(err, net.ErrClosed) {
 					return nil
 				}
@@ -298,8 +313,8 @@ func (rh *RelayHandler) wsSender(
 			}
 
 			logger.Infow("send msg",
-				"addr", rh.realIP,
-				"conn_id", rh.connID,
+				"addr", r.RealIP,
+				"conn_id", r.ConnID,
 				"msg", string(jsonMsg))
 		}
 	}

@@ -99,9 +99,11 @@ func Run(ctx context.Context) error {
 				"addr", realip.FromRequest(r),
 				"conn", connID)
 
-			handler := DefaultRelay.NewHandler(r, connID)
+			wreq := NewWebsocketRequest(r, conn, connID)
 
-			if err := handler.HandleWebsocket(r.Context(), conn); err != nil {
+			handler := DefaultRelay.NewHandler()
+
+			if err := handler.HandleWebsocket(r.Context(), wreq); err != nil {
 				logger.Errorw("websocket error",
 					"addr", realip.FromRequest(r),
 					"conn_id", connID,
