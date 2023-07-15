@@ -75,7 +75,7 @@ func RootHandler() http.Handler {
 			RelayAccessHandlerFunc(w, r)
 
 		} else if r.Header.Get("Accept") == "application/nostr+json" {
-			Nip11HandlerFunc(w, r)
+			NIP11HandlerFunc(w, r)
 
 		} else {
 			DefaultPageHandlerFunc(w, r)

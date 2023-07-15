@@ -117,8 +117,8 @@ var promReceiveFail *PromReceiveFail = (*PromReceiveFail)(promauto.NewCounterVec
 
 type PromReceiveFail prometheus.CounterVec
 
-func (pc *PromReceiveFail) WithLabelValues(ctx context.Context, subID string) prometheus.Counter {
-	return (*prometheus.CounterVec)(pc).WithLabelValues(GetCtxConnID(ctx), subID)
+func (pc *PromReceiveFail) WithLabelValues(connID, subID string) prometheus.Counter {
+	return (*prometheus.CounterVec)(pc).WithLabelValues(connID, subID)
 }
 
 var promCacheQueryTime prometheus.Histogram = promauto.NewHistogram(
