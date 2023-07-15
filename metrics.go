@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -24,8 +25,8 @@ var promActiveWebsocket *PromActiveWebsocket = (*PromActiveWebsocket)(promauto.N
 
 type PromActiveWebsocket prometheus.GaugeVec
 
-func (pc *PromActiveWebsocket) WithLabelValues(host, connID string) prometheus.Gauge {
-	return (*prometheus.GaugeVec)(pc).WithLabelValues(host, connID)
+func (pc *PromActiveWebsocket) WithLabelValues(ctx context.Context) prometheus.Gauge {
+	return (*prometheus.GaugeVec)(pc).WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx))
 }
 
 var promWSSendCounter *PromWSSendCounter = (*PromWSSendCounter)(promauto.NewCounterVec(
@@ -38,7 +39,7 @@ var promWSSendCounter *PromWSSendCounter = (*PromWSSendCounter)(promauto.NewCoun
 
 type PromWSSendCounter prometheus.CounterVec
 
-func (pc *PromWSSendCounter) WithLabelValues(host, connID string, msg ServerMsg) prometheus.Counter {
+func (pc *PromWSSendCounter) WithLabelValues(ctx context.Context, msg ServerMsg) prometheus.Counter {
 	var msgType string
 
 	switch msg.(type) {
@@ -50,7 +51,7 @@ func (pc *PromWSSendCounter) WithLabelValues(host, connID string, msg ServerMsg)
 		msgType = "NOTICE"
 	}
 
-	return (*prometheus.CounterVec)(pc).WithLabelValues(host, connID, msgType)
+	return (*prometheus.CounterVec)(pc).WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), msgType)
 }
 
 var promWSRecvCounter *PromWSRecvCounter = (*PromWSRecvCounter)(promauto.NewCounterVec(
@@ -63,7 +64,7 @@ var promWSRecvCounter *PromWSRecvCounter = (*PromWSRecvCounter)(promauto.NewCoun
 
 type PromWSRecvCounter prometheus.CounterVec
 
-func (pc *PromWSRecvCounter) WithLabelValues(host, connID string, msg ClientMsgJSON) prometheus.Counter {
+func (pc *PromWSRecvCounter) WithLabelValues(ctx context.Context, msg ClientMsgJSON) prometheus.Counter {
 	var msgType string
 
 	switch msg.(type) {
@@ -75,7 +76,7 @@ func (pc *PromWSRecvCounter) WithLabelValues(host, connID string, msg ClientMsgJ
 		msgType = "EVENT"
 	}
 
-	return (*prometheus.CounterVec)(pc).WithLabelValues(host, connID, msgType)
+	return (*prometheus.CounterVec)(pc).WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), msgType)
 }
 
 var promEventCounter *PromEventCounter = (*PromEventCounter)(promauto.NewCounterVec(
@@ -116,8 +117,8 @@ var promReceiveFail *PromReceiveFail = (*PromReceiveFail)(promauto.NewCounterVec
 
 type PromReceiveFail prometheus.CounterVec
 
-func (pc *PromReceiveFail) WithLabelValues(connID, subID string) prometheus.Counter {
-	return (*prometheus.CounterVec)(pc).WithLabelValues(connID, subID)
+func (pc *PromReceiveFail) WithLabelValues(ctx context.Context, subID string) prometheus.Counter {
+	return (*prometheus.CounterVec)(pc).WithLabelValues(GetCtxConnID(ctx), subID)
 }
 
 var promCacheQueryTime prometheus.Histogram = promauto.NewHistogram(

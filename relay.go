@@ -93,12 +93,10 @@ func (rh *RelayHandler) Serve(ctx context.Context, r *WebsocketRequest) error {
 		}
 	}()
 
-	realIP := GetCtxRealIP(ctx)
-	connID := GetCtxConnID(ctx)
-	promActiveWebsocket.WithLabelValues(realIP, connID).Inc()
-	defer promActiveWebsocket.WithLabelValues(realIP, connID).Dec()
+	promActiveWebsocket.WithLabelValues(ctx).Inc()
+	defer promActiveWebsocket.WithLabelValues(ctx).Dec()
 
-	defer rh.relay.router.Delete(connID)
+	defer rh.relay.router.Delete(GetCtxConnID(ctx))
 
 	errCh := make(chan error, 2)
 
@@ -167,7 +165,7 @@ func (rh *RelayHandler) wsReceiver(
 		}
 
 		log.Ctx(ctx).Info().Msg("receive client msg")
-		promWSRecvCounter.WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), jsonMsg).Inc()
+		promWSRecvCounter.WithLabelValues(ctx, jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
@@ -290,7 +288,7 @@ func (rh *RelayHandler) wsSender(
 			return nil
 
 		case msg := <-rh.sendCh:
-			promWSSendCounter.WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), msg).Inc()
+			promWSSendCounter.WithLabelValues(ctx, msg).Inc()
 
 			jsonMsg, err := msg.MarshalJSON()
 			if err != nil {
