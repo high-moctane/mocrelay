@@ -39,7 +39,7 @@ func RelayAccessHandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 	wreq := NewWebsocketRequest(r, conn)
 
-	if err := DefaultRelay.NewHandler().Serve(r.Context(), wreq); err != nil {
+	if err := DefaultRelay.NewHandler().Serve(ctx, wreq); err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("websocket error")
 	}
 }
@@ -169,19 +169,19 @@ func (rh *RelayHandler) wsReceiver(
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
-			if err := rh.serveClientReqMsgJSON(r, msg); err != nil {
+			if err := rh.serveClientReqMsgJSON(ctx, r, msg); err != nil {
 				log.Ctx(ctx).Info().Err(err).Msg("failed to serve client req msg")
 				continue
 			}
 
 		case *ClientCloseMsgJSON:
-			if err := rh.serveClientCloseMsgJSON(r, msg); err != nil {
+			if err := rh.serveClientCloseMsgJSON(ctx, r, msg); err != nil {
 				log.Ctx(ctx).Info().Err(err).Msg("failed to serve client close msg")
 				continue
 			}
 
 		case *ClientEventMsgJSON:
-			if err := rh.serveClientEventMsgJSON(r, msg); err != nil {
+			if err := rh.serveClientEventMsgJSON(ctx, r, msg); err != nil {
 				log.Ctx(ctx).Info().Err(err).Msg("failed to serve client event msg")
 				continue
 			}
@@ -209,6 +209,7 @@ func (*RelayHandler) wsRead(wsr *wsutil.Reader) ([]byte, error) {
 }
 
 func (rh *RelayHandler) serveClientReqMsgJSON(
+	ctx context.Context,
 	r *WebsocketRequest,
 	msg *ClientReqMsgJSON,
 ) error {
@@ -224,23 +225,25 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 	rh.sendCh <- NewServerEOSEMsg(msg.SubscriptionID)
 
 	// TODO(high-moctane) handle error, impl is not good
-	if err := rh.relay.router.Subscribe(GetCtxConnID(r.HTTPReq.Context()), msg.SubscriptionID, filters, rh.sendCh); err != nil {
+	if err := rh.relay.router.Subscribe(GetCtxConnID(ctx), msg.SubscriptionID, filters, rh.sendCh); err != nil {
 		return nil
 	}
 	return nil
 }
 
 func (rh *RelayHandler) serveClientCloseMsgJSON(
+	ctx context.Context,
 	r *WebsocketRequest,
 	msg *ClientCloseMsgJSON,
 ) error {
-	if err := rh.relay.router.Close(GetCtxConnID(r.HTTPReq.Context()), msg.SubscriptionID); err != nil {
+	if err := rh.relay.router.Close(GetCtxConnID(ctx), msg.SubscriptionID); err != nil {
 		return fmt.Errorf("cannot close conn %v", msg.SubscriptionID)
 	}
 	return nil
 }
 
 func (rh *RelayHandler) serveClientEventMsgJSON(
+	ctx context.Context,
 	r *WebsocketRequest,
 	msg *ClientEventMsgJSON,
 ) error {
