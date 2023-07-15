@@ -158,10 +158,9 @@ func (rh *RelayHandler) wsReceiver(
 			continue
 		}
 
-		strMsg := string(payload)
-		ctx := log.Ctx(ctx).With().Str("client_msg", strMsg).Logger().WithContext(ctx)
+		ctx := log.Ctx(ctx).With().RawJSON("client_msg", payload).Logger().WithContext(ctx)
 
-		jsonMsg, err := ParseClientMsgJSON(strMsg)
+		jsonMsg, err := ParseClientMsgJSON(payload)
 		if err != nil {
 			log.Ctx(ctx).Info().Err(err).Msg("received invalid client msg")
 			continue
@@ -306,7 +305,7 @@ func (rh *RelayHandler) wsSender(
 				return fmt.Errorf("failed to write server text: %w", err)
 			}
 
-			log.Ctx(ctx).Info().Msg("send server msg")
+			log.Ctx(ctx).Info().RawJSON("server_msg", jsonMsg).Msg("send server msg")
 		}
 	}
 }

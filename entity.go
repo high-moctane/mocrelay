@@ -9,18 +9,25 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/tidwall/gjson"
 )
 
-func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
-	if !gjson.Valid(json) {
+func ParseClientMsgJSON(json []byte) (ClientMsgJSON, error) {
+	if !utf8.Valid(json) {
+		return nil, fmt.Errorf("non-utf8 bytes: %v", json)
+	}
+
+	jsonStr := string(json)
+
+	if !gjson.Valid(jsonStr) {
 		return nil, fmt.Errorf("not a json: %q", json)
 	}
 
-	arr := gjson.Parse(json).Array()
+	arr := gjson.Parse(jsonStr).Array()
 	if len(arr) < 2 {
 		return nil, fmt.Errorf("too short json array: %q", json)
 	}
@@ -37,7 +44,7 @@ func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
 			if idx > 0 {
 				return nil, fmt.Errorf("invalid event msg: %q", json)
 			}
-			ev, err := ParseEventJSON(elem.Raw)
+			ev, err := ParseEventJSON([]byte(elem.Raw))
 			if err != nil {
 				return nil, fmt.Errorf("invalid event json: %w", err)
 			}
@@ -95,10 +102,10 @@ func ParseClientMsgJSON(json string) (ClientMsgJSON, error) {
 
 type ClientMsgJSON interface {
 	clientMsgJSON()
-	Raw() string
+	Raw() []byte
 }
 
-func NewClientEventMsgJSON(raw string, json *EventJSON) *ClientEventMsgJSON {
+func NewClientEventMsgJSON(raw []byte, json *EventJSON) *ClientEventMsgJSON {
 	return &ClientEventMsgJSON{
 		raw:       raw,
 		EventJSON: json,
@@ -106,21 +113,21 @@ func NewClientEventMsgJSON(raw string, json *EventJSON) *ClientEventMsgJSON {
 }
 
 type ClientEventMsgJSON struct {
-	raw       string
+	raw       []byte
 	EventJSON *EventJSON
 }
 
 func (*ClientEventMsgJSON) clientMsgJSON() {}
 
-func (m *ClientEventMsgJSON) Raw() string {
+func (m *ClientEventMsgJSON) Raw() []byte {
 	return m.raw
 }
 
-func ParseEventJSON(json string) (*EventJSON, error) {
+func ParseEventJSON(json []byte) (*EventJSON, error) {
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	var ev EventJSON
-	if err := ji.UnmarshalFromString(json, &ev); err != nil {
+	if err := ji.Unmarshal(json, &ev); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal event json: %q", err)
 	}
 
@@ -137,7 +144,7 @@ type EventJSON struct {
 	Content   string     `json:"content"`
 	Sig       string     `json:"sig"`
 
-	Raw string `json:"-"`
+	Raw []byte `json:"-"`
 }
 
 func (e *EventJSON) Verify() (bool, error) {
@@ -207,7 +214,7 @@ func (e *EventJSON) CreatedAtToTime() time.Time {
 	return time.Unix(int64(e.CreatedAt), 0)
 }
 
-func NewClientReqMsgJSON(raw string, subID string, filters []*FilterJSON) *ClientReqMsgJSON {
+func NewClientReqMsgJSON(raw []byte, subID string, filters []*FilterJSON) *ClientReqMsgJSON {
 	return &ClientReqMsgJSON{
 		SubscriptionID: subID,
 		FilterJSONs:    filters,
@@ -218,12 +225,12 @@ func NewClientReqMsgJSON(raw string, subID string, filters []*FilterJSON) *Clien
 type ClientReqMsgJSON struct {
 	SubscriptionID string
 	FilterJSONs    []*FilterJSON
-	raw            string
+	raw            []byte
 }
 
 func (*ClientReqMsgJSON) clientMsgJSON() {}
 
-func (m *ClientReqMsgJSON) Raw() string {
+func (m *ClientReqMsgJSON) Raw() []byte {
 	return m.raw
 }
 
@@ -249,7 +256,7 @@ type FilterJSON struct {
 	Limit   *int      `json:"limit"`
 }
 
-func NewClientCloseMsgJSON(raw string, subID string) *ClientCloseMsgJSON {
+func NewClientCloseMsgJSON(raw []byte, subID string) *ClientCloseMsgJSON {
 	return &ClientCloseMsgJSON{
 		SubscriptionID: subID,
 		raw:            raw,
@@ -258,12 +265,12 @@ func NewClientCloseMsgJSON(raw string, subID string) *ClientCloseMsgJSON {
 
 type ClientCloseMsgJSON struct {
 	SubscriptionID string
-	raw            string
+	raw            []byte
 }
 
 func (*ClientCloseMsgJSON) clientMsgJSON() {}
 
-func (m *ClientCloseMsgJSON) Raw() string {
+func (m *ClientCloseMsgJSON) Raw() []byte {
 	return m.raw
 }
 
