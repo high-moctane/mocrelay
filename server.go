@@ -41,7 +41,7 @@ func NewServerWithCtx(ctx context.Context) *http.Server {
 	))
 
 	return &http.Server{
-		Addr:    *Addr,
+		Addr:    Cfg.Addr,
 		Handler: mux,
 	}
 }
@@ -123,10 +123,12 @@ func ZerologRequestCtxMiddleware(h http.Handler) http.Handler {
 }
 
 func RejectTooManyRequestMiddleware(h http.Handler) http.Handler {
+	sema := make(chan struct{}, Cfg.MaxConnections)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
-		case ConnSema <- struct{}{}:
-			defer func() { <-ConnSema }()
+		case sema <- struct{}{}:
+			defer func() { <-sema }()
 			h.ServeHTTP(w, r)
 		default:
 			RejectTooManyRequestHandler(w, r)

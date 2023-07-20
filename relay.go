@@ -60,8 +60,8 @@ var DefaultRelay = NewRelay()
 
 func NewRelay() *Relay {
 	return &Relay{
-		router: NewRouter(DefaultFilters, *MaxReqSubIDNum),
-		cache:  NewCache(*CacheSize, DefaultFilters),
+		router: NewRouter(DefaultFilters, Cfg.MaxSubscriptions),
+		cache:  NewCache(Cfg.CacheSize, DefaultFilters),
 	}
 }
 
@@ -190,7 +190,7 @@ func (rh *RelayHandler) wsReceiver(
 }
 
 func (*RelayHandler) wsRead(wsr *wsutil.Reader) ([]byte, error) {
-	limit := *MaxClientMesLen + 1
+	limit := Cfg.MaxMessageLength + 1
 
 	hdr, err := wsr.NextFrame()
 	if err != nil {

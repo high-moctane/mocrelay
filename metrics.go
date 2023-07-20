@@ -12,7 +12,7 @@ import (
 
 func StartMetricsServer() error {
 	http.Handle("/metrics", promhttp.Handler())
-	return http.ListenAndServe(*PprofAddr, nil)
+	return http.ListenAndServe(Cfg.MonitorAddr, nil)
 }
 
 var promActiveWebsocket *PromActiveWebsocket = (*PromActiveWebsocket)(promauto.NewGaugeVec(

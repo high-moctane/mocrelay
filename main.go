@@ -14,26 +14,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const (
-	DefaultCacheSize      = 10000
-	DefaultAddr           = ":80"
-	DefaultClientMsgLen   = 1048576
-	DefaultPprofAddr      = ":8396"
-	DefaultMaxReqSubIDNum = 20
-	DefaultMaxConnections = 10000
-)
-
-var CacheSize = flag.Int("cache", DefaultCacheSize, "in-memory cache size")
-var Addr = flag.String("addr", DefaultAddr, "relay addr")
-var PprofAddr = flag.String("pprof", DefaultPprofAddr, "relay addr")
-var MaxClientMesLen = flag.Int("msglen", DefaultClientMsgLen, "max client message length")
-var MaxReqSubIDNum = flag.Int("subid", DefaultMaxReqSubIDNum, "max simultaneous sub_id per connection")
+var ConfigPath = flag.String("config", "", "config file path")
+var Cfg = DefaultConfig
 
 var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
 	0, 1, 6, 7,
 }}}}
-
-var ConnSema = make(chan struct{}, DefaultMaxConnections)
 
 func init() {
 	testing.Init()
@@ -47,16 +33,17 @@ func main() {
 }
 
 func Run(ctx context.Context) error {
-	ctx = InitZerolog(ctx)
-
-	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
+
+	ctx = InitZerolog(ctx)
+	InitConfig(ctx)
 
 	log.Ctx(ctx).Info().Msg("mocrelay start (｀･ω･´)")
 	defer log.Ctx(ctx).Info().Msg("mocrelay stop (｀･ω･´)")
 
 	go StartMetricsServer()
-	if err := RunRelayServer(sigCtx); err != nil {
+	if err := RunRelayServer(ctx); err != nil {
 		return fmt.Errorf("an error occurred on mocrelay: %w", err)
 	}
 
@@ -68,4 +55,16 @@ func InitZerolog(ctx context.Context) context.Context {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	return log.With().Logger().WithContext(ctx)
+}
+
+func InitConfig(ctx context.Context) {
+	if *ConfigPath == "" {
+		return
+	}
+
+	cfg, err := NewConfigFromFilePath(*ConfigPath)
+	if err != nil {
+		log.Ctx(ctx).Panic().Err(err).Str("filepath", *ConfigPath).Msg("invalid config")
+	}
+	Cfg = cfg
 }
