@@ -156,14 +156,13 @@ func (rh *RelayHandler) wsReceiver(
 			continue
 		}
 
-		ctx := log.Ctx(ctx).With().RawJSON("client_msg", payload).Logger().WithContext(ctx)
-
 		jsonMsg, err := ParseClientMsgJSON(payload)
 		if err != nil {
-			log.Ctx(ctx).Info().Err(err).Msg("received invalid client msg")
+			log.Ctx(ctx).Info().Err(err).Str("payload", string(payload)).Msg("received invalid client msg")
 			continue
 		}
 
+		ctx := log.Ctx(ctx).With().RawJSON("client_msg", payload).Logger().WithContext(ctx)
 		log.Ctx(ctx).Info().Msg("receive client msg")
 		promWSRecvCounter.WithLabelValues(ctx, jsonMsg).Inc()
 
