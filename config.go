@@ -37,6 +37,10 @@ func NewConfig(b []byte) (*Config, error) {
 		c.CacheSize = DefaultConfig.CacheSize
 	}
 
+	if c.MaxConnections == 0 {
+		c.MaxConnections = DefaultConfig.MaxConnections
+	}
+
 	if c.MaxMessageLength == 0 {
 		c.MaxMessageLength = DefaultConfig.MaxMessageLength
 	}

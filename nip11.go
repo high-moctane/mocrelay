@@ -21,7 +21,7 @@ func NIP11HandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	nip11, err := ji.Marshal(DefaultNIP11)
+	nip11, err := ji.Marshal(DefaultNIP11())
 	if err != nil {
 		log.Ctx(ctx).Panic().Err(err).Msg("invalid nip11 json")
 	}
@@ -35,22 +35,24 @@ func NIP11HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var DefaultNIP11 *NIP11 = &NIP11{
-	Name:          Cfg.NIP11Name,
-	Description:   Cfg.NIP11Description,
-	Pubkey:        Cfg.NIP11Pubkey,
-	Contact:       Cfg.NIP11Contact,
-	SupportedNips: func() *[]int { v := []int{1, 18, 25}; return &v }(),
-	Software:      func() *string { v := "https://github.com/high-moctane/nostr-mocrelay"; return &v }(),
+func DefaultNIP11() *NIP11 {
+	return &NIP11{
+		Name:          Cfg.NIP11Name,
+		Description:   Cfg.NIP11Description,
+		Pubkey:        Cfg.NIP11Pubkey,
+		Contact:       Cfg.NIP11Contact,
+		SupportedNips: func() *[]int { v := []int{1, 18, 25}; return &v }(),
+		Software:      func() *string { v := "https://github.com/high-moctane/nostr-mocrelay"; return &v }(),
 
-	Limitation: &NIP11Limitation{
-		MaxMessageLength: &Cfg.MaxMessageLength,
-		MaxSubscriptions: &Cfg.MaxSubscriptions,
-		MaxFilters:       &Cfg.MaxFilters,
-		MaxSubIDLength:   &Cfg.MaxSubIDLength,
-		AuthRequired:     func() *bool { v := false; return &v }(),
-		PaymentRequired:  func() *bool { v := false; return &v }(),
-	},
+		Limitation: &NIP11Limitation{
+			MaxMessageLength: &Cfg.MaxMessageLength,
+			MaxSubscriptions: &Cfg.MaxSubscriptions,
+			MaxFilters:       &Cfg.MaxFilters,
+			MaxSubIDLength:   &Cfg.MaxSubIDLength,
+			AuthRequired:     func() *bool { v := false; return &v }(),
+			PaymentRequired:  func() *bool { v := false; return &v }(),
+		},
+	}
 }
 
 type NIP11 struct {
