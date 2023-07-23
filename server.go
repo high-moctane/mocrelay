@@ -87,7 +87,7 @@ func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DefaultPageHandlerFunc(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Welcome to mocrelay (｀･ω･´) !\n\nBy using this service, you agree that we are not liable for any damages or responsibilities.\n"))
+	w.Write([]byte(Cfg.TopPageMessage))
 }
 
 func WithContextMiddlewareBuilder(ctx context.Context) func(http.Handler) http.Handler {

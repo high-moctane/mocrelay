@@ -16,6 +16,7 @@ var DefaultConfig = &Config{
 	MaxSubscriptions: 20,
 	MaxFilters:       20,
 	MaxSubIDLength:   64,
+	TopPageMessage:   "Welcome to Mocrelay (｀･ω･´)",
 }
 
 func NewConfig(b []byte) (*Config, error) {
@@ -59,6 +60,10 @@ func NewConfig(b []byte) (*Config, error) {
 		return nil, fmt.Errorf("too big min_prefix: %v", c.MinPrefix)
 	}
 
+	if c.TopPageMessage == "" {
+		c.TopPageMessage = DefaultConfig.TopPageMessage
+	}
+
 	return &c, nil
 }
 
@@ -97,6 +102,8 @@ type Config struct {
 	MinPrefix        int `json:"min_prefix,omitempty"`
 	MaxEventTags     int `json:"max_event_tags,omitempty"`
 	MaxContentLength int `json:"max_content_length,omitempty"`
+
+	TopPageMessage string `json:"top_page_message,omitempty"`
 
 	Icon string `json:"icon,omitempty"`
 }
