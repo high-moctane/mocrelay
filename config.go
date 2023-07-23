@@ -89,10 +89,10 @@ type Config struct {
 	MaxConnections int    `json:"max_connections,omitempty"`
 
 	// NIP11
-	NIP11Name        *string `json:"name,omitempty"`
-	NIP11Description *string `json:"description,omitempty"`
-	NIP11Pubkey      *string `json:"pubkey,omitempty"`
-	NIP11Contact     *string `json:"contact,omitempty"`
+	NIP11Name        *string `json:"nip11_name,omitempty"`
+	NIP11Description *string `json:"nip11_description,omitempty"`
+	NIP11Pubkey      *string `json:"nip11_pubkey,omitempty"`
+	NIP11Contact     *string `json:"nip11_contact,omitempty"`
 
 	MaxMessageLength int `json:"max_message_length,omitempty"`
 	MaxSubscriptions int `json:"max_subscriptions,omitempty"`
