@@ -36,8 +36,8 @@ func Run(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
 	defer stop()
 
-	ctx = InitZerolog(ctx)
 	InitConfig(ctx)
+	ctx = InitZerolog(ctx)
 
 	log.Ctx(ctx).Info().Msg("mocrelay start (｀･ω･´)")
 	defer log.Ctx(ctx).Info().Msg("mocrelay stop (｀･ω･´)")
@@ -53,7 +53,14 @@ func Run(ctx context.Context) error {
 func InitZerolog(ctx context.Context) context.Context {
 	log.Logger = log.Output(os.Stdout).With().Logger()
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	switch Cfg.Env {
+	case ConfigEnvDev:
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case ConfigEnvPrd:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
+
 	return log.With().Logger().WithContext(ctx)
 }
 

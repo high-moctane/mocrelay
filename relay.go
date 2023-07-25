@@ -305,7 +305,7 @@ func (rh *RelayHandler) wsSender(
 				return fmt.Errorf("failed to write server text: %w", err)
 			}
 
-			log.Ctx(ctx).Info().RawJSON("server_msg", jsonMsg).Msg("send server msg")
+			log.Ctx(ctx).Debug().RawJSON("server_msg", jsonMsg).Msg("send server msg")
 		}
 	}
 }
