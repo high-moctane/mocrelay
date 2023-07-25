@@ -251,7 +251,8 @@ func (rh *RelayHandler) serveClientEventMsgJSON(
 
 	}
 	if !ok {
-		return fmt.Errorf("invalid signature: %v", msg)
+		rh.sendCh <- NewServerOKMsg(msg.EventJSON.ID, false, ServerOKMsgPrefixInvalid, "signature is wrong")
+		return nil
 	}
 
 	promEventCounter.WithLabelValues(msg.EventJSON).Inc()
@@ -259,10 +260,15 @@ func (rh *RelayHandler) serveClientEventMsgJSON(
 	event := NewEvent(msg.EventJSON, time.Now())
 
 	if !event.ValidCreatedAt() {
-		return fmt.Errorf("invalid created_at: %v", event.CreatedAtToTime())
+		rh.sendCh <- NewServerOKMsg(event.ID, false, ServerOKMsgPrefixInvalid, "created_at is too far off")
+		return nil
 	}
 
-	rh.relay.cache.Save(event)
+	if ok := rh.relay.cache.Save(event); ok {
+		rh.sendCh <- NewServerOKMsg(event.ID, true, "", "")
+	} else {
+		rh.sendCh <- NewServerOKMsg(event.ID, false, ServerOKMsgPrefixDuplicate, "the event has already been saved")
+	}
 
 	if err := rh.relay.router.Publish(event); err != nil {
 		return fmt.Errorf("failed to publish event: %v", event)
