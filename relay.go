@@ -21,7 +21,6 @@ import (
 const (
 	RateLimitRate  = 20
 	RateLimitBurst = 10
-	MaxFilterLen   = 50
 )
 
 func RelayAccessHandlerFunc(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +213,7 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 ) error {
 	filters := NewFiltersFromFilterJSONs(msg.FilterJSONs)
 
-	if len(filters) > MaxFilterLen+2 {
+	if len(filters) > Cfg.MaxFilters+2 {
 		return fmt.Errorf("filter is too long: %v", msg)
 	}
 
