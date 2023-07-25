@@ -360,6 +360,54 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 	return res, nil
 }
 
+const (
+	ServerOKMsgPrefixDuplicate   = "duplicate: "
+	ServerOKMsgPrefixBlocked     = "blocked: "
+	ServerOKMsgPrefixInvalid     = "invalid: "
+	ServerOKMsgPrefixRateLimited = "rate-limited: "
+	ServerOKMsgPrefixError       = "error: "
+)
+
+type ServerOKMsg struct {
+	EventID       string
+	Succeeded     bool
+	MessagePrefix string
+	Message       string
+}
+
+func NewServerOKMsg(eventID string, succeeded bool, msgPrefix, msg string) *ServerOKMsg {
+	return &ServerOKMsg{
+		EventID:       eventID,
+		Succeeded:     succeeded,
+		MessagePrefix: msgPrefix,
+		Message:       msg,
+	}
+}
+
+func (ServerOKMsg) serverMsg() {}
+
+func (msg *ServerOKMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, errors.New("cannot marshal nil server ok msg")
+	}
+
+	payload := []interface{}{
+		"OK",
+		msg.EventID,
+		msg.Succeeded,
+		msg.MessagePrefix + msg.Message,
+	}
+
+	ji := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	res, err := ji.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ok msg: %v", msg)
+	}
+
+	return res, nil
+}
+
 func NewEvent(json *EventJSON, receivedAt time.Time) *Event {
 	return &Event{
 		EventJSON:  json,
