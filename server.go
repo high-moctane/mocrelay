@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -15,17 +16,18 @@ func RunRelayServer(ctx context.Context) error {
 	srv := NewServerWithCtx(ctx)
 
 	wg := new(sync.WaitGroup)
+	defer wg.Wait()
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		StopServerOnCtxDone(ctx, srv)
 	}()
 
-	if err := srv.ListenAndServe(); err != nil {
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("an error occurred on serving http: %w", err)
 	}
 
-	wg.Wait()
 	return nil
 }
 
