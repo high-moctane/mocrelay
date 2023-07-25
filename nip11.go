@@ -41,7 +41,7 @@ func DefaultNIP11() *NIP11 {
 		Description:   Cfg.NIP11Description,
 		Pubkey:        Cfg.NIP11Pubkey,
 		Contact:       Cfg.NIP11Contact,
-		SupportedNips: func() *[]int { v := []int{1, 18, 25}; return &v }(),
+		SupportedNips: func() *[]int { v := []int{1, 11, 18, 20, 25}; return &v }(),
 		Software:      func() *string { v := "https://github.com/high-moctane/nostr-mocrelay"; return &v }(),
 
 		Limitation: &NIP11Limitation{
