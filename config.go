@@ -7,7 +7,13 @@ import (
 	"os"
 )
 
+const (
+	ConfigEnvDev = "dev"
+	ConfigEnvPrd = "prd"
+)
+
 var DefaultConfig = &Config{
+	Env:              ConfigEnvDev,
 	Addr:             "127.0.0.1:8234",
 	MonitorAddr:      "127.0.0.1:8396",
 	CacheSize:        10000,
@@ -23,6 +29,10 @@ func NewConfig(b []byte) (*Config, error) {
 	var c Config
 	if err := json.Unmarshal(b, &c); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cfg: %w", err)
+	}
+
+	if c.Env == "" {
+		c.Env = DefaultConfig.Env
 	}
 
 	if c.Addr == "" {
@@ -87,6 +97,7 @@ func NewConfigFromFilePath(fpath string) (*Config, error) {
 }
 
 type Config struct {
+	Env            string `json:"env,omitempty"`
 	Addr           string `json:"addr,omitempty"`
 	MonitorAddr    string `json:"monitor_addr,omitempty"`
 	CacheSize      int    `json:"cache_size,omitempty"`
