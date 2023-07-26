@@ -74,15 +74,15 @@ func (relay *Relay) NewHandler() *RelayHandler {
 
 	return &RelayHandler{
 		relay:  relay,
-		recvCh: make(chan ClientMsgJSON, chanBufLen),
-		sendCh: make(chan ServerMsg, chanBufLen),
+		recvCh: NewTryChan[ClientMsgJSON](chanBufLen),
+		sendCh: NewTryChan[ServerMsg](chanBufLen),
 	}
 }
 
 type RelayHandler struct {
 	relay  *Relay
-	recvCh chan ClientMsgJSON
-	sendCh chan ServerMsg
+	recvCh TryChan[ClientMsgJSON]
+	sendCh TryChan[ServerMsg]
 }
 
 func (rh *RelayHandler) Serve(ctx context.Context, r *WebsocketRequest) error {
@@ -218,12 +218,13 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 	}
 
 	for _, event := range rh.relay.cache.FindAll(filters) {
-		rh.sendCh <- NewServerEventMsg(msg.SubscriptionID, event)
+		rh.TryEnqueueServerMsg(NewServerEventMsg(msg.SubscriptionID, event))
 	}
-	rh.sendCh <- NewServerEOSEMsg(msg.SubscriptionID)
+	rh.TryEnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
 
 	// TODO(high-moctane) handle error, impl is not good
-	if err := rh.relay.router.Subscribe(GetCtxConnID(ctx), msg.SubscriptionID, filters, rh.sendCh); err != nil {
+	sendFunc := func(msg ServerMsg) bool { return rh.TryEnqueueServerMsg(msg) }
+	if err := rh.relay.router.Subscribe(GetCtxConnID(ctx), msg.SubscriptionID, filters, sendFunc); err != nil {
 		return nil
 	}
 	return nil
@@ -251,7 +252,7 @@ func (rh *RelayHandler) serveClientEventMsgJSON(
 
 	}
 	if !ok {
-		rh.sendCh <- NewServerOKMsg(msg.EventJSON.ID, false, ServerOKMsgPrefixInvalid, "signature is wrong")
+		rh.TryEnqueueServerMsg(NewServerOKMsg(msg.EventJSON.ID, false, ServerOKMsgPrefixInvalid, "signature is wrong"))
 		return nil
 	}
 
@@ -260,14 +261,14 @@ func (rh *RelayHandler) serveClientEventMsgJSON(
 	event := NewEvent(msg.EventJSON, time.Now())
 
 	if !event.ValidCreatedAt() {
-		rh.sendCh <- NewServerOKMsg(event.ID, false, ServerOKMsgPrefixInvalid, "created_at is too far off")
+		rh.TryEnqueueServerMsg(NewServerOKMsg(event.ID, false, ServerOKMsgPrefixInvalid, "created_at is too far off"))
 		return nil
 	}
 
 	if ok := rh.relay.cache.Save(event); ok {
-		rh.sendCh <- NewServerOKMsg(event.ID, true, "", "")
+		rh.TryEnqueueServerMsg(NewServerOKMsg(event.ID, true, "", ""))
 	} else {
-		rh.sendCh <- NewServerOKMsg(event.ID, false, ServerOKMsgPrefixDuplicate, "the event has already been saved")
+		rh.TryEnqueueServerMsg(NewServerOKMsg(event.ID, false, ServerOKMsgPrefixDuplicate, "the event has already been saved"))
 	}
 
 	if err := rh.relay.router.Publish(event); err != nil {
@@ -313,4 +314,12 @@ func (rh *RelayHandler) wsSender(
 			log.Ctx(ctx).Debug().RawJSON("server_msg", jsonMsg).Msg("send server msg")
 		}
 	}
+}
+
+func (rh *RelayHandler) TryEnqueueServerMsg(msg ServerMsg) bool {
+	ok := rh.sendCh.TrySend(msg)
+	if !ok {
+		promTryEnqueueServerMsgFail.Inc()
+	}
+	return ok
 }

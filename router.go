@@ -18,7 +18,7 @@ type Router struct {
 	maxSubIDNum int
 }
 
-func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- ServerMsg) error {
+func (rtr *Router) Subscribe(connID, subID string, filters Filters, sendFunc func(ServerMsg) bool) error {
 	if len(subID) > 64 {
 		return fmt.Errorf("too long subscriptsion_id: %v", subID)
 	}
@@ -26,7 +26,7 @@ func (rtr *Router) Subscribe(connID, subID string, filters Filters, recv chan<- 
 	newSubscr := &subscriber{
 		ConnectionID: connID,
 		SubscriptID:  subID,
-		RecvCh:       recv,
+		SendFunc:     sendFunc,
 		Filters:      filters,
 	}
 
@@ -100,7 +100,7 @@ func (rtr *Router) Publish(event *Event) error {
 	defer rtr.mu.RUnlock()
 
 	for _, subscr := range rtr.subscribers {
-		subscr.Receive(event)
+		subscr.TrySend(event)
 	}
 
 	return nil
@@ -109,19 +109,13 @@ func (rtr *Router) Publish(event *Event) error {
 type subscriber struct {
 	ConnectionID string
 	SubscriptID  string
-	RecvCh       chan<- ServerMsg
+	SendFunc     func(ServerMsg) bool
 	Filters      Filters
 }
 
-func (sb *subscriber) Receive(event *Event) bool {
+func (sb *subscriber) TrySend(event *Event) bool {
 	if sb.Filters.Match(event) {
-		select {
-		case sb.RecvCh <- NewServerEventMsg(sb.SubscriptID, event):
-			return true
-		default:
-			promReceiveFail.WithLabelValues(sb.ConnectionID, sb.SubscriptID).Inc()
-			return false
-		}
+		return sb.SendFunc(NewServerEventMsg(sb.SubscriptID, event))
 	}
 
 	return false

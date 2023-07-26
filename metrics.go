@@ -107,19 +107,14 @@ func (pc *PromRouterPublishTime) WithLabelValues(event *Event) prometheus.Observ
 	return (*prometheus.HistogramVec)(pc).WithLabelValues(fmt.Sprintf("%d", event.Kind))
 }
 
-var promReceiveFail *PromReceiveFail = (*PromReceiveFail)(promauto.NewCounterVec(
+var promTryEnqueueServerMsgFail PromTryEnqueueServerMsgFail = (PromTryEnqueueServerMsgFail)(promauto.NewCounter(
 	prometheus.CounterOpts{
-		Name: "mocrelay_receive_failed_count",
-		Help: "receive failed events",
+		Name: "mocrelay_try_enqueue_server_msg_failed_count",
+		Help: "try_enqueue_server_msg failed events",
 	},
-	[]string{"conn_id", "sub_id"},
 ))
 
-type PromReceiveFail prometheus.CounterVec
-
-func (pc *PromReceiveFail) WithLabelValues(connID, subID string) prometheus.Counter {
-	return (*prometheus.CounterVec)(pc).WithLabelValues(connID, subID)
-}
+type PromTryEnqueueServerMsgFail prometheus.Counter
 
 var promCacheQueryTime prometheus.Histogram = promauto.NewHistogram(
 	prometheus.HistogramOpts{
