@@ -162,7 +162,7 @@ func (rh *RelayHandler) wsReceiver(
 		}
 
 		ctx := log.Ctx(ctx).With().RawJSON("client_msg", payload).Logger().WithContext(ctx)
-		log.Ctx(ctx).Info().Msg("receive client msg")
+		log.Ctx(ctx).Debug().Msg("receive client msg")
 		promWSRecvCounter.WithLabelValues(ctx, jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
@@ -257,6 +257,7 @@ func (rh *RelayHandler) serveClientEventMsgJSON(
 	}
 
 	promEventCounter.WithLabelValues(msg.EventJSON).Inc()
+	log.Ctx(ctx).Info().Msg("receive client event msg")
 
 	event := NewEvent(msg.EventJSON, time.Now())
 
