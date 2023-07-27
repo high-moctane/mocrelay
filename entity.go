@@ -439,6 +439,10 @@ type Filter struct {
 }
 
 func (fil *Filter) Match(event *Event) bool {
+	if (fil.IDs == nil || len(*fil.IDs) == 0) && (fil.Authors == nil || len(*fil.Authors) == 0) {
+		return false
+	}
+
 	return fil.MatchIDs(event) &&
 		fil.MatchAuthors(event) &&
 		fil.MatchKinds(event) &&
