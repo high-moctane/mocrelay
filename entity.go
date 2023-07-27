@@ -430,8 +430,32 @@ func (e *Event) MarshalJSON() ([]byte, error) {
 	return []byte(e.Raw), nil
 }
 
-func NewFilter(json *FilterJSON) *Filter {
-	return &Filter{FilterJSON: json}
+func NewFilter(json *FilterJSON) (*Filter, error) {
+	if json == nil {
+		return nil, errors.New("nil filter")
+	}
+
+	if json.IDs != nil {
+		for _, id := range *json.IDs {
+			if len(id) < Cfg.MinPrefix {
+				return nil, errors.New("too short id prefix")
+			}
+		}
+	}
+
+	if json.Authors != nil {
+		for _, id := range *json.Authors {
+			if len(id) < Cfg.MinPrefix {
+				return nil, errors.New("too short author id prefix")
+			}
+		}
+	}
+
+	if (json.IDs == nil || len(*json.IDs) == 0) && (json.Authors == nil || len(*json.Authors) == 0) {
+		return nil, errors.New("both IDs and Authors are nil")
+	}
+
+	return &Filter{FilterJSON: json}, nil
 }
 
 type Filter struct {
@@ -439,10 +463,6 @@ type Filter struct {
 }
 
 func (fil *Filter) Match(event *Event) bool {
-	if (fil.IDs == nil || len(*fil.IDs) == 0) && (fil.Authors == nil || len(*fil.Authors) == 0) {
-		return false
-	}
-
 	return fil.MatchIDs(event) &&
 		fil.MatchAuthors(event) &&
 		fil.MatchKinds(event) &&
@@ -535,14 +555,22 @@ func (fil *Filter) MatchUntil(event *Event) bool {
 	return fil == nil || fil.Until == nil || event.CreatedAt < *fil.Until
 }
 
-func NewFiltersFromFilterJSONs(jsons []*FilterJSON) Filters {
-	res := make(Filters, len(jsons))
-
-	for i, json := range jsons {
-		res[i] = NewFilter(json)
+func NewFiltersFromFilterJSONs(jsons []*FilterJSON) (Filters, error) {
+	if len(jsons) > Cfg.MaxFilters+2 {
+		return nil, fmt.Errorf("filter is too long: %v", jsons)
 	}
 
-	return res
+	res := make(Filters, len(jsons))
+
+	var err error
+	for i, json := range jsons {
+		res[i], err = NewFilter(json)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return res, nil
 }
 
 type Filters []*Filter

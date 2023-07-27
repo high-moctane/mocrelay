@@ -22,6 +22,7 @@ var DefaultConfig = &Config{
 	MaxSubscriptions: 20,
 	MaxFilters:       20,
 	MaxSubIDLength:   64,
+	MinPrefix:        15,
 	TopPageMessage:   "Welcome to Mocrelay (｀･ω･´)",
 }
 

@@ -211,10 +211,9 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 	r *WebsocketRequest,
 	msg *ClientReqMsgJSON,
 ) error {
-	filters := NewFiltersFromFilterJSONs(msg.FilterJSONs)
-
-	if len(filters) > Cfg.MaxFilters+2 {
-		return fmt.Errorf("filter is too long: %v", msg)
+	filters, err := NewFiltersFromFilterJSONs(msg.FilterJSONs)
+	if err != nil {
+		return fmt.Errorf("invalid filter: %w", err)
 	}
 
 	for _, event := range rh.relay.cache.FindAll(filters) {
