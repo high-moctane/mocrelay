@@ -213,6 +213,7 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 ) error {
 	filters, err := NewFiltersFromFilterJSONs(msg.FilterJSONs)
 	if err != nil {
+		rh.TryEnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
 		return fmt.Errorf("invalid filter: %w", err)
 	}
 
