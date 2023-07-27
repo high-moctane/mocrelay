@@ -427,7 +427,8 @@ func (e *Event) ValidCreatedAt() bool {
 }
 
 func (e *Event) MarshalJSON() ([]byte, error) {
-	return []byte(e.Raw), nil
+	ji := jsoniter.ConfigCompatibleWithStandardLibrary
+	return ji.Marshal(e.EventJSON)
 }
 
 func NewFilter(json *FilterJSON) (*Filter, error) {
