@@ -451,8 +451,27 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 		}
 	}
 
-	if (json.IDs == nil || len(*json.IDs) == 0) && (json.Authors == nil || len(*json.Authors) == 0) {
-		return nil, errors.New("both IDs and Authors are nil")
+	if json.Ptags != nil {
+		for _, id := range *json.Ptags {
+			if len(id) < Cfg.MinPrefix {
+				return nil, errors.New("too short ptag id prefix")
+			}
+		}
+	}
+
+	if json.Etags != nil {
+		for _, id := range *json.Etags {
+			if len(id) < Cfg.MinPrefix {
+				return nil, errors.New("too short etag id prefix")
+			}
+		}
+	}
+
+	if (json.IDs == nil || len(*json.IDs) == 0) &&
+		(json.Authors == nil || len(*json.Authors) == 0) &&
+		(json.Ptags == nil || len(*json.Ptags) == 0) &&
+		(json.Etags == nil || len(*json.Etags) == 0) {
+		return nil, errors.New("empty ids, authors, #p, #e")
 	}
 
 	return &Filter{FilterJSON: json}, nil
