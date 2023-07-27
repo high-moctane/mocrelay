@@ -437,7 +437,7 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 
 	if json.IDs != nil {
 		for _, id := range *json.IDs {
-			if len(id) < Cfg.MinPrefix {
+			if len(id) < *Cfg.MinPrefix {
 				return nil, errors.New("too short id prefix")
 			}
 		}
@@ -445,7 +445,7 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 
 	if json.Authors != nil {
 		for _, id := range *json.Authors {
-			if len(id) < Cfg.MinPrefix {
+			if len(id) < *Cfg.MinPrefix {
 				return nil, errors.New("too short author id prefix")
 			}
 		}
@@ -453,7 +453,7 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 
 	if json.Ptags != nil {
 		for _, id := range *json.Ptags {
-			if len(id) < Cfg.MinPrefix {
+			if len(id) < *Cfg.MinPrefix {
 				return nil, errors.New("too short ptag id prefix")
 			}
 		}
@@ -461,7 +461,7 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 
 	if json.Etags != nil {
 		for _, id := range *json.Etags {
-			if len(id) < Cfg.MinPrefix {
+			if len(id) < *Cfg.MinPrefix {
 				return nil, errors.New("too short etag id prefix")
 			}
 		}

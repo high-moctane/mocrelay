@@ -22,7 +22,7 @@ var DefaultConfig = &Config{
 	MaxSubscriptions: 20,
 	MaxFilters:       20,
 	MaxSubIDLength:   64,
-	MinPrefix:        15,
+	MinPrefix:        func() *int { v := 20; return &v }(),
 	TopPageMessage:   "Welcome to Mocrelay (｀･ω･´)",
 }
 
@@ -71,7 +71,10 @@ func NewConfig(b []byte) (*Config, error) {
 		c.MaxSubIDLength = DefaultConfig.MaxSubIDLength
 	}
 
-	if c.MinPrefix > 32 {
+	if c.MinPrefix == nil {
+		c.MinPrefix = DefaultConfig.MinPrefix
+	}
+	if *c.MinPrefix > 32 {
 		return nil, fmt.Errorf("too big min_prefix: %v", c.MinPrefix)
 	}
 
@@ -110,14 +113,14 @@ type Config struct {
 	NIP11Pubkey      *string `json:"nip11_pubkey,omitempty"`
 	NIP11Contact     *string `json:"nip11_contact,omitempty"`
 
-	MaxMessageLength int `json:"max_message_length,omitempty"`
-	MaxSubscriptions int `json:"max_subscriptions,omitempty"`
-	MaxFilters       int `json:"max_filters,omitempty"`
-	MaxLimit         int `json:"max_limit,omitempty"`
-	MaxSubIDLength   int `json:"max_subid_length,omitempty"`
-	MinPrefix        int `json:"min_prefix,omitempty"`
-	MaxEventTags     int `json:"max_event_tags,omitempty"`
-	MaxContentLength int `json:"max_content_length,omitempty"`
+	MaxMessageLength int  `json:"max_message_length,omitempty"`
+	MaxSubscriptions int  `json:"max_subscriptions,omitempty"`
+	MaxFilters       int  `json:"max_filters,omitempty"`
+	MaxLimit         int  `json:"max_limit,omitempty"`
+	MaxSubIDLength   int  `json:"max_subid_length,omitempty"`
+	MinPrefix        *int `json:"min_prefix,omitempty"`
+	MaxEventTags     int  `json:"max_event_tags,omitempty"`
+	MaxContentLength int  `json:"max_content_length,omitempty"`
 
 	TopPageMessage string `json:"top_page_message,omitempty"`
 
