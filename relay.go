@@ -216,22 +216,22 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 		var target *ReqFilterMinPrefixError
 		if errors.As(err, &target) {
 			// TODO(high-moctane) improve notice msg
-			rh.TryEnqueueServerMsg(NewServerNoticeMsgf(
+			rh.EnqueueServerMsg(NewServerNoticeMsgf(
 				"some filters are ignored because filter contains too short %s id prefix (len=%d): nip-11 min_prefix is %d",
 				target.What,
 				target.Length,
 				*Cfg.MinPrefix,
 			))
 		} else {
-			rh.TryEnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
+			rh.EnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
 			return fmt.Errorf("invalid filter: %w", err)
 		}
 	}
 
 	for _, event := range rh.relay.cache.FindAll(filters) {
-		rh.TryEnqueueServerMsg(NewServerEventMsg(msg.SubscriptionID, event))
+		rh.EnqueueServerMsg(NewServerEventMsg(msg.SubscriptionID, event))
 	}
-	rh.TryEnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
+	rh.EnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
 
 	// TODO(high-moctane) handle error, impl is not good
 	sendFunc := func(msg ServerMsg) bool { return rh.TryEnqueueServerMsg(msg) }
@@ -334,4 +334,8 @@ func (rh *RelayHandler) TryEnqueueServerMsg(msg ServerMsg) bool {
 		promTryEnqueueServerMsgFail.Inc()
 	}
 	return ok
+}
+
+func (rh *RelayHandler) EnqueueServerMsg(msg ServerMsg) {
+	rh.sendCh <- msg
 }
