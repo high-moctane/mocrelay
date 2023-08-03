@@ -340,6 +340,14 @@ type ServerNoticeMsg struct {
 	Message string
 }
 
+func NewServerNoticeMsg(msg string) *ServerNoticeMsg {
+	return &ServerNoticeMsg{Message: msg}
+}
+
+func NewServerNoticeMsgf(format string, a ...any) *ServerNoticeMsg {
+	return &ServerNoticeMsg{Message: fmt.Sprintf(format, a...)}
+}
+
 func (ServerNoticeMsg) serverMsg() {}
 
 func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {

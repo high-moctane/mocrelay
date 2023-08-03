@@ -213,8 +213,19 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 ) error {
 	filters, err := NewFiltersFromFilterJSONs(msg.FilterJSONs)
 	if err != nil {
-		rh.TryEnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
-		return fmt.Errorf("invalid filter: %w", err)
+		var target *ReqFilterMinPrefixError
+		if errors.As(err, &target) {
+			// TODO(high-moctane) improve notice msg
+			rh.TryEnqueueServerMsg(NewServerNoticeMsgf(
+				"some filters are ignored because filter contains too short %s id prefix (len=%d): nip-11 min_prefix is %d",
+				target.What,
+				target.Length,
+				*Cfg.MinPrefix,
+			))
+		} else {
+			rh.TryEnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
+			return fmt.Errorf("invalid filter: %w", err)
+		}
 	}
 
 	for _, event := range rh.relay.cache.FindAll(filters) {

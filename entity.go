@@ -32,6 +32,22 @@ func (e *Event) MarshalJSON() ([]byte, error) {
 	return ji.Marshal(e.EventJSON)
 }
 
+type ReqFilterMinPrefixError struct {
+	What   string
+	Length int
+}
+
+func NewReqFilterMinPrefixError(what string, length int) *ReqFilterMinPrefixError {
+	return &ReqFilterMinPrefixError{
+		What:   what,
+		Length: length,
+	}
+}
+
+func (e *ReqFilterMinPrefixError) Error() string {
+	return fmt.Sprintf("too short %s id prefix: min prefix should be %d or more", e.What, e.Length)
+}
+
 func NewFilter(json *FilterJSON) (*Filter, error) {
 	if json == nil {
 		return nil, errors.New("nil filter")
@@ -40,7 +56,7 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 	if json.IDs != nil {
 		for _, id := range *json.IDs {
 			if len(id) < *Cfg.MinPrefix {
-				return nil, errors.New("too short id prefix")
+				return nil, NewReqFilterMinPrefixError("ids", len(id))
 			}
 		}
 	}
@@ -48,7 +64,7 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 	if json.Authors != nil {
 		for _, id := range *json.Authors {
 			if len(id) < *Cfg.MinPrefix {
-				return nil, errors.New("too short author id prefix")
+				return nil, NewReqFilterMinPrefixError("authors", len(id))
 			}
 		}
 	}
@@ -56,7 +72,7 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 	if json.Ptags != nil {
 		for _, id := range *json.Ptags {
 			if len(id) < *Cfg.MinPrefix {
-				return nil, errors.New("too short ptag id prefix")
+				return nil, NewReqFilterMinPrefixError("ptags", len(id))
 			}
 		}
 	}
@@ -64,16 +80,9 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 	if json.Etags != nil {
 		for _, id := range *json.Etags {
 			if len(id) < *Cfg.MinPrefix {
-				return nil, errors.New("too short etag id prefix")
+				return nil, NewReqFilterMinPrefixError("etags", len(id))
 			}
 		}
-	}
-
-	if (json.IDs == nil || len(*json.IDs) == 0) &&
-		(json.Authors == nil || len(*json.Authors) == 0) &&
-		(json.Ptags == nil || len(*json.Ptags) == 0) &&
-		(json.Etags == nil || len(*json.Etags) == 0) {
-		return nil, errors.New("empty ids, authors, #p, #e")
 	}
 
 	return &Filter{FilterJSON: json}, nil
@@ -181,17 +190,23 @@ func NewFiltersFromFilterJSONs(jsons []*FilterJSON) (Filters, error) {
 		return nil, fmt.Errorf("filter is too long: %v", jsons)
 	}
 
-	res := make(Filters, len(jsons))
+	res := make(Filters, 0, len(jsons))
 
-	var err error
-	for i, json := range jsons {
-		res[i], err = NewFilter(json)
+	var errs error
+	for _, json := range jsons {
+		fil, err := NewFilter(json)
 		if err != nil {
+			var target *ReqFilterMinPrefixError
+			if errors.As(err, &target) {
+				errs = errors.Join(errs, err)
+				continue
+			}
 			return nil, err
 		}
+		res = append(res, fil)
 	}
 
-	return res, nil
+	return res, errs
 }
 
 type Filters []*Filter
