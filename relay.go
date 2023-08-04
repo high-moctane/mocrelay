@@ -311,10 +311,14 @@ func (rh *RelayHandler) wsSender(
 			return nil
 
 		case msg := <-rh.reqSendCh:
-			rh.wsSend(ctx, r, msg)
+			if err := rh.wsSend(ctx, r, msg); err != nil {
+				return err
+			}
 
 		case msg := <-rh.sendCh:
-			rh.wsSend(ctx, r, msg)
+			if err := rh.wsSend(ctx, r, msg); err != nil {
+				return err
+			}
 		}
 	}
 }
