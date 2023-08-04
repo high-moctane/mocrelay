@@ -70,19 +70,21 @@ type Relay struct {
 }
 
 func (relay *Relay) NewHandler() *RelayHandler {
-	chanBufLen := 3
+	chanBufLen := 100
 
 	return &RelayHandler{
-		relay:  relay,
-		recvCh: NewTryChan[ClientMsgJSON](chanBufLen),
-		sendCh: NewTryChan[ServerMsg](chanBufLen),
+		relay:     relay,
+		recvCh:    NewTryChan[ClientMsgJSON](chanBufLen),
+		sendCh:    NewTryChan[ServerMsg](chanBufLen),
+		reqSendCh: make(chan ServerMsg),
 	}
 }
 
 type RelayHandler struct {
-	relay  *Relay
-	recvCh TryChan[ClientMsgJSON]
-	sendCh TryChan[ServerMsg]
+	relay     *Relay
+	recvCh    TryChan[ClientMsgJSON]
+	sendCh    TryChan[ServerMsg]
+	reqSendCh chan ServerMsg
 }
 
 func (rh *RelayHandler) Serve(ctx context.Context, r *WebsocketRequest) error {
@@ -229,9 +231,10 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 	}
 
 	for _, event := range rh.relay.cache.FindAll(filters) {
-		rh.EnqueueServerMsg(NewServerEventMsg(msg.SubscriptionID, event))
+		rh.reqSendCh <- NewServerEventMsg(msg.SubscriptionID, event)
+
 	}
-	rh.EnqueueServerMsg(NewServerEOSEMsg(msg.SubscriptionID))
+	rh.reqSendCh <- NewServerEOSEMsg(msg.SubscriptionID)
 
 	// TODO(high-moctane) handle error, impl is not good
 	sendFunc := func(msg ServerMsg) bool { return rh.TryEnqueueServerMsg(msg) }
@@ -307,25 +310,39 @@ func (rh *RelayHandler) wsSender(
 		case <-ctx.Done():
 			return nil
 
+		case msg := <-rh.reqSendCh:
+			rh.wsSend(ctx, r, msg)
+
 		case msg := <-rh.sendCh:
-			promWSSendCounter.WithLabelValues(ctx, msg).Inc()
-
-			jsonMsg, err := msg.MarshalJSON()
-			if err != nil {
-				log.Ctx(ctx).Info().Err(err).Msg("failed to marshal server msg")
-				continue
-			}
-
-			if err := wsutil.WriteServerText(r.Conn, jsonMsg); err != nil {
-				if errors.Is(err, net.ErrClosed) {
-					return nil
-				}
-				return fmt.Errorf("failed to write server text: %w", err)
-			}
-
-			log.Ctx(ctx).Debug().RawJSON("server_msg", jsonMsg).Msg("send server msg")
+			rh.wsSend(ctx, r, msg)
 		}
 	}
+}
+
+func (rh *RelayHandler) wsSend(
+	ctx context.Context,
+	r *WebsocketRequest,
+	msg ServerMsg,
+) error {
+
+	promWSSendCounter.WithLabelValues(ctx, msg).Inc()
+
+	jsonMsg, err := msg.MarshalJSON()
+	if err != nil {
+		log.Ctx(ctx).Info().Err(err).Msg("failed to marshal server msg")
+		return nil
+	}
+
+	if err := wsutil.WriteServerText(r.Conn, jsonMsg); err != nil {
+		if errors.Is(err, net.ErrClosed) {
+			return nil
+		}
+		return fmt.Errorf("failed to write server text: %w", err)
+	}
+
+	log.Ctx(ctx).Debug().RawJSON("server_msg", jsonMsg).Msg("send server msg")
+
+	return nil
 }
 
 func (rh *RelayHandler) TryEnqueueServerMsg(msg ServerMsg) bool {
