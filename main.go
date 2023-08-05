@@ -33,7 +33,7 @@ func main() {
 }
 
 func Run(ctx context.Context) error {
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt, os.Kill, syscall.SIGPIPE)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer stop()
 
 	InitConfig(ctx)
