@@ -250,7 +250,7 @@ func (rh *RelayHandler) serveClientCloseMsgJSON(
 	msg *ClientCloseMsgJSON,
 ) error {
 	if err := rh.relay.router.Close(GetCtxConnID(ctx), msg.SubscriptionID); err != nil {
-		rh.TryEnqueueServerMsg(NewServerNoticeMsgf("failed to server CLOSE: cannot close req: sub_id %v is already closed", msg.SubscriptionID))
+		rh.TryEnqueueServerMsg(NewServerNoticeMsgf("failed to serve CLOSE: cannot close req: sub_id %v is already closed", msg.SubscriptionID))
 		return nil
 	}
 	return nil
