@@ -33,6 +33,7 @@ func main() {
 }
 
 func Run(ctx context.Context) error {
+	signal.Ignore()
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer stop()
 
