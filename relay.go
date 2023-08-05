@@ -236,9 +236,9 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 	}
 	rh.reqSendCh <- NewServerEOSEMsg(msg.SubscriptionID)
 
-	// TODO(high-moctane) handle error, impl is not good
 	sendFunc := func(msg ServerMsg) bool { return rh.TryEnqueueServerMsg(msg) }
 	if err := rh.relay.router.Subscribe(GetCtxConnID(ctx), msg.SubscriptionID, filters, sendFunc); err != nil {
+		rh.TryEnqueueServerMsg(NewServerNoticeMsgf("failed to subscrive: max_subscriptions is %v", Cfg.MaxSubscriptions))
 		return nil
 	}
 	return nil
@@ -250,7 +250,8 @@ func (rh *RelayHandler) serveClientCloseMsgJSON(
 	msg *ClientCloseMsgJSON,
 ) error {
 	if err := rh.relay.router.Close(GetCtxConnID(ctx), msg.SubscriptionID); err != nil {
-		rh.TryEnqueueServerMsg(NewServerNoticeMsgf("sub_id %v is already closed", msg.SubscriptionID))
+		rh.TryEnqueueServerMsg(NewServerNoticeMsgf("failed to server CLOSE: cannot close req: sub_id %v is already closed", msg.SubscriptionID))
+		return nil
 	}
 	return nil
 }
