@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 	"unicode/utf8"
 
@@ -245,14 +246,139 @@ func ParseFilterJSON(json string) (*FilterJSON, error) {
 }
 
 type FilterJSON struct {
-	IDs     *[]string `json:"ids"`
-	Authors *[]string `json:"authors"`
-	Kinds   *[]int    `json:"kinds"`
-	Etags   *[]string `json:"#e"`
-	Ptags   *[]string `json:"#p"`
-	Since   *int      `json:"since"`
-	Until   *int      `json:"until"`
-	Limit   *int      `json:"limit"`
+	IDs     *[]string
+	Authors *[]string
+	Kinds   *[]int
+	Tags    *map[string][]string
+	Since   *int
+	Until   *int
+	Limit   *int
+}
+
+var reqFilterFields = func() []string {
+	res := []string{
+		"ids",
+		"authors",
+		"kinds",
+		"since",
+		"until",
+		"limit",
+	}
+
+	for c := 'A'; c <= 'Z'; c++ {
+		res = append(res, string([]rune{'#', c}))
+	}
+	for c := 'a'; c <= 'z'; c++ {
+		res = append(res, string([]rune{'#', c}))
+	}
+	return res
+}()
+
+func (f *FilterJSON) UnmarshalJSON(b []byte) error {
+	filter := new(FilterJSON)
+
+	mustParseStrArray := func(res *gjson.Result) ([]string, error) {
+		var arr []string
+		if !res.IsArray() {
+			return nil, errors.New("failed to unmarshal filter json")
+		}
+		for _, res := range res.Array() {
+			if res.Type != gjson.String {
+				return nil, errors.New("failed to unmarshal filter json")
+			}
+			arr = append(arr, res.Str)
+		}
+		return arr, nil
+	}
+	mustParseInt := func(res *gjson.Result) (int, error) {
+		if res.Type != gjson.Number {
+			return 0, errors.New("failed to unmarshal filter json")
+		}
+		v := res.Int()
+		if v < math.MinInt || math.MaxInt < v {
+			return 0, errors.New("failed to unmarshal filter json")
+		}
+		return int(v), nil
+	}
+	mustParseIntArray := func(res *gjson.Result) ([]int, error) {
+		var arr []int
+		if !res.IsArray() {
+			return nil, errors.New("failed to unmarshal filter json")
+		}
+		for _, res := range res.Array() {
+			v, err := mustParseInt(&res)
+			if err != nil {
+				return nil, err
+			}
+			arr = append(arr, v)
+		}
+		return arr, nil
+	}
+
+	for i, res := range gjson.GetManyBytes(b, reqFilterFields...) {
+		if !res.Exists() {
+			continue
+		}
+
+		switch reqFilterFields[i] {
+		case "ids":
+			arr, err := mustParseStrArray(&res)
+			if err != nil {
+				return err
+			}
+			filter.IDs = &arr
+
+		case "authors":
+			arr, err := mustParseStrArray(&res)
+			if err != nil {
+				return err
+			}
+			filter.Authors = &arr
+
+		case "kinds":
+			arr, err := mustParseIntArray(&res)
+			if err != nil {
+				return err
+			}
+			filter.Kinds = &arr
+
+		case "since":
+			v, err := mustParseInt(&res)
+			if err != nil {
+				return err
+			}
+			filter.Since = &v
+
+		case "until":
+			v, err := mustParseInt(&res)
+			if err != nil {
+				return err
+			}
+			filter.Until = &v
+
+		case "limit":
+			v, err := mustParseInt(&res)
+			if err != nil {
+				return err
+			}
+			filter.Limit = &v
+
+		default:
+			arr, err := mustParseStrArray(&res)
+			if err != nil {
+				return err
+			}
+			if filter.Tags == nil && arr != nil {
+				m := make(map[string][]string)
+				filter.Tags = &m
+			}
+			(*filter.Tags)[reqFilterFields[i]] = arr
+		}
+	}
+
+	*f = *filter
+
+	return nil
 }
 
 func NewClientCloseMsgJSON(raw []byte, subID string) *ClientCloseMsgJSON {

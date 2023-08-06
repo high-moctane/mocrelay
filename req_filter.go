@@ -43,18 +43,17 @@ func NewFilter(json *FilterJSON) (*Filter, error) {
 		}
 	}
 
-	if json.Ptags != nil {
-		for _, id := range *json.Ptags {
-			if len(id) < *Cfg.MinPrefix {
-				return nil, NewReqFilterMinPrefixError("ptags", len(id))
+	if json.Tags != nil {
+		for _, tag := range []string{"#e", "#p"} {
+			arr, ok := (*json.Tags)[tag]
+			if !ok {
+				continue
 			}
-		}
-	}
 
-	if json.Etags != nil {
-		for _, id := range *json.Etags {
-			if len(id) < *Cfg.MinPrefix {
-				return nil, NewReqFilterMinPrefixError("etags", len(id))
+			for _, id := range arr {
+				if len(id) < *Cfg.MinPrefix {
+					return nil, NewReqFilterMinPrefixError(tag, len(id))
+				}
 			}
 		}
 	}
@@ -70,8 +69,7 @@ func (fil *Filter) Match(event *Event) bool {
 	return fil.MatchIDs(event) &&
 		fil.MatchAuthors(event) &&
 		fil.MatchKinds(event) &&
-		fil.MatchEtags(event) &&
-		fil.MatchPtags(event) &&
+		fil.MatchTags(event) &&
 		fil.MatchSince(event) &&
 		fil.MatchUntil(event)
 }
@@ -115,39 +113,40 @@ func (fil *Filter) MatchKinds(event *Event) bool {
 	return false
 }
 
-func (fil *Filter) MatchEtags(event *Event) bool {
-	if fil == nil || fil.Etags == nil {
+func (fil *Filter) MatchTags(event *Event) bool {
+	if fil == nil || fil.Tags == nil {
 		return true
 	}
 
-	for _, id := range *fil.Etags {
-		for _, tag := range event.Tags {
-			if len(tag) < 2 {
-				continue
-			}
-			if tag[0] == "e" && strings.HasPrefix(tag[1], id) {
-				return true
-			}
+	for tag := range *fil.Tags {
+		if match := fil.MatchTag(tag, event); match {
+			return true
 		}
 	}
+
 	return false
 }
 
-func (fil *Filter) MatchPtags(event *Event) bool {
-	if fil == nil || fil.Ptags == nil {
+func (fil *Filter) MatchTag(tag string, event *Event) bool {
+	if fil == nil || fil.Tags == nil {
+		return true
+	}
+	vs, ok := (*fil.Tags)[tag]
+	if !ok {
 		return true
 	}
 
-	for _, id := range *fil.Ptags {
-		for _, tag := range event.Tags {
-			if len(tag) < 2 {
-				continue
-			}
-			if tag[0] == "p" && strings.HasPrefix(tag[1], id) {
-				return true
-			}
+	tagArr := event.GetTagByName(tag)
+	if tagArr == nil {
+		return false
+	}
+
+	for _, v := range vs {
+		if strings.HasPrefix(tagArr[1], v) {
+			return true
 		}
 	}
+
 	return false
 }
 

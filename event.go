@@ -28,3 +28,18 @@ func (e *Event) MarshalJSON() ([]byte, error) {
 	ji := jsoniter.ConfigCompatibleWithStandardLibrary
 	return ji.Marshal(e.EventJSON)
 }
+
+func (e *Event) GetTagByName(tag string) []string {
+	for _, arr := range e.Tags {
+		if len(arr) < 2 {
+			// TODO(high-moctane) validator is needed
+			continue
+		}
+
+		if arr[0] == tag {
+			return arr
+		}
+	}
+
+	return nil
+}

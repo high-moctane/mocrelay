@@ -84,11 +84,16 @@ func TestParseClientMsgJSON(t *testing.T) {
 							IDs:     func() *[]string { v := []string{"id1", "id11"}; return &v }(),
 							Authors: func() *[]string { v := []string{"pub1", "pub11"}; return &v }(),
 							Kinds:   func() *[]int { v := []int{1, 11}; return &v }(),
-							Etags:   func() *[]string { v := []string{"etag1", "etag11"}; return &v }(),
-							Ptags:   func() *[]string { v := []string{"ptag1", "ptag11"}; return &v }(),
-							Since:   func() *int { v := 11; return &v }(),
-							Until:   func() *int { v := 111; return &v }(),
-							Limit:   func() *int { v := 1; return &v }(),
+							Tags: func() *map[string][]string {
+								v := map[string][]string{
+									"#e": {"etag1", "etag11"},
+									"#p": {"ptag1", "ptag11"},
+								}
+								return &v
+							}(),
+							Since: func() *int { v := 11; return &v }(),
+							Until: func() *int { v := 111; return &v }(),
+							Limit: func() *int { v := 1; return &v }(),
 						},
 						{
 							Authors: func() *[]string { v := []string{"pub2", "pub22"}; return &v }(),
@@ -630,11 +635,16 @@ func TestParseFilterJSON(t *testing.T) {
 					IDs:     func() *[]string { v := []string{"id1", "id11"}; return &v }(),
 					Authors: func() *[]string { v := []string{"pub1", "pub11"}; return &v }(),
 					Kinds:   func() *[]int { v := []int{1, 11}; return &v }(),
-					Etags:   func() *[]string { v := []string{"etag1", "etag11"}; return &v }(),
-					Ptags:   func() *[]string { v := []string{"ptag1", "ptag11"}; return &v }(),
-					Since:   func() *int { v := 11; return &v }(),
-					Until:   func() *int { v := 111; return &v }(),
-					Limit:   func() *int { v := 1; return &v }(),
+					Tags: func() *map[string][]string {
+						v := map[string][]string{
+							"#e": {"etag1", "etag11"},
+							"#p": {"ptag1", "ptag11"},
+						}
+						return &v
+					}(),
+					Since: func() *int { v := 11; return &v }(),
+					Until: func() *int { v := 111; return &v }(),
+					Limit: func() *int { v := 1; return &v }(),
 				},
 				nil,
 			},
