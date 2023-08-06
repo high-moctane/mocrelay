@@ -60,13 +60,13 @@ var DefaultRelay = NewRelay()
 func NewRelay() *Relay {
 	return &Relay{
 		router: NewRouter(DefaultFilters, Cfg.MaxSubscriptions),
-		cache:  NewCache(Cfg.CacheSize, DefaultFilters),
+		cache:  NewEventCache(Cfg.CacheSize, DefaultFilters),
 	}
 }
 
 type Relay struct {
 	router *Router
-	cache  *Cache
+	cache  *EventCache
 }
 
 func (relay *Relay) NewHandler() *RelayHandler {

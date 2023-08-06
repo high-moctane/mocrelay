@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type Cache struct {
+type EventCache struct {
 	Size int
 	fil  Filters
 
@@ -15,8 +15,8 @@ type Cache struct {
 	ptr    int
 }
 
-func NewCache(size int, fil Filters) *Cache {
-	return &Cache{
+func NewEventCache(size int, fil Filters) *EventCache {
+	return &EventCache{
 		events: make([]*Event, 0, size),
 		ids:    make(map[string]bool, size),
 		Size:   size,
@@ -25,7 +25,7 @@ func NewCache(size int, fil Filters) *Cache {
 	}
 }
 
-func (cache *Cache) Save(event *Event) (saved bool) {
+func (cache *EventCache) Save(event *Event) (saved bool) {
 	if !cache.fil.Match(event) {
 		return
 	}
@@ -51,7 +51,7 @@ func (cache *Cache) Save(event *Event) (saved bool) {
 	return
 }
 
-func (cache *Cache) FindAll(fils Filters) []*Event {
+func (cache *EventCache) FindAll(fils Filters) []*Event {
 	start := time.Now()
 	defer promCacheQueryTime.Observe(time.Since(start).Seconds())
 
