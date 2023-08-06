@@ -193,3 +193,60 @@ func (fils Filters) Match(event *Event) bool {
 	}
 	return false
 }
+
+type FilterCounter struct {
+	*Filter
+	count int
+}
+
+func NewFilterCounter(fil *Filter) *FilterCounter {
+	return &FilterCounter{
+		Filter: fil,
+		count:  0,
+	}
+}
+
+func (fil *FilterCounter) Done() bool {
+	if fil.Filter.Limit == nil {
+		return false
+	}
+	return fil.count >= *fil.Filter.Limit
+}
+
+func (fil *FilterCounter) Match(event *Event) bool {
+	if fil.Done() {
+		return false
+	}
+	if match := fil.Filter.Match(event); match {
+		fil.count++
+		return true
+	}
+	return false
+}
+
+type FiltersCounter []*FilterCounter
+
+func NewFiltersCounter(fils Filters) FiltersCounter {
+	res := make(FiltersCounter, len(fils))
+	for i := 0; i < len(fils); i++ {
+		res[i] = NewFilterCounter(fils[i])
+	}
+	return res
+}
+
+func (fils FiltersCounter) Done() bool {
+	for _, fil := range fils {
+		if !fil.Done() {
+			return false
+		}
+	}
+	return true
+}
+
+func (fils *FiltersCounter) Match(event *Event) bool {
+	res := false
+	for _, fil := range *fils {
+		res = fil.Match(event) || res
+	}
+	return res
+}
