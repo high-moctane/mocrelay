@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCache(t *testing.T) {
+func TestEventCache(t *testing.T) {
 	type args struct {
 		size       int
 		defaultFil Filters
@@ -104,7 +104,7 @@ func TestCache(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cache := NewCache(tt.args.size, tt.args.defaultFil)
+			cache := NewEventCache(tt.args.size, tt.args.defaultFil)
 
 			for i, e := range tt.args.input {
 				saved := cache.Save(e)
