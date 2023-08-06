@@ -30,7 +30,7 @@ type KeyValueCache[K comparable, V any] struct {
 
 func NewKeyValueCache[K comparable, V any](size int) *KeyValueCache[K, V] {
 	if size < 1 {
-		print(fmt.Sprintf("event cache size must be a positive number but %v", size))
+		print(fmt.Sprintf("key value cache size must be a positive number but %v", size))
 	}
 
 	return &KeyValueCache[K, V]{
