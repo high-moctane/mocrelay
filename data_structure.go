@@ -72,29 +72,39 @@ func (c *KeyValueCache[K, V]) Find(k K) (v V, found bool) {
 }
 
 func (c *KeyValueCache[K, V]) Delete(k K) (found bool) {
-	if _, found = c.m[k]; !found {
+	var idx int
+	var emptyK K
+	var emptyV V
+
+	if idx, found = c.m[k]; !found {
 		return
 	}
 
 	if found {
-		delete(c.m, k)
+		delete(c.m, c.ks[idx])
+		c.ks[idx] = emptyK
+		c.vs[idx] = emptyV
 	}
 
 	return
 }
 
 func (c *KeyValueCache[K, V]) DeleteAll(cond func(K, V) bool) (found bool) {
-	var willDelete []K
+	var willDelete []int
+	var emptyK K
+	var emptyV V
 
-	for k, idx := range c.m {
+	for _, idx := range c.m {
 		if cond(c.ks[idx], c.vs[idx]) {
 			found = true
-			willDelete = append(willDelete, k)
+			willDelete = append(willDelete, idx)
 		}
 	}
 
-	for _, k := range willDelete {
-		delete(c.m, k)
+	for _, idx := range willDelete {
+		delete(c.m, c.ks[idx])
+		c.ks[idx] = emptyK
+		c.vs[idx] = emptyV
 	}
 
 	return
