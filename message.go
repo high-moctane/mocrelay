@@ -372,7 +372,7 @@ func (f *FilterJSON) UnmarshalJSON(b []byte) error {
 				m := make(map[string][]string)
 				filter.Tags = &m
 			}
-			(*filter.Tags)[reqFilterFields[i]] = arr
+			(*filter.Tags)[string(reqFilterFields[i][1])] = arr
 		}
 	}
 
