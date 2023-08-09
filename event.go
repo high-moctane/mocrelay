@@ -117,19 +117,21 @@ func (e *Event) EventType() EventType {
 }
 
 // TODO(high-moctane) GetAllTagByName?
-func (e *Event) GetTagByName(tag string) []string {
+func (e *Event) GetTagsByName(tag string) [][]string {
+	var res [][]string
+
 	for _, arr := range e.Tags {
-		if len(arr) < 2 {
+		if len(arr) < 1 {
 			// TODO(high-moctane) validator is needed
 			continue
 		}
 
 		if arr[0] == tag {
-			return arr
+			res = append(res, arr)
 		}
 	}
 
-	return nil
+	return res
 }
 
 func (e *Event) DTagValue() *string {

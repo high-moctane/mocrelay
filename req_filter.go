@@ -136,14 +136,21 @@ func (fil *Filter) MatchTag(tag string, event *Event) bool {
 		return true
 	}
 
-	tagArr := event.GetTagByName(tag)
-	if tagArr == nil {
+	eTags := event.GetTagsByName(tag[1:2])
+	if len(eTags) == 0 {
 		return false
 	}
 
-	for _, v := range vs {
-		if strings.HasPrefix(tagArr[1], v) {
-			return true
+	for _, et := range eTags {
+		for _, v := range vs {
+			var target string
+			if len(et) > 1 {
+				target = et[1]
+			}
+
+			if strings.HasPrefix(target, v) {
+				return true
+			}
 		}
 	}
 
