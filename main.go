@@ -17,10 +17,6 @@ import (
 var ConfigPath = flag.String("config", "", "config file path")
 var Cfg = DefaultConfig
 
-var DefaultFilters = Filters{&Filter{&FilterJSON{Kinds: &[]int{
-	0, 1, 6, 7,
-}}}}
-
 func init() {
 	testing.Init()
 	flag.Parse()

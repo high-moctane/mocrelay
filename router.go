@@ -7,14 +7,13 @@ import (
 	"time"
 )
 
-func NewRouter(fil Filters, maxSubIDNum int) *Router {
-	return &Router{filters: fil, maxSubIDNum: maxSubIDNum}
+func NewRouter(maxSubIDNum int) *Router {
+	return &Router{maxSubIDNum: maxSubIDNum}
 }
 
 type Router struct {
 	mu          sync.RWMutex
 	subscribers []*subscriber
-	filters     Filters
 	maxSubIDNum int
 }
 
@@ -89,10 +88,6 @@ func (rtr *Router) Delete(connID string) {
 }
 
 func (rtr *Router) Publish(event *Event) error {
-	if !rtr.filters.Match(event) {
-		return nil
-	}
-
 	start := time.Now()
 	defer promRouterPublishTime.WithLabelValues(event).Observe(time.Since(start).Seconds())
 

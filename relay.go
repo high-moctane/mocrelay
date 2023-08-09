@@ -59,7 +59,7 @@ var DefaultRelay = NewRelay()
 
 func NewRelay() *Relay {
 	return &Relay{
-		router: NewRouter(DefaultFilters, Cfg.MaxSubscriptions),
+		router: NewRouter(Cfg.MaxSubscriptions),
 		cache:  NewMultiEventCache(),
 	}
 }
