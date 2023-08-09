@@ -16,7 +16,6 @@ var DefaultConfig = &Config{
 	Env:              ConfigEnvDev,
 	Addr:             "127.0.0.1:8234",
 	MonitorAddr:      "127.0.0.1:8396",
-	CacheSize:        10000,
 	MaxConnections:   1000000,
 	MaxMessageLength: 1048576,
 	MaxSubscriptions: 20,
@@ -42,10 +41,6 @@ func NewConfig(b []byte) (*Config, error) {
 
 	if c.MonitorAddr == "" {
 		c.MonitorAddr = DefaultConfig.MonitorAddr
-	}
-
-	if c.CacheSize == 0 {
-		c.CacheSize = DefaultConfig.CacheSize
 	}
 
 	if c.MaxConnections == 0 {
@@ -104,7 +99,6 @@ type Config struct {
 	Env            string `json:"env,omitempty"`
 	Addr           string `json:"addr,omitempty"`
 	MonitorAddr    string `json:"monitor_addr,omitempty"`
-	CacheSize      int    `json:"cache_size,omitempty"`
 	MaxConnections int    `json:"max_connections,omitempty"`
 
 	// NIP11

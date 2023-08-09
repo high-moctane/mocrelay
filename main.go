@@ -34,7 +34,7 @@ func main() {
 
 func Run(ctx context.Context) error {
 	signal.Ignore()
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
 	InitConfig(ctx)

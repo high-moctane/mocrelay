@@ -60,13 +60,13 @@ var DefaultRelay = NewRelay()
 func NewRelay() *Relay {
 	return &Relay{
 		router: NewRouter(DefaultFilters, Cfg.MaxSubscriptions),
-		cache:  NewCache(Cfg.CacheSize, DefaultFilters),
+		cache:  NewMultiEventCache(),
 	}
 }
 
 type Relay struct {
 	router *Router
-	cache  *Cache
+	cache  EventCache
 }
 
 func (relay *Relay) NewHandler() *RelayHandler {
@@ -230,7 +230,7 @@ func (rh *RelayHandler) serveClientReqMsgJSON(
 		}
 	}
 
-	for _, event := range rh.relay.cache.FindAll(filters) {
+	for _, event := range rh.relay.cache.Find(filters) {
 		rh.reqSendCh <- NewServerEventMsg(msg.SubscriptionID, event)
 
 	}
@@ -281,7 +281,7 @@ func (rh *RelayHandler) serveClientEventMsgJSON(
 		return nil
 	}
 
-	if ok := rh.relay.cache.Save(event); ok {
+	if ok := rh.relay.cache.Push(event); ok {
 		rh.TryEnqueueServerMsg(NewServerOKMsg(event.ID, true, "", ""))
 	} else {
 		rh.TryEnqueueServerMsg(NewServerOKMsg(event.ID, false, ServerOKMsgPrefixDuplicate, "the event has already been saved"))

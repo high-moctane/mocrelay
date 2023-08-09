@@ -111,6 +111,10 @@ func (c *KeyValueCache[K, V]) DeleteAll(cond func(K, V) bool) (found bool) {
 }
 
 func (c *KeyValueCache[K, V]) Loop(do func(K, V) bool) {
+	if len(c.ks) == 0 {
+		return
+	}
+
 	mod := func(n int) int { return (len(c.ks) + n) % len(c.ks) }
 
 	idx := mod(c.ptr - 1)
