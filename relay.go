@@ -283,13 +283,13 @@ func (rh *RelayHandler) serveClientEventMsgJSON(
 
 	if ok := rh.relay.cache.Push(event); ok {
 		rh.TryEnqueueServerMsg(NewServerOKMsg(event.ID, true, "", ""))
+		if err := rh.relay.router.Publish(event); err != nil {
+			return fmt.Errorf("failed to publish event: %v", event)
+		}
 	} else {
 		rh.TryEnqueueServerMsg(NewServerOKMsg(event.ID, false, ServerOKMsgPrefixDuplicate, "the event has already been saved"))
 	}
 
-	if err := rh.relay.router.Publish(event); err != nil {
-		return fmt.Errorf("failed to publish event: %v", event)
-	}
 	return nil
 }
 

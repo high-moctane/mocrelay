@@ -36,7 +36,7 @@ func NewMultiEventCache() *MultiEventCache {
 	}
 }
 
-func (c *MultiEventCache) Push(e *Event) (found bool) {
+func (c *MultiEventCache) Push(e *Event) (saved bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -149,7 +149,7 @@ func NewRegularEventCache(size int) *RegularEventCache {
 	}
 }
 
-func (c *RegularEventCache) Push(e *Event) (exist bool) {
+func (c *RegularEventCache) Push(e *Event) (saved bool) {
 	return c.cache.Push(e.ID, e)
 }
 
@@ -185,7 +185,7 @@ func (*ReplaceableEventCache) getReplaceableEventKey(e *Event) string {
 	return fmt.Sprintf("%d:%s", e.Kind, e.Pubkey)
 }
 
-func (c *ReplaceableEventCache) Push(e *Event) (exist bool) {
+func (c *ReplaceableEventCache) Push(e *Event) (saved bool) {
 	k := c.getReplaceableEventKey(e)
 	c.cache.Delete(k)
 	return c.cache.Push(k, e)
@@ -219,7 +219,7 @@ func NewParameterizedReplaceableEventCache(size int) *ParameterizedReplaceableEv
 	}
 }
 
-func (c *ParameterizedReplaceableEventCache) Push(e *Event) (exist bool) {
+func (c *ParameterizedReplaceableEventCache) Push(e *Event) (saved bool) {
 	c.cache.Delete(*e.Naddr())
 	return c.cache.Push(*e.Naddr(), e)
 }

@@ -42,8 +42,8 @@ func NewKeyValueCache[K comparable, V any](size int) *KeyValueCache[K, V] {
 	}
 }
 
-func (c *KeyValueCache[K, V]) Push(k K, v V) (exist bool) {
-	if _, exist = c.m[k]; exist {
+func (c *KeyValueCache[K, V]) Push(k K, v V) (saved bool) {
+	if _, ok := c.m[k]; ok {
 		return
 	}
 
@@ -59,7 +59,7 @@ func (c *KeyValueCache[K, V]) Push(k K, v V) (exist bool) {
 	c.m[k] = c.ptr
 	c.ptr = (c.size + c.ptr + 1) % c.size
 
-	return
+	return true
 }
 
 func (c *KeyValueCache[K, V]) Find(k K) (v V, found bool) {
