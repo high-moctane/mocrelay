@@ -140,14 +140,13 @@ func (rh *RelayHandler) wsReceiver(
 	r *WebsocketRequest,
 ) error {
 	lim := rate.NewLimiter(RateLimitRate, RateLimitBurst)
-	reader := wsutil.NewServerSideReader(r.Conn)
 
 	for {
 		if err := lim.Wait(ctx); err != nil {
 			return fmt.Errorf("rate limiter returns error: %w", err)
 		}
 
-		payload, err := rh.wsRead(reader)
+		payload, err := rh.wsRead(r.Conn)
 		if err != nil {
 			return fmt.Errorf("receive error: %w", err)
 		}
@@ -189,20 +188,12 @@ func (rh *RelayHandler) wsReceiver(
 	}
 }
 
-func (*RelayHandler) wsRead(wsr *wsutil.Reader) ([]byte, error) {
+func (rh *RelayHandler) wsRead(conn net.Conn) ([]byte, error) {
 	limit := Cfg.MaxMessageLength + 1
 
-	hdr, err := wsr.NextFrame()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get next frame: %w", err)
-	}
-	if hdr.OpCode == ws.OpClose {
-		return nil, io.EOF
-	}
-
-	r := io.LimitReader(wsr, int64(limit))
-	res, err := io.ReadAll(r)
-	if len(res) == limit {
+	res, err := wsutil.ReadClientText(conn)
+	if len(res) >= limit {
+		rh.sendCh.TrySend(NewServerNoticeMsgf("websocket message length is too long (len=%d): max_message_length is %d", len(res), Cfg.MaxMessageLength))
 		return res, fmt.Errorf("websocket message is too long (len=%v): %s", len(res), res)
 	}
 	return res, err
@@ -306,7 +297,7 @@ func (rh *RelayHandler) wsSender(
 		}
 	}()
 
-	pingTicker := time.NewTicker(5 * time.Minute)
+	pingTicker := time.NewTicker(15 * time.Second)
 	defer pingTicker.Stop()
 
 	for {
