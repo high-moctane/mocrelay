@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 )
 
 func NewRouter(maxSubIDNum int) *Router {
@@ -88,9 +87,6 @@ func (rtr *Router) Delete(connID string) {
 }
 
 func (rtr *Router) Publish(event *Event) error {
-	start := time.Now()
-	defer promRouterPublishTime.WithLabelValues(event).Observe(time.Since(start).Seconds())
-
 	rtr.mu.RLock()
 	defer rtr.mu.RUnlock()
 

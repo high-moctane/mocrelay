@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -15,31 +14,22 @@ func StartMetricsServer() error {
 	return http.ListenAndServe(Cfg.MonitorAddr, nil)
 }
 
-var promActiveWebsocket *PromActiveWebsocket = (*PromActiveWebsocket)(promauto.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Name: "mocrelay_active_websocket_count",
-		Help: "active websocket",
-	},
-	[]string{"host", "conn_id"},
-))
-
-type PromActiveWebsocket prometheus.GaugeVec
-
-func (pc *PromActiveWebsocket) WithLabelValues(ctx context.Context) prometheus.Gauge {
-	return (*prometheus.GaugeVec)(pc).WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx))
-}
+var promActiveWebsocket = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "mocrelay_active_websocket_count",
+	Help: "active websocket",
+})
 
 var promWSSendCounter *PromWSSendCounter = (*PromWSSendCounter)(promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "mocrelay_msg_send_count",
 		Help: "message send counter",
 	},
-	[]string{"host", "conn_id", "msg_type"},
+	[]string{"msg_type"},
 ))
 
 type PromWSSendCounter prometheus.CounterVec
 
-func (pc *PromWSSendCounter) WithLabelValues(ctx context.Context, msg ServerMsg) prometheus.Counter {
+func (pc *PromWSSendCounter) WithLabelValues(msg ServerMsg) prometheus.Counter {
 	var msgType string
 
 	switch msg.(type) {
@@ -49,9 +39,11 @@ func (pc *PromWSSendCounter) WithLabelValues(ctx context.Context, msg ServerMsg)
 		msgType = "EVENT"
 	case *ServerNoticeMsg:
 		msgType = "NOTICE"
+	case *ServerOKMsg:
+		msgType = "OK"
 	}
 
-	return (*prometheus.CounterVec)(pc).WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), msgType)
+	return (*prometheus.CounterVec)(pc).WithLabelValues(msgType)
 }
 
 var promWSRecvCounter *PromWSRecvCounter = (*PromWSRecvCounter)(promauto.NewCounterVec(
@@ -59,12 +51,12 @@ var promWSRecvCounter *PromWSRecvCounter = (*PromWSRecvCounter)(promauto.NewCoun
 		Name: "mocrelay_msg_recv_count",
 		Help: "message recv counter",
 	},
-	[]string{"host", "conn_id", "msg_type"},
+	[]string{"msg_type"},
 ))
 
 type PromWSRecvCounter prometheus.CounterVec
 
-func (pc *PromWSRecvCounter) WithLabelValues(ctx context.Context, msg ClientMsgJSON) prometheus.Counter {
+func (pc *PromWSRecvCounter) WithLabelValues(msg ClientMsgJSON) prometheus.Counter {
 	var msgType string
 
 	switch msg.(type) {
@@ -76,7 +68,7 @@ func (pc *PromWSRecvCounter) WithLabelValues(ctx context.Context, msg ClientMsgJ
 		msgType = "EVENT"
 	}
 
-	return (*prometheus.CounterVec)(pc).WithLabelValues(GetCtxRealIP(ctx), GetCtxConnID(ctx), msgType)
+	return (*prometheus.CounterVec)(pc).WithLabelValues(msgType)
 }
 
 var promEventCounter *PromEventCounter = (*PromEventCounter)(promauto.NewCounterVec(
@@ -84,37 +76,21 @@ var promEventCounter *PromEventCounter = (*PromEventCounter)(promauto.NewCounter
 		Name: "mocrelay_event_recv_count",
 		Help: "received events",
 	},
-	[]string{"pubkey", "kind"},
+	[]string{"kind"},
 ))
 
 type PromEventCounter prometheus.CounterVec
 
 func (pc *PromEventCounter) WithLabelValues(event *EventJSON) prometheus.Counter {
-	return (*prometheus.CounterVec)(pc).WithLabelValues(event.Pubkey, fmt.Sprintf("%d", event.Kind))
+	return (*prometheus.CounterVec)(pc).WithLabelValues(fmt.Sprintf("%d", event.Kind))
 }
 
-var promRouterPublishTime *PromRouterPublishTime = (*PromRouterPublishTime)(promauto.NewHistogramVec(
-	prometheus.HistogramOpts{
-		Name: "mocrelay_router_publish_second",
-		Help: "consumption of publishing events",
-	},
-	[]string{"kind"},
-))
-
-type PromRouterPublishTime prometheus.HistogramVec
-
-func (pc *PromRouterPublishTime) WithLabelValues(event *Event) prometheus.Observer {
-	return (*prometheus.HistogramVec)(pc).WithLabelValues(fmt.Sprintf("%d", event.Kind))
-}
-
-var promTryEnqueueServerMsgFail PromTryEnqueueServerMsgFail = (PromTryEnqueueServerMsgFail)(promauto.NewCounter(
+var promTryEnqueueServerMsgFail = promauto.NewCounter(
 	prometheus.CounterOpts{
 		Name: "mocrelay_try_enqueue_server_msg_failed_count",
 		Help: "try_enqueue_server_msg failed events",
 	},
-))
-
-type PromTryEnqueueServerMsgFail prometheus.Counter
+)
 
 var promCacheQueryTime prometheus.Histogram = promauto.NewHistogram(
 	prometheus.HistogramOpts{

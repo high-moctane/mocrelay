@@ -94,8 +94,8 @@ func (rh *RelayHandler) Serve(ctx context.Context, r *WebsocketRequest) error {
 		}
 	}()
 
-	promActiveWebsocket.WithLabelValues(ctx).Inc()
-	defer promActiveWebsocket.WithLabelValues(ctx).Dec()
+	promActiveWebsocket.Inc()
+	defer promActiveWebsocket.Dec()
 
 	defer rh.relay.router.Delete(GetCtxConnID(ctx))
 
@@ -164,7 +164,7 @@ func (rh *RelayHandler) wsReceiver(
 
 		ctx := log.Ctx(ctx).With().RawJSON("client_msg", payload).Logger().WithContext(ctx)
 		log.Ctx(ctx).Debug().Msg("receive client msg")
-		promWSRecvCounter.WithLabelValues(ctx, jsonMsg).Inc()
+		promWSRecvCounter.WithLabelValues(jsonMsg).Inc()
 
 		switch msg := jsonMsg.(type) {
 		case *ClientReqMsgJSON:
@@ -329,8 +329,7 @@ func (rh *RelayHandler) wsSend(
 	r *WebsocketRequest,
 	msg ServerMsg,
 ) error {
-
-	promWSSendCounter.WithLabelValues(ctx, msg).Inc()
+	promWSSendCounter.WithLabelValues(msg).Inc()
 
 	jsonMsg, err := msg.MarshalJSON()
 	if err != nil {
