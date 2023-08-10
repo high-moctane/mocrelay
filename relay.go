@@ -306,10 +306,18 @@ func (rh *RelayHandler) wsSender(
 		}
 	}()
 
+	pingTicker := time.NewTicker(5 * time.Minute)
+	defer pingTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+
+		case <-pingTicker.C:
+			if _, err := r.Conn.Write(ws.CompiledPing); err != nil {
+				return err
+			}
 
 		case msg := <-rh.reqSendCh:
 			if err := rh.wsSend(ctx, r, msg); err != nil {
@@ -320,6 +328,7 @@ func (rh *RelayHandler) wsSender(
 			if err := rh.wsSend(ctx, r, msg); err != nil {
 				return err
 			}
+
 		}
 	}
 }
