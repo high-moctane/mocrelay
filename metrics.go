@@ -82,7 +82,7 @@ var promEventCounter *PromEventCounter = (*PromEventCounter)(promauto.NewCounter
 type PromEventCounter prometheus.CounterVec
 
 func (pc *PromEventCounter) WithLabelValues(event *EventJSON) prometheus.Counter {
-	return (*prometheus.CounterVec)(pc).WithLabelValues(fmt.Sprintf("%d", event.Kind))
+	return (*prometheus.CounterVec)(pc).WithLabelValues(fmt.Sprintf("%05d", event.Kind))
 }
 
 var promTryEnqueueServerMsgFail = promauto.NewCounter(
