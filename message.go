@@ -368,7 +368,7 @@ func (f *FilterJSON) UnmarshalJSON(b []byte) error {
 			if err != nil {
 				return err
 			}
-			if filter.Tags == nil && arr != nil {
+			if filter.Tags == nil {
 				m := make(map[string][]string)
 				filter.Tags = &m
 			}
