@@ -28,11 +28,11 @@ type MultiEventCache struct {
 func NewMultiEventCache() *MultiEventCache {
 	// TODO(high-moctane) remove magic numbers
 	return &MultiEventCache{
-		userdataCache:                      NewReplaceableEventCache(5000),
-		shortTextNoteCache:                 NewRegularEventCache(10000),
-		regularEventCache:                  NewRegularEventCache(10000),
-		replaceableEventCache:              NewReplaceableEventCache(5000),
-		parameterizedReplaceableEventCache: NewParameterizedReplaceableEventCache(5000),
+		userdataCache:                      NewReplaceableEventCache(2500),
+		shortTextNoteCache:                 NewRegularEventCache(5000),
+		regularEventCache:                  NewRegularEventCache(5000),
+		replaceableEventCache:              NewReplaceableEventCache(1000),
+		parameterizedReplaceableEventCache: NewParameterizedReplaceableEventCache(1000),
 	}
 }
 
