@@ -1,0 +1,12 @@
+---
+pre-push:
+  commands:
+    test:
+      run: make test
+
+pre-commit:
+  commands:
+    fmt:
+      run: make fmt
+    check:
+      run: make check
