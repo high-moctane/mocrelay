@@ -23,6 +23,7 @@ run: $(TARGET)
 
 .PHONY: check
 check:
+	goimports -l -local mocrelay . $(EXEDIR)
 	go vet ./...
 	# staticcheck ./...
 
