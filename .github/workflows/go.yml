@@ -17,6 +17,9 @@ jobs:
         with:
           go-version: "stable"
 
+      - name: Tool
+        run: make tool
+
       - name: Check
         run: make check
 

@@ -46,3 +46,8 @@ fmt:
 .PHONY: githook
 githook:
 	lefthook install
+
+
+.PHONY: tool
+tool:
+	go install golang.org/x/tools/cmd/goimports@latest
