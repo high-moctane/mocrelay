@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewClientMsg(t *testing.T) {
+func TestParseClientMsg(t *testing.T) {
 	type Expect struct {
 		MsgType ClientMsgType
 		Err     error
@@ -61,7 +61,7 @@ func TestNewClientMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := NewClientMsg(tt.Input)
+			msg, err := ParseClientMsg(tt.Input)
 			if tt.Expect.Err != nil {
 				assert.ErrorIs(t, err, tt.Expect.Err)
 				return
@@ -75,7 +75,7 @@ func TestNewClientMsg(t *testing.T) {
 	}
 }
 
-func TestNewClientCloseMsg(t *testing.T) {
+func TestParseClientCloseMsg(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
 		Raw            []byte
@@ -116,7 +116,7 @@ func TestNewClientCloseMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := NewClientCloseMsg(tt.Input)
+			msg, err := ParseClientCloseMsg(tt.Input)
 			if tt.Expect.Err != nil {
 				assert.ErrorIs(t, err, tt.Expect.Err)
 				return

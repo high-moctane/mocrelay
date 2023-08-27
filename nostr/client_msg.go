@@ -28,7 +28,7 @@ type ClientMsg interface {
 
 var clientMsgRegexp = regexp.MustCompile(`^\[\s*"(EVENT|REQ|CLOSE|AUTH|COUNT)"`)
 
-func NewClientMsg(b []byte) (msg ClientMsg, err error) {
+func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, ErrInvalidClientMsg)
@@ -55,7 +55,7 @@ func NewClientMsg(b []byte) (msg ClientMsg, err error) {
 		panic("unimplemented")
 
 	case "CLOSE":
-		return NewClientCloseMsg(b)
+		return ParseClientCloseMsg(b)
 
 	case "AUTH":
 		panic("unimplemented")
@@ -101,7 +101,7 @@ type ClientCloseMsg struct {
 	raw            []byte
 }
 
-func NewClientCloseMsg(b []byte) (msg *ClientCloseMsg, err error) {
+func ParseClientCloseMsg(b []byte) (msg *ClientCloseMsg, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, ErrInvalidClientCloseMsg)
