@@ -1,2 +1,3 @@
-# nostr-mocrelay
+# mocrelay
+
 Nostr relay

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	mocrelay "github.com/high-moctane/nostr-mocrelay"
+	"github.com/high-moctane/mocrelay"
 )
 
 func main() {
