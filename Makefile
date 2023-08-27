@@ -23,7 +23,7 @@ run: $(TARGET)
 
 .PHONY: check
 check:
-	goimports -l -local mocrelay . $(EXEDIR)
+	find . -name \*.go -exec goimports -l -v -local "github.com/high-moctane/mocrelay" {} \;
 	go vet ./...
 	# staticcheck ./...
 
@@ -40,7 +40,7 @@ clean:
 
 .PHONY: fmt
 fmt:
-	goimports -w -local mocrelay . $(EXEDIR)
+	find . -name \*.go -exec goimports -w -v -local "github.com/high-moctane/mocrelay" {} \;
 
 
 .PHONY: githook
