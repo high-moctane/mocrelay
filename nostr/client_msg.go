@@ -49,7 +49,7 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 
 	switch string(match[1]) {
 	case "EVENT":
-		panic("unimplemented")
+		return ParseClientEventMsg(b)
 
 	case "REQ":
 		panic("unimplemented")
@@ -70,14 +70,51 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 
 var _ ClientMsg = (*ClientEventMsg)(nil)
 
-type ClientEventMsg struct{}
+type ClientEventMsg struct {
+	Event *Event
+
+	raw []byte
+}
+
+var ErrInvalidClientEventMsg = errors.New("invalid client event msg")
+
+func ParseClientEventMsg(b []byte) (msg *ClientEventMsg, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, ErrInvalidClientEventMsg)
+		}
+	}()
+
+	var arr []json.RawMessage
+	if err = json.Unmarshal(b, &arr); err != nil {
+		return
+	}
+	if len(arr) != 2 {
+		err = fmt.Errorf("client event msg len must be 2 but %d", len(arr))
+		return
+	}
+
+	ev, err := ParseEvent(arr[1])
+	if err != nil {
+		return
+	}
+
+	msg = &ClientEventMsg{
+		Event: ev,
+		raw:   b,
+	}
+	return
+}
 
 func (*ClientEventMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeEvent
 }
 
-func (*ClientEventMsg) Raw() []byte {
-	return nil
+func (msg *ClientEventMsg) Raw() []byte {
+	if msg == nil {
+		return nil
+	}
+	return msg.raw
 }
 
 var _ ClientMsg = (*ClientReqMsg)(nil)

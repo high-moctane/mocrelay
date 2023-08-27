@@ -57,12 +57,40 @@ func TestParseClientMsg(t *testing.T) {
 				Err:     nil,
 			},
 		},
+		{
+			Name: "ok: client event message",
+			Input: []byte(`["EVENT",` +
+				`{` +
+				`  "kind": 1,` +
+				`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
+				`  "created_at": 1693157791,` +
+				`  "tags": [` +
+				`    [` +
+				`      "e",` +
+				`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
+				`      "",` +
+				`      "root"` +
+				`    ],` +
+				`    [` +
+				`      "p",` +
+				`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
+				`    ]` +
+				`  ],` +
+				`  "content": "powa",` +
+				`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
+				`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
+				`}]`),
+			Expect: Expect{
+				MsgType: ClientMsgTypeEvent,
+				Err:     nil,
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 			msg, err := ParseClientMsg(tt.Input)
-			if tt.Expect.Err != nil {
+			if tt.Expect.Err != nil || err != nil {
 				assert.ErrorIs(t, err, tt.Expect.Err)
 				return
 			}
@@ -71,6 +99,7 @@ func TestParseClientMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.MsgType, msg.MsgType())
+			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -117,7 +146,7 @@ func TestParseClientCloseMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 			msg, err := ParseClientCloseMsg(tt.Input)
-			if tt.Expect.Err != nil {
+			if tt.Expect.Err != nil || err != nil {
 				assert.ErrorIs(t, err, tt.Expect.Err)
 				return
 			}
