@@ -117,7 +117,6 @@ func TestParseClientMsg(t *testing.T) {
 func TestParseClientCloseMsg(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
-		Raw            []byte
 		Err            error
 	}
 
@@ -131,7 +130,6 @@ func TestParseClientCloseMsg(t *testing.T) {
 			Input: []byte(`["CLOSE","sub_id"]`),
 			Expect: Expect{
 				SubscriptionID: "sub_id",
-				Raw:            []byte(`["CLOSE","sub_id"]`),
 				Err:            nil,
 			},
 		},
@@ -140,7 +138,6 @@ func TestParseClientCloseMsg(t *testing.T) {
 			Input: []byte(`[` + "\n" + `  "CLOSE",` + "\n" + `  "sub_id"` + "\n" + `]`),
 			Expect: Expect{
 				SubscriptionID: "sub_id",
-				Raw:            []byte(`[` + "\n" + `  "CLOSE",` + "\n" + `  "sub_id"` + "\n" + `]`),
 				Err:            nil,
 			},
 		},
@@ -165,7 +162,7 @@ func TestParseClientCloseMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
-			assert.Equal(t, tt.Expect.Raw, msg.Raw())
+			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
