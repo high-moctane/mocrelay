@@ -61,7 +61,7 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 		return ParseClientAuthMsg(b)
 
 	case "COUNT":
-		panic("unimplemented")
+		return ParseClientCountMsg(b)
 
 	default:
 		panic("unreachable")
@@ -269,14 +269,59 @@ func (msg *ClientAuthMsg) Raw() []byte {
 
 var _ ClientMsg = (*ClientCountMsg)(nil)
 
-type ClientCountMsg struct{}
+type ClientCountMsg struct {
+	SubscriptionID string
+	Filters        Filters
+
+	raw []byte
+}
+
+var ErrInvalidClientCountMsg = errors.New("invalid client count msg")
+
+func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, ErrInvalidClientCountMsg)
+		}
+	}()
+
+	var arr []json.RawMessage
+	if err = json.Unmarshal(b, &arr); err != nil {
+		return
+	}
+
+	var subID string
+	if err = json.Unmarshal(arr[1], &subID); err != nil {
+		return
+	}
+
+	filters := make(Filters, 0, len(arr)-2)
+	for i := 2; i < len(arr); i++ {
+		var filter Filter
+		if err = json.Unmarshal(arr[i], &filter); err != nil {
+			return
+		}
+		filters = append(filters, &filter)
+	}
+
+	msg = &ClientCountMsg{
+		SubscriptionID: subID,
+		Filters:        filters,
+		raw:            b,
+	}
+
+	return
+}
 
 func (*ClientCountMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeCount
 }
 
-func (*ClientCountMsg) Raw() []byte {
-	return nil
+func (msg *ClientCountMsg) Raw() []byte {
+	if msg == nil {
+		return nil
+	}
+	return msg.raw
 }
 
 type Filter struct {

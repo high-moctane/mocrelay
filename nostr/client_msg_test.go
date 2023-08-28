@@ -103,6 +103,14 @@ func TestParseClientMsg(t *testing.T) {
 				Err:     nil,
 			},
 		},
+		{
+			Name:  "ok: client count message",
+			Input: []byte(`["COUNT","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4",{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}]`),
+			Expect: Expect{
+				MsgType: ClientMsgTypeCount,
+				Err:     nil,
+			},
+		},
 	}
 
 	for _, tt := range tests {
