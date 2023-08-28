@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/high-moctane/mocrelay/utils"
 )
 
 func TestParseClientMsg(t *testing.T) {
@@ -156,6 +158,79 @@ func TestParseClientCloseMsg(t *testing.T) {
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
 			assert.Equal(t, tt.Expect.Raw, msg.Raw())
+		})
+	}
+}
+
+func TestParseFilter(t *testing.T) {
+	type Expect struct {
+		Filter Filter
+		Err    error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  []byte
+		Expect Expect
+	}{
+		{
+			Name:  "ok: empty",
+			Input: []byte("{}"),
+			Expect: Expect{
+				Filter: Filter{},
+				Err:    nil,
+			},
+		},
+		{
+			Name:  "ok: full",
+			Input: []byte(`{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
+			Expect: Expect{
+				Filter: Filter{
+					IDs:     utils.ToRef([]string{"powa"}),
+					Authors: utils.ToRef([]string{"meu"}),
+					Kinds:   utils.ToRef([]int64{1, 3}),
+					Tags: utils.ToRef(map[string][]string{
+						"e": {"moyasu"},
+					}),
+					Since: utils.ToRef(int64(16)),
+					Until: utils.ToRef(int64(184838)),
+					Limit: utils.ToRef(int64(143)),
+				},
+				Err: nil,
+			},
+		},
+		{
+			Name:  "ok: partial",
+			Input: []byte(`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
+			Expect: Expect{
+				Filter: Filter{
+					IDs:   utils.ToRef([]string{"powa"}),
+					Kinds: utils.ToRef([]int64{1, 3}),
+					Tags: utils.ToRef(map[string][]string{
+						"e": {"moyasu"},
+					}),
+					Since: utils.ToRef(int64(16)),
+					Until: utils.ToRef(int64(184838)),
+					Limit: utils.ToRef(int64(143)),
+				},
+				Err: nil,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			fil, err := ParseFilter(tt.Input)
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			if fil == nil {
+				t.Errorf("expect non-nil filter but got nil")
+				return
+			}
+			assert.EqualExportedValues(t, tt.Expect.Filter, *fil)
+			assert.Equal(t, tt.Input, fil.Raw())
 		})
 	}
 }

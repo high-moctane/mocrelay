@@ -195,3 +195,110 @@ func (*ClientCountMsg) MsgType() ClientMsgType {
 func (*ClientCountMsg) Raw() []byte {
 	return nil
 }
+
+type Filter struct {
+	IDs     *[]string
+	Authors *[]string
+	Kinds   *[]int64
+	Tags    *map[string][]string
+	Since   *int64
+	Until   *int64
+	Limit   *int64
+
+	raw []byte
+}
+
+var ErrInvalidFilter = errors.New("invalid filter")
+
+var filterKeys = func() []string {
+	var ret []string
+
+	for r := 'A'; r <= 'Z'; r++ {
+		ret = append(ret, string([]rune{'#', r}))
+	}
+	for r := 'a'; r <= 'z'; r++ {
+		ret = append(ret, string([]rune{'#', r}))
+	}
+
+	return ret
+}()
+
+func ParseFilter(b []byte) (fil *Filter, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, ErrInvalidFilter)
+		}
+	}()
+
+	var obj map[string]json.RawMessage
+	if err = json.Unmarshal(b, &obj); err != nil {
+		return
+	}
+
+	var ret Filter
+	var v json.RawMessage
+	var ok bool
+
+	if v, ok = obj["ids"]; ok {
+		if err = json.Unmarshal(v, &ret.IDs); err != nil {
+			return
+		}
+	}
+
+	if v, ok = obj["authors"]; ok {
+		if err = json.Unmarshal(v, &ret.Authors); err != nil {
+			return
+		}
+	}
+
+	if v, ok = obj["kinds"]; ok {
+		if err = json.Unmarshal(v, &ret.Kinds); err != nil {
+			return
+		}
+	}
+
+	for _, k := range filterKeys {
+		if v, ok = obj[k]; ok {
+			var vals []string
+			if err = json.Unmarshal(v, &vals); err != nil {
+				return
+			}
+			if ret.Tags == nil {
+				m := make(map[string][]string)
+				ret.Tags = &m
+			}
+
+			(*ret.Tags)[string(k[1])] = vals
+		}
+	}
+
+	if v, ok = obj["since"]; ok {
+		if err = json.Unmarshal(v, &ret.Since); err != nil {
+			return
+		}
+	}
+
+	if v, ok = obj["until"]; ok {
+		if err = json.Unmarshal(v, &ret.Until); err != nil {
+			return
+		}
+	}
+
+	if v, ok = obj["limit"]; ok {
+		if err = json.Unmarshal(v, &ret.Limit); err != nil {
+			return
+		}
+	}
+
+	ret.raw = b
+	fil = &ret
+
+	return
+}
+
+func (fil *Filter) Raw() []byte {
+	if fil == nil {
+		return nil
+	}
+	return fil.raw
+}
