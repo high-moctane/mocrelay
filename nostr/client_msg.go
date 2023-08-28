@@ -58,7 +58,7 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 		return ParseClientCloseMsg(b)
 
 	case "AUTH":
-		panic("unimplemented")
+		return ParseClientAuthMsg(b)
 
 	case "COUNT":
 		panic("unimplemented")
@@ -224,14 +224,47 @@ func (msg *ClientCloseMsg) Raw() []byte {
 
 var _ ClientMsg = (*ClientAuthMsg)(nil)
 
-type ClientAuthMsg struct{}
+type ClientAuthMsg struct {
+	Challenge string
+
+	raw []byte
+}
+
+var ErrInvalidClientAuthMsg = errors.New("invalid client auth msg")
+
+func ParseClientAuthMsg(b []byte) (msg *ClientAuthMsg, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, ErrInvalidClientCloseMsg)
+		}
+	}()
+
+	var arr []string
+	if err = json.Unmarshal(b, &arr); err != nil {
+		return
+	}
+	if len(arr) != 2 {
+		err = fmt.Errorf("client auth msg len must be 2 but %d", len(arr))
+		return
+	}
+
+	msg = &ClientAuthMsg{
+		Challenge: arr[1],
+		raw:       b,
+	}
+
+	return
+}
 
 func (*ClientAuthMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeAuth
 }
 
-func (*ClientAuthMsg) Raw() []byte {
-	return nil
+func (msg *ClientAuthMsg) Raw() []byte {
+	if msg == nil {
+		return nil
+	}
+	return msg.raw
 }
 
 var _ ClientMsg = (*ClientCountMsg)(nil)

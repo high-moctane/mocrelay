@@ -95,6 +95,14 @@ func TestParseClientMsg(t *testing.T) {
 				Err:     nil,
 			},
 		},
+		{
+			Name:  "ok: client auth message",
+			Input: []byte(`["AUTH","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4"]`),
+			Expect: Expect{
+				MsgType: ClientMsgTypeAuth,
+				Err:     nil,
+			},
+		},
 	}
 
 	for _, tt := range tests {
