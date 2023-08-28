@@ -52,7 +52,7 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 		return ParseClientEventMsg(b)
 
 	case "REQ":
-		panic("unimplemented")
+		return ParseClientReqMsg(b)
 
 	case "CLOSE":
 		return ParseClientCloseMsg(b)
@@ -119,14 +119,64 @@ func (msg *ClientEventMsg) Raw() []byte {
 
 var _ ClientMsg = (*ClientReqMsg)(nil)
 
-type ClientReqMsg struct{}
+type ClientReqMsg struct {
+	SubscriptionID string
+	Filters        Filters
+
+	raw []byte
+}
+
+var ErrInvalidClientReqMsg = errors.New("invalid client req message")
+
+func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, ErrInvalidClientReqMsg)
+		}
+	}()
+
+	var arr []json.RawMessage
+	if err = json.Unmarshal(b, &arr); err != nil {
+		return
+	}
+	if len(arr) < 3 {
+		err = fmt.Errorf("too short client req message array: len=%d", len(arr))
+		return
+	}
+
+	var subID string
+	if err = json.Unmarshal(arr[1], &subID); err != nil {
+		return
+	}
+
+	filters := make(Filters, 0, len(arr)-2)
+
+	for i := 2; i < len(arr); i++ {
+		var vi Filter
+		if err = json.Unmarshal(arr[i], &vi); err != nil {
+			return
+		}
+		filters = append(filters, &vi)
+	}
+
+	msg = &ClientReqMsg{
+		SubscriptionID: subID,
+		Filters:        filters,
+		raw:            b,
+	}
+
+	return
+}
 
 func (*ClientReqMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeReq
 }
 
-func (*ClientReqMsg) Raw() []byte {
-	return nil
+func (msg *ClientReqMsg) Raw() []byte {
+	if msg == nil {
+		return nil
+	}
+	return msg.raw
 }
 
 var _ ClientMsg = (*ClientCloseMsg)(nil)
@@ -302,3 +352,5 @@ func (fil *Filter) Raw() []byte {
 	}
 	return fil.raw
 }
+
+type Filters []*Filter
