@@ -44,7 +44,7 @@ func (msg *ServerEOSEMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	v := [2]string{"EOSE", msg.SubscriptionID}
-	ret, err := json.Marshal(v)
+	ret, err := json.Marshal(&v)
 	if err != nil {
 		return nil, errors.Join(err, ErrMarshalServerEOSEMsg)
 	}
@@ -82,7 +82,7 @@ func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	v := [3]interface{}{"EVENT", msg.SubscriptionID, msg.Event}
-	ret, err := json.Marshal(v)
+	ret, err := json.Marshal(&v)
 	if err != nil {
 		return nil, errors.Join(err, ErrMarshalServerEventMsg)
 	}
@@ -112,9 +112,55 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	v := [2]string{"NOTICE", msg.Message}
-	ret, err := json.Marshal(v)
+	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerNoticeMsg)
+	}
+
+	return ret, err
+}
+
+type ServerOKMsg struct {
+	SubscriptionID string
+	Accepted       bool
+	Message        string
+	MessagePrefix  string
+}
+
+const (
+	ServerOKMsgPrefixNoPrefix    = ""
+	ServerOKMsgPrefixPoW         = "pow: "
+	ServerOKMsgPrefixDuplicate   = "duplicate: "
+	ServerOkMsgPrefixBlocked     = "blocked: "
+	ServerOkMsgPrefixRateLimited = "rate-limited: "
+	ServerOkMsgPrefixRateInvalid = "invalid: "
+	ServerOkMsgPrefixError       = "error: "
+)
+
+func NewServerOKMsg(subID string, accepted bool, prefix, msg string) *ServerOKMsg {
+	return &ServerOKMsg{
+		SubscriptionID: subID,
+		Accepted:       accepted,
+		MessagePrefix:  prefix,
+		Message:        msg,
+	}
+}
+
+func (*ServerOKMsg) MsgType() ServerMsgType {
+	return ServerMsgTypeOK
+}
+
+var ErrMarshalServerOKMsg = errors.New("failed to marshal server ok msg")
+
+func (msg *ServerOKMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, ErrMarshalServerOKMsg
+	}
+
+	v := [4]interface{}{"OK", msg.SubscriptionID, msg.Accepted, msg.MessagePrefix + msg.Message}
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		err = errors.Join(err, ErrMarshalServerOKMsg)
 	}
 
 	return ret, err

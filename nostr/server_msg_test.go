@@ -210,7 +210,7 @@ func TestServerNoticeMsg_MarshalJSON(t *testing.T) {
 		Expect Expect
 	}{
 		{
-			Name: "ok: server eose message",
+			Name: "ok: server notice message",
 			Input: &ServerNoticeMsg{
 				Message: "msg",
 			},
@@ -224,6 +224,64 @@ func TestServerNoticeMsg_MarshalJSON(t *testing.T) {
 			Input: nil,
 			Expect: Expect{
 				Err: ErrMarshalServerNoticeMsg,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			got, err := tt.Input.MarshalJSON()
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			assert.Equal(t, tt.Expect.Json, got)
+		})
+	}
+}
+
+func TestServerOKMsg_MarshalJSON(t *testing.T) {
+	type Expect struct {
+		Json []byte
+		Err  error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  *ServerOKMsg
+		Expect Expect
+	}{
+		{
+			Name: "ok: server ok message",
+			Input: &ServerOKMsg{
+				SubscriptionID: "sub_id",
+				Accepted:       true,
+				MessagePrefix:  ServerOKMsgPrefixNoPrefix,
+				Message:        "msg",
+			},
+			Expect: Expect{
+				Json: []byte(`["OK","sub_id",true,"msg"]`),
+				Err:  nil,
+			},
+		},
+		{
+			Name: "ok: server ok message with prefix",
+			Input: &ServerOKMsg{
+				SubscriptionID: "sub_id",
+				Accepted:       false,
+				MessagePrefix:  ServerOkMsgPrefixError,
+				Message:        "msg",
+			},
+			Expect: Expect{
+				Json: []byte(`["OK","sub_id",false,"error: msg"]`),
+				Err:  nil,
+			},
+		},
+		{
+			Name:  "ng: nil",
+			Input: nil,
+			Expect: Expect{
+				Err: ErrMarshalServerOKMsg,
 			},
 		},
 	}
