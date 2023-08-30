@@ -6,13 +6,13 @@ import (
 )
 
 type Event struct {
-	ID        string
-	Pubkey    string
-	CreatedAt int64
-	Kind      int64
-	Tags      []Tag
-	Content   string
-	Sig       string
+	ID        string `json:"id"`
+	Pubkey    string `json:"pubkey"`
+	CreatedAt int64  `json:"created_at"`
+	Kind      int64  `json:"kind"`
+	Tags      []Tag  `json:"tags"`
+	Content   string `json:"content"`
+	Sig       string `json:"sig"`
 
 	raw []byte
 }
