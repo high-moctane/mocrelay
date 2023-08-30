@@ -298,11 +298,12 @@ func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
 
 	filters := make(Filters, 0, len(arr)-2)
 	for i := 2; i < len(arr); i++ {
-		var filter Filter
-		if err = json.Unmarshal(arr[i], &filter); err != nil {
+		var filter *Filter
+		filter, err = ParseFilter(arr[i])
+		if err != nil {
 			return
 		}
-		filters = append(filters, &filter)
+		filters = append(filters, filter)
 	}
 
 	msg = &ClientCountMsg{
