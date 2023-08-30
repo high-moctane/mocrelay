@@ -263,6 +263,13 @@ func TestParseClientReqMsg(t *testing.T) {
 				Err: nil,
 			},
 		},
+		{
+			Name:  "ng: client REQ message invalid",
+			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":1}]`),
+			Expect: Expect{
+				Err: ErrInvalidClientReqMsg,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -334,6 +341,59 @@ func TestParseClientCloseMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
+			assert.Equal(t, tt.Input, msg.Raw())
+		})
+	}
+}
+
+func TestParseClientAuthMsg(t *testing.T) {
+	type Expect struct {
+		Challenge string
+		Err       error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  []byte
+		Expect Expect
+	}{
+		{
+			Name:  "ok: client auth message",
+			Input: []byte(`["AUTH","challenge"]`),
+			Expect: Expect{
+				Challenge: "challenge",
+				Err:       nil,
+			},
+		},
+		{
+			Name:  "ok: client auth message with some spaces",
+			Input: []byte(`[` + "\n" + `  "AUTH",` + "\n" + `  "challenge"` + "\n" + `]`),
+			Expect: Expect{
+				Challenge: "challenge",
+				Err:       nil,
+			},
+		},
+		{
+			Name:  "ng: client auth message invalid type",
+			Input: []byte(`["AUTH",3000]`),
+			Expect: Expect{
+				Err: ErrInvalidClientAuthMsg,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			msg, err := ParseClientAuthMsg(tt.Input)
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			if msg == nil {
+				t.Errorf("expected non-nil msg but got nil")
+				return
+			}
+			assert.Equal(t, tt.Expect.Challenge, msg.Challenge)
 			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}

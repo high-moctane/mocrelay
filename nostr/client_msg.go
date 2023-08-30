@@ -236,7 +236,7 @@ var ErrInvalidClientAuthMsg = errors.New("invalid client auth msg")
 func ParseClientAuthMsg(b []byte) (msg *ClientAuthMsg, err error) {
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, ErrInvalidClientCloseMsg)
+			err = errors.Join(err, ErrInvalidClientAuthMsg)
 		}
 	}()
 
