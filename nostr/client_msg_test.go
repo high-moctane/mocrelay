@@ -200,6 +200,92 @@ func TestParseClientEventMsg(t *testing.T) {
 	}
 }
 
+func TestParseClientReqMsg(t *testing.T) {
+	type Expect struct {
+		SubscriptionID string
+		Filters        Filters
+		Err            error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  []byte
+		Expect Expect
+	}{
+		{
+			Name:  "ok: client REQ message",
+			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`),
+			Expect: Expect{
+				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
+				Filters: Filters{
+					{
+						IDs:     utils.ToRef([]string{"powa11", "powa12"}),
+						Authors: utils.ToRef([]string{"meu11", "meu12"}),
+						Kinds:   utils.ToRef([]int64{1, 3}),
+						Tags: utils.ToRef(map[string][]string{
+							"#e": {"moyasu11", "moyasu12"},
+						}),
+						Since: utils.ToRef(int64(16)),
+						Until: utils.ToRef(int64(184838)),
+						Limit: utils.ToRef(int64(143)),
+					},
+					{
+						IDs:     utils.ToRef([]string{"powa21", "powa22"}),
+						Authors: utils.ToRef([]string{"meu21", "meu22"}),
+						Kinds:   utils.ToRef([]int64{11, 33}),
+						Tags: utils.ToRef(map[string][]string{
+							"#e": {"moyasu21", "moyasu22"},
+						}),
+						Since: utils.ToRef(int64(17)),
+						Until: utils.ToRef(int64(184839)),
+						Limit: utils.ToRef(int64(144)),
+					},
+				},
+				Err: nil,
+			},
+		},
+		{
+			Name:  "ok: client REQ message empty",
+			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{}]`),
+			Expect: Expect{
+				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
+				Filters: Filters{
+					{
+						IDs:     nil,
+						Authors: nil,
+						Kinds:   nil,
+						Tags:    nil,
+						Since:   nil,
+						Until:   nil,
+						Limit:   nil,
+					},
+				},
+				Err: nil,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			msg, err := ParseClientReqMsg(tt.Input)
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			if msg == nil {
+				t.Errorf("expected non-nil msg but got nil")
+				return
+			}
+			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
+			assert.Len(t, msg.Filters, len(tt.Expect.Filters))
+			for i := 0; i < len(tt.Expect.Filters); i++ {
+				assert.EqualExportedValues(t, *tt.Expect.Filters[i], *msg.Filters[i])
+			}
+			assert.Equal(t, tt.Input, msg.Raw())
+		})
+	}
+}
+
 func TestParseClientCloseMsg(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
@@ -281,7 +367,7 @@ func TestParseFilter(t *testing.T) {
 					Authors: utils.ToRef([]string{"meu"}),
 					Kinds:   utils.ToRef([]int64{1, 3}),
 					Tags: utils.ToRef(map[string][]string{
-						"e": {"moyasu"},
+						"#e": {"moyasu"},
 					}),
 					Since: utils.ToRef(int64(16)),
 					Until: utils.ToRef(int64(184838)),
@@ -298,7 +384,7 @@ func TestParseFilter(t *testing.T) {
 					IDs:   utils.ToRef([]string{"powa"}),
 					Kinds: utils.ToRef([]int64{1, 3}),
 					Tags: utils.ToRef(map[string][]string{
-						"e": {"moyasu"},
+						"#e": {"moyasu"},
 					}),
 					Since: utils.ToRef(int64(16)),
 					Until: utils.ToRef(int64(184838)),

@@ -152,11 +152,12 @@ func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
 	filters := make(Filters, 0, len(arr)-2)
 
 	for i := 2; i < len(arr); i++ {
-		var vi Filter
-		if err = json.Unmarshal(arr[i], &vi); err != nil {
+		var filter *Filter
+		filter, err = ParseFilter(arr[i])
+		if err != nil {
 			return
 		}
-		filters = append(filters, &vi)
+		filters = append(filters, filter)
 	}
 
 	msg = &ClientReqMsg{
@@ -396,7 +397,7 @@ func ParseFilter(b []byte) (fil *Filter, err error) {
 				ret.Tags = &m
 			}
 
-			(*ret.Tags)[string(k[1])] = vals
+			(*ret.Tags)[k] = vals
 		}
 	}
 
