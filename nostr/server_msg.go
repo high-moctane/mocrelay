@@ -89,3 +89,33 @@ func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
 
 	return ret, nil
 }
+
+type ServerNoticeMsg struct {
+	Message string
+}
+
+func NewServerNoticeMsg(message string) *ServerNoticeMsg {
+	return &ServerNoticeMsg{
+		Message: message,
+	}
+}
+
+func (*ServerNoticeMsg) MsgType() ServerMsgType {
+	return ServerMsgTypeNotice
+}
+
+var ErrMarshalServerNoticeMsg = errors.New("failed to marshal server notice msg")
+
+func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, ErrMarshalServerNoticeMsg
+	}
+
+	v := [2]string{"NOTICE", msg.Message}
+	ret, err := json.Marshal(v)
+	if err != nil {
+		err = errors.Join(err, ErrMarshalServerNoticeMsg)
+	}
+
+	return ret, err
+}

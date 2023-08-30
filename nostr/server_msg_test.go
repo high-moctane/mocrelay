@@ -197,3 +197,45 @@ func TestServerEventMsg_MarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestServerNoticeMsg_MarshalJSON(t *testing.T) {
+	type Expect struct {
+		Json []byte
+		Err  error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  *ServerNoticeMsg
+		Expect Expect
+	}{
+		{
+			Name: "ok: server eose message",
+			Input: &ServerNoticeMsg{
+				Message: "msg",
+			},
+			Expect: Expect{
+				Json: []byte(`["NOTICE","msg"]`),
+				Err:  nil,
+			},
+		},
+		{
+			Name:  "ng: nil",
+			Input: nil,
+			Expect: Expect{
+				Err: ErrMarshalServerNoticeMsg,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			got, err := tt.Input.MarshalJSON()
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			assert.Equal(t, tt.Expect.Json, got)
+		})
+	}
+}
