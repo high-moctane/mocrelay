@@ -81,18 +81,7 @@ func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerEventMsg
 	}
 
-	var event json.RawMessage
-	if raw := msg.Event.Raw(); raw != nil {
-		event = msg.Event.Raw()
-	} else {
-		var err error
-		event, err = json.Marshal(msg.Event)
-		if err != nil {
-			return nil, errors.Join(err, ErrMarshalServerEventMsg)
-		}
-	}
-
-	v := [3]interface{}{"EVENT", msg.SubscriptionID, event}
+	v := [3]interface{}{"EVENT", msg.SubscriptionID, msg.Event}
 	ret, err := json.Marshal(v)
 	if err != nil {
 		return nil, errors.Join(err, ErrMarshalServerEventMsg)

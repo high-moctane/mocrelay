@@ -1,6 +1,7 @@
 package nostr
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 )
@@ -109,6 +110,31 @@ func (ev *Event) Raw() []byte {
 		return nil
 	}
 	return ev.raw
+}
+
+var ErrMarshalEvent = errors.New("failed to marshal event")
+
+func (ev *Event) MarshalJSON() ([]byte, error) {
+	if ev == nil {
+		return nil, ErrMarshalEvent
+	}
+
+	if raw := ev.Raw(); raw != nil {
+		buf := new(bytes.Buffer)
+		err := json.Compact(buf, raw)
+		if err != nil {
+			err = errors.Join(err, ErrMarshalEvent)
+		}
+		return buf.Bytes(), err
+
+	} else {
+		type alias Event
+		ret, err := json.Marshal(alias(*ev))
+		if err != nil {
+			err = errors.Join(err, ErrMarshalEvent)
+		}
+		return ret, err
+	}
 }
 
 type Tag []string
