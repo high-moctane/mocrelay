@@ -165,3 +165,37 @@ func (msg *ServerOKMsg) MarshalJSON() ([]byte, error) {
 
 	return ret, err
 }
+
+type ServerAuthMsg struct {
+	Event *Event
+}
+
+var ErrServerAuthMsgNilEvent = errors.New("server auth msg event must be non nil value")
+
+func NewServerAuthMsg(event *Event) (*ServerAuthMsg, error) {
+	if event == nil {
+		return nil, ErrServerAuthMsgNilEvent
+	}
+
+	return &ServerAuthMsg{Event: event}, nil
+}
+
+func (*ServerAuthMsg) MsgType() ServerMsgType {
+	return ServerMsgTypeAuth
+}
+
+var ErrMarshalServerAuthMsg = errors.New("failed to marshal server auth msg")
+
+func (msg *ServerAuthMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, ErrMarshalServerAuthMsg
+	}
+
+	v := [2]interface{}{"AUTH", msg.Event}
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		err = errors.Join(err, ErrMarshalServerAuthMsg)
+	}
+
+	return ret, err
+}
