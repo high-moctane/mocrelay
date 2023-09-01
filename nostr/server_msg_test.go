@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/high-moctane/mocrelay/utils"
 )
 
 func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
@@ -363,6 +365,62 @@ func TestServerAuthMsg_MarshalJSON(t *testing.T) {
 			Input: nil,
 			Expect: Expect{
 				Err: ErrMarshalServerAuthMsg,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			got, err := tt.Input.MarshalJSON()
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			assert.Equal(t, tt.Expect.Json, got)
+		})
+	}
+}
+
+func TestServerCountMsg_MarshalJSON(t *testing.T) {
+	type Expect struct {
+		Json []byte
+		Err  error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  *ServerCountMsg
+		Expect Expect
+	}{
+		{
+			Name: "ok: server count message",
+			Input: &ServerCountMsg{
+				SubscriptionID: "sub_id",
+				Count:          192,
+				Approximate:    nil,
+			},
+			Expect: Expect{
+				Json: []byte(`["COUNT","sub_id",{"count":192}]`),
+				Err:  nil,
+			},
+		},
+		{
+			Name: "ok: server count message",
+			Input: &ServerCountMsg{
+				SubscriptionID: "sub_id",
+				Count:          192,
+				Approximate:    utils.ToRef(false),
+			},
+			Expect: Expect{
+				Json: []byte(`["COUNT","sub_id",{"count":192,"approximate":false}]`),
+				Err:  nil,
+			},
+		},
+		{
+			Name:  "ng: nil",
+			Input: nil,
+			Expect: Expect{
+				Err: ErrMarshalServerCountMsg,
 			},
 		},
 	}

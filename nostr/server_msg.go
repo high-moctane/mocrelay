@@ -199,3 +199,42 @@ func (msg *ServerAuthMsg) MarshalJSON() ([]byte, error) {
 
 	return ret, err
 }
+
+type ServerCountMsg struct {
+	SubscriptionID string
+	Count          uint64
+	Approximate    *bool
+}
+
+func NewServerCountMsg(subID string, count uint64, approx *bool) *ServerCountMsg {
+	return &ServerCountMsg{
+		SubscriptionID: subID,
+		Count:          count,
+		Approximate:    approx,
+	}
+}
+
+func (*ServerCountMsg) MsgType() ServerMsgType {
+	return ServerMsgTypeCount
+}
+
+var ErrMarshalServerCountMsg = errors.New("failed to marshal server count msg")
+
+func (msg *ServerCountMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, ErrMarshalServerCountMsg
+	}
+
+	type payload struct {
+		Count       uint64 `json:"count"`
+		Approximate *bool  `json:"approximate,omitempty"`
+	}
+
+	v := [3]interface{}{"COUNT", msg.SubscriptionID, payload{Count: msg.Count, Approximate: msg.Approximate}}
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		err = errors.Join(err, ErrMarshalServerCountMsg)
+	}
+
+	return ret, err
+}
