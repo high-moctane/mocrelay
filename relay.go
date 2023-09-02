@@ -23,13 +23,13 @@ type RelayOption struct {
 type Relay struct {
 	Option *RelayOption
 
-	subs *subscripters
+	subs *subscribers
 }
 
 func NewRelay(option *RelayOption) *Relay {
 	return &Relay{
 		Option: option,
-		subs:   newSubscripters(),
+		subs:   newSubscribers(),
 	}
 }
 
@@ -85,7 +85,7 @@ func (relay *Relay) recv(ctx context.Context, connID string, msg nostr.ClientMsg
 }
 
 func (relay *Relay) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh chan nostr.ServerMsg) error {
-	sub := newSubscripter(connID, msg, msgCh)
+	sub := newSubscriber(connID, msg, msgCh)
 	relay.subs.Subscribe(sub)
 	msgCh <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
 
@@ -117,15 +117,15 @@ func (relay *Relay) serveSend(ctx context.Context, connID string, send chan<- no
 	}
 }
 
-type subscripter struct {
+type subscriber struct {
 	ConnID         string
 	SubscriptionID string
 	MatchFunc      func(event *nostr.Event) bool
 	Ch             chan nostr.ServerMsg
 }
 
-func newSubscripter(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerMsg) *subscripter {
-	return &subscripter{
+func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerMsg) *subscriber {
+	return &subscriber{
 		ConnID:         connID,
 		SubscriptionID: msg.SubscriptionID,
 		MatchFunc:      newMatchFunc(msg.Filters),
@@ -133,7 +133,7 @@ func newSubscripter(connID string, msg *nostr.ClientReqMsg, ch chan nostr.Server
 	}
 }
 
-func (sub *subscripter) TrySendIfMatch(event *nostr.Event) {
+func (sub *subscriber) TrySendIfMatch(event *nostr.Event) {
 	if sub.MatchFunc(event) {
 		select {
 		case sub.Ch <- nostr.NewServerEventMsg(sub.SubscriptionID, event):
@@ -192,42 +192,44 @@ func newMatchFunc(filters nostr.Filters) func(*nostr.Event) bool {
 	}
 }
 
-type subscripters struct {
-	mu   sync.RWMutex
-	subs map[string]map[string]*subscripter
+type subscribers struct {
+	mu sync.RWMutex
+
+	// map[connID]map[subID]*subscriber
+	subs map[string]map[string]*subscriber
 }
 
-func newSubscripters() *subscripters {
-	return &subscripters{
-		subs: make(map[string]map[string]*subscripter),
+func newSubscribers() *subscribers {
+	return &subscribers{
+		subs: make(map[string]map[string]*subscriber),
 	}
 }
 
-func (subs *subscripters) Subscribe(sub *subscripter) {
+func (subs *subscribers) Subscribe(sub *subscriber) {
 	subs.mu.Lock()
 	defer subs.mu.Unlock()
 
 	if _, ok := subs.subs[sub.ConnID]; !ok {
-		subs.subs[sub.ConnID] = make(map[string]*subscripter)
+		subs.subs[sub.ConnID] = make(map[string]*subscriber)
 	}
 	subs.subs[sub.ConnID][sub.SubscriptionID] = sub
 }
 
-func (subs *subscripters) Unsubscribe(connID, subID string) {
+func (subs *subscribers) Unsubscribe(connID, subID string) {
 	subs.mu.Lock()
 	defer subs.mu.Unlock()
 
 	delete(subs.subs[connID], subID)
 }
 
-func (subs *subscripters) UnsubscribeAll(connID string) {
+func (subs *subscribers) UnsubscribeAll(connID string) {
 	subs.mu.Lock()
 	defer subs.mu.Unlock()
 
 	delete(subs.subs, connID)
 }
 
-func (subs *subscripters) Publish(event *nostr.Event) {
+func (subs *subscribers) Publish(event *nostr.Event) {
 	subs.mu.RLock()
 	defer subs.mu.RUnlock()
 
