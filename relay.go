@@ -13,8 +13,6 @@ import (
 	"github.com/high-moctane/mocrelay/nostr"
 )
 
-const routerDefaultMsgChLen = 10
-
 var ErrRouterStop = errors.New("router stopped")
 
 type RouterOption struct {
@@ -40,7 +38,7 @@ func (router *Router) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send 
 	connID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(connID)
 
-	msgCh := make(chan nostr.ServerMsg, routerDefaultMsgChLen)
+	msgCh := make(chan nostr.ServerMsg, 1)
 
 	errCh := make(chan error, 2)
 
@@ -134,12 +132,9 @@ func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerM
 	}
 }
 
-func (sub *subscriber) TrySendIfMatch(event *nostr.Event) {
+func (sub *subscriber) SendIfMatch(event *nostr.Event) {
 	if sub.MatchFunc(event) {
-		select {
-		case sub.Ch <- nostr.NewServerEventMsg(sub.SubscriptionID, event):
-		default:
-		}
+		sub.Ch <- nostr.NewServerEventMsg(sub.SubscriptionID, event)
 	}
 }
 
@@ -236,7 +231,7 @@ func (subs *subscribers) Publish(event *nostr.Event) {
 
 	for _, m := range subs.subs {
 		for _, sub := range m {
-			sub.TrySendIfMatch(event)
+			sub.SendIfMatch(event)
 		}
 	}
 }
