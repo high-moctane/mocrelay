@@ -257,26 +257,26 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 		{
 			Name: "ok: server ok message",
 			Input: &ServerOKMsg{
-				SubscriptionID: "sub_id",
-				Accepted:       true,
-				MessagePrefix:  ServerOKMsgPrefixNoPrefix,
-				Message:        "msg",
+				EventID:       "event_id",
+				Accepted:      true,
+				MessagePrefix: ServerOKMsgPrefixNoPrefix,
+				Message:       "msg",
 			},
 			Expect: Expect{
-				Json: []byte(`["OK","sub_id",true,"msg"]`),
+				Json: []byte(`["OK","event_id",true,"msg"]`),
 				Err:  nil,
 			},
 		},
 		{
 			Name: "ok: server ok message with prefix",
 			Input: &ServerOKMsg{
-				SubscriptionID: "sub_id",
-				Accepted:       false,
-				MessagePrefix:  ServerOkMsgPrefixError,
-				Message:        "msg",
+				EventID:       "event_id",
+				Accepted:      false,
+				MessagePrefix: ServerOkMsgPrefixError,
+				Message:       "msg",
 			},
 			Expect: Expect{
-				Json: []byte(`["OK","sub_id",false,"error: msg"]`),
+				Json: []byte(`["OK","event_id",false,"error: msg"]`),
 				Err:  nil,
 			},
 		},
@@ -467,10 +467,10 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		Message: "msg",
 	}
 	var ok ServerMsg = &ServerOKMsg{
-		SubscriptionID: "sub_id",
-		Accepted:       false,
-		MessagePrefix:  ServerOkMsgPrefixError,
-		Message:        "msg",
+		EventID:       "event_id",
+		Accepted:      false,
+		MessagePrefix: ServerOkMsgPrefixError,
+		Message:       "msg",
 	}
 
 	// TODO(high-moctane) use auth event
@@ -564,10 +564,10 @@ func BenchmarkServerMsg_Marshal_Notice(b *testing.B) {
 
 func BenchmarkServerMsg_Marshal_OK(b *testing.B) {
 	var ok ServerMsg = &ServerOKMsg{
-		SubscriptionID: "sub_id",
-		Accepted:       false,
-		MessagePrefix:  ServerOkMsgPrefixError,
-		Message:        "msg",
+		EventID:       "event_id",
+		Accepted:      false,
+		MessagePrefix: ServerOkMsgPrefixError,
+		Message:       "msg",
 	}
 
 	b.ResetTimer()

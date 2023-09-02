@@ -74,7 +74,7 @@ func (relay *Relay) recv(ctx context.Context, connID string, msg nostr.ClientMsg
 		return relay.recvClientReqMsg(ctx, connID, m, msgCh)
 
 	case *nostr.ClientEventMsg:
-		return relay.recvClientEventMsg(ctx, connID, m)
+		return relay.recvClientEventMsg(ctx, connID, m, msgCh)
 
 	case *nostr.ClientCloseMsg:
 		return relay.recvClientCloseMsg(ctx, connID, m)
@@ -87,12 +87,14 @@ func (relay *Relay) recv(ctx context.Context, connID string, msg nostr.ClientMsg
 func (relay *Relay) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh chan nostr.ServerMsg) error {
 	sub := newSubscripter(connID, msg, msgCh)
 	relay.subs.Subscribe(sub)
+	msgCh <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
 
 	return nil
 }
 
-func (relay *Relay) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg) error {
+func (relay *Relay) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh chan nostr.ServerMsg) error {
 	relay.subs.Publish(msg.Event)
+	msgCh <- nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, "")
 
 	return nil
 }
