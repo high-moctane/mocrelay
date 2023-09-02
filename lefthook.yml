@@ -5,8 +5,7 @@ pre-push:
       run: make test
 
 pre-commit:
+  parallel: true
   commands:
-    fmt:
-      run: make fmt
     check:
       run: make check
