@@ -363,3 +363,30 @@ func TestEvent_VerifyID(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkEvent_Verify(b *testing.B) {
+	event := &Event{
+		ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+		Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+		CreatedAt: 1693157791,
+		Kind:      1,
+		Tags: []Tag{{
+			"e",
+			"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+			"",
+			"root",
+		}, {
+			"p",
+			"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+		},
+		},
+		Content: "powa",
+		Sig:     "695e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		event.Verify()
+	}
+}
