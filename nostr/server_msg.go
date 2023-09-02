@@ -57,17 +57,12 @@ type ServerEventMsg struct {
 	Event          *Event
 }
 
-var ErrServerEventMsgNilEvent = errors.New("server msg event must be non nil value")
-
-func NewServerEventMsg(subID string, event *Event) (*ServerEventMsg, error) {
-	if event == nil {
-		return nil, ErrServerEventMsgNilEvent
-	}
+func NewServerEventMsg(subID string, event *Event) *ServerEventMsg {
 	ret := &ServerEventMsg{
 		SubscriptionID: subID,
 		Event:          event,
 	}
-	return ret, nil
+	return ret
 }
 
 func (*ServerEventMsg) MsgType() ServerMsgType {

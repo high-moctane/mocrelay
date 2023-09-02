@@ -4,6 +4,7 @@ go 1.21.0
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
+	github.com/google/uuid v1.3.1
 	github.com/stretchr/testify v1.8.4
 )
 
