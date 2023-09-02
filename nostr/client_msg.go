@@ -26,7 +26,7 @@ type ClientMsg interface {
 	Raw() []byte
 }
 
-var clientMsgRegexp = regexp.MustCompile(`^\[\s*"(EVENT|REQ|CLOSE|AUTH|COUNT)"`)
+var clientMsgRegexp = regexp.MustCompile(`^\[\s*"(\w*)"`)
 
 func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 	defer func() {
@@ -64,8 +64,62 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 		return ParseClientCountMsg(b)
 
 	default:
-		panic("unreachable")
+		return ParseClientUnknownMsg(b)
 	}
+}
+
+var _ ClientMsg = (*ClientUnknownMsg)(nil)
+
+type ClientUnknownMsg struct {
+	MsgTypeStr string
+	Msg        []interface{}
+	raw        []byte
+}
+
+var ErrInvalidClientUnknownMsg = errors.New("invalid client message")
+
+func ParseClientUnknownMsg(b []byte) (msg *ClientUnknownMsg, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, ErrInvalidClientUnknownMsg)
+		}
+	}()
+
+	var arr []interface{}
+
+	if err = json.Unmarshal(b, &arr); err != nil {
+		return
+	}
+
+	if len(arr) < 1 {
+		err = fmt.Errorf("too short client message: len=%d", len(arr))
+		return
+	}
+
+	s, ok := arr[0].(string)
+	if !ok {
+		err = errors.New("message json array[0] must be a string")
+		return
+	}
+
+	msg = &ClientUnknownMsg{
+		MsgTypeStr: s,
+		Msg:        arr,
+		raw:        b,
+	}
+
+	return
+}
+
+func (msg *ClientUnknownMsg) MsgType() ClientMsgType {
+	return ClientMsgTypeUnknown
+}
+
+func (msg *ClientUnknownMsg) Raw() []byte {
+	if msg == nil {
+		return nil
+	}
+	return msg.raw
 }
 
 var _ ClientMsg = (*ClientEventMsg)(nil)

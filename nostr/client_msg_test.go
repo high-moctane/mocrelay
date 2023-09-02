@@ -36,11 +36,11 @@ func TestParseClientMsg(t *testing.T) {
 			},
 		},
 		{
-			Name:  "ng: not a client message",
-			Input: []byte(`["INVALID","value"]`),
+			Name:  "ok: unknown client message",
+			Input: []byte(`["POWA","value"]`),
 			Expect: Expect{
 				MsgType: ClientMsgTypeUnknown,
-				Err:     ErrInvalidClientMsg,
+				Err:     nil,
 			},
 		},
 		{
@@ -125,6 +125,61 @@ func TestParseClientMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.MsgType, msg.MsgType())
+			assert.Equal(t, tt.Input, msg.Raw())
+		})
+	}
+}
+
+func TestParseClientUnknownMsg(t *testing.T) {
+	type Expect struct {
+		Msg *ClientUnknownMsg
+		Err error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  []byte
+		Expect Expect
+	}{
+		{
+			Name:  "ok: json array",
+			Input: []byte(`["POWA","meu",{"moyasu":29}]`),
+			Expect: Expect{
+				Msg: &ClientUnknownMsg{
+					MsgTypeStr: "POWA",
+					Msg: []interface{}{
+						"POWA",
+						"meu",
+						map[string]interface{}{
+							"moyasu": float64(29),
+						},
+					},
+				},
+				Err: nil,
+			},
+		},
+		{
+			Name:  "ng: not a json array",
+			Input: []byte(`{"moyasu":29}`),
+			Expect: Expect{
+				Msg: nil,
+				Err: ErrInvalidClientUnknownMsg,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			msg, err := ParseClientUnknownMsg(tt.Input)
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			if msg == nil {
+				t.Errorf("expected non-nil msg but got nil")
+				return
+			}
+			assert.EqualExportedValues(t, *tt.Expect.Msg, *msg)
 			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
