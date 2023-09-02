@@ -2,14 +2,20 @@ package nostr
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"regexp"
+
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
 type Event struct {
 	ID        string `json:"id"`
 	Pubkey    string `json:"pubkey"`
-	CreatedAt int64  `json:"created_at"`
+	CreatedAt uint64 `json:"created_at"`
 	Kind      int64  `json:"kind"`
 	Tags      []Tag  `json:"tags"`
 	Content   string `json:"content"`
@@ -18,7 +24,10 @@ type Event struct {
 	raw []byte
 }
 
-var ErrInvalidEvent = errors.New("invalid event")
+var (
+	ErrInvalidEvent = errors.New("invalid event")
+	ErrNilEvent     = errors.New("nil event")
+)
 
 func ParseEvent(b []byte) (ev *Event, err error) {
 	defer func() {
@@ -137,4 +146,110 @@ func (ev *Event) MarshalJSON() ([]byte, error) {
 	}
 }
 
+var hexRegexp = regexp.MustCompile(`^[0-9a-f]$`)
+
+func (ev *Event) Valid() bool {
+	if ev == nil {
+		return false
+	}
+	if len(ev.ID) != 32 || !hexRegexp.Match([]byte(ev.ID)) {
+		return false
+	}
+	if len(ev.Pubkey) != 32 || !hexRegexp.Match([]byte(ev.Pubkey)) {
+		return false
+	}
+	if ev.Kind < 0 || 65535 < ev.Kind {
+		return false
+	}
+	if len(ev.Sig) != 64 || !hexRegexp.Match([]byte(ev.Sig)) {
+		return false
+	}
+	return true
+}
+
+var ErrEventSerialize = errors.New("failed to serialize event")
+
+func (ev *Event) Serialize() ([]byte, error) {
+	if ev == nil {
+		return nil, fmt.Errorf("empty event: %w", ErrEventSerialize)
+	}
+
+	v := [6]interface{}{
+		0,
+		ev.Pubkey,
+		ev.CreatedAt,
+		ev.Kind,
+		ev.Tags,
+		ev.Content,
+	}
+
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		err = errors.Join(err, ErrEventSerialize)
+	}
+	return ret, err
+}
+
+func (ev *Event) Verify() (bool, error) {
+	if ev == nil {
+		return false, ErrNilEvent
+	}
+
+	// Verify ID
+	serialized, err := ev.Serialize()
+	if err != nil {
+		return false, err
+	}
+
+	idBin, err := hex.DecodeString(ev.ID)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode id: %w", err)
+	}
+
+	hash := sha256.Sum256(serialized)
+
+	if !bytes.Equal(idBin, hash[:]) {
+		return false, nil
+	}
+
+	// Verify Sig
+	pubkeyBin, err := hex.DecodeString(ev.Pubkey)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode pubkey: %w", err)
+	}
+
+	pubkey, err := schnorr.ParsePubKey(pubkeyBin)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse pubkey: %w", err)
+	}
+
+	sigBin, err := hex.DecodeString(ev.Sig)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode sig: %w", err)
+	}
+
+	sig, err := schnorr.ParseSignature(sigBin)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse sig: %w", err)
+	}
+
+	return sig.Verify(idBin, pubkey), nil
+}
+
 type Tag []string
+
+type EventInvalidIDError struct {
+	Correct, Actual string
+}
+
+func (e *EventInvalidIDError) Error() string {
+	return fmt.Sprintf("correct event id is %q but %q", e.Correct, e.Actual)
+}
+
+type EventInvalidSigError struct {
+	Correct, Actual string
+}
+
+func (e *EventInvalidSigError) Error() string {
+	return fmt.Sprintf("correct event sig is %q but %q", e.Correct, e.Actual)
+}
