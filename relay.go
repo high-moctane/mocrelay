@@ -12,100 +12,100 @@ import (
 	"github.com/high-moctane/mocrelay/nostr"
 )
 
-const relayDefaultMsgChLen = 10
+const routerDefaultMsgChLen = 10
 
-var ErrRelayStop = errors.New("relay stopped")
+var ErrRouterStop = errors.New("router stopped")
 
-type RelayOption struct {
+type RouterOption struct {
 	// TODO(high-moctane) Add logger
 }
 
-type Relay struct {
-	Option *RelayOption
+type Router struct {
+	Option *RouterOption
 
 	subs *subscribers
 }
 
-func NewRelay(option *RelayOption) *Relay {
-	return &Relay{
+func NewRouter(option *RouterOption) *Router {
+	return &Router{
 		Option: option,
 		subs:   newSubscribers(),
 	}
 }
 
-func (relay *Relay) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+func (router *Router) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
 	ctx, cancel := context.WithCancel(r.Context())
 
 	connID := uuid.NewString()
-	defer relay.subs.UnsubscribeAll(connID)
+	defer router.subs.UnsubscribeAll(connID)
 
-	msgCh := make(chan nostr.ServerMsg, relayDefaultMsgChLen)
+	msgCh := make(chan nostr.ServerMsg, routerDefaultMsgChLen)
 
 	errCh := make(chan error, 2)
 
 	go func() {
 		defer cancel()
-		errCh <- relay.serveRecv(ctx, connID, recv, msgCh)
+		errCh <- router.serveRecv(ctx, connID, recv, msgCh)
 	}()
 
 	go func() {
 		defer cancel()
-		errCh <- relay.serveSend(ctx, connID, send, msgCh)
+		errCh <- router.serveSend(ctx, connID, send, msgCh)
 	}()
 
-	return errors.Join(<-errCh, <-errCh, ErrRelayStop)
+	return errors.Join(<-errCh, <-errCh, ErrRouterStop)
 }
 
-func (relay *Relay) serveRecv(ctx context.Context, connID string, recv <-chan nostr.ClientMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan nostr.ClientMsg, msgCh chan nostr.ServerMsg) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
 		case msg := <-recv:
-			return relay.recv(ctx, connID, msg, msgCh)
+			return router.recv(ctx, connID, msg, msgCh)
 		}
 	}
 }
 
-func (relay *Relay) recv(ctx context.Context, connID string, msg nostr.ClientMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientMsg, msgCh chan nostr.ServerMsg) error {
 	switch m := msg.(type) {
 	case *nostr.ClientReqMsg:
-		return relay.recvClientReqMsg(ctx, connID, m, msgCh)
+		return router.recvClientReqMsg(ctx, connID, m, msgCh)
 
 	case *nostr.ClientEventMsg:
-		return relay.recvClientEventMsg(ctx, connID, m, msgCh)
+		return router.recvClientEventMsg(ctx, connID, m, msgCh)
 
 	case *nostr.ClientCloseMsg:
-		return relay.recvClientCloseMsg(ctx, connID, m)
+		return router.recvClientCloseMsg(ctx, connID, m)
 
 	default:
 		return nil
 	}
 }
 
-func (relay *Relay) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh chan nostr.ServerMsg) error {
 	sub := newSubscriber(connID, msg, msgCh)
-	relay.subs.Subscribe(sub)
+	router.subs.Subscribe(sub)
 	msgCh <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
 
 	return nil
 }
 
-func (relay *Relay) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh chan nostr.ServerMsg) error {
-	relay.subs.Publish(msg.Event)
+func (router *Router) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh chan nostr.ServerMsg) error {
+	router.subs.Publish(msg.Event)
 	msgCh <- nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, "")
 
 	return nil
 }
 
-func (relay *Relay) recvClientCloseMsg(ctx context.Context, connID string, msg *nostr.ClientCloseMsg) error {
-	relay.subs.Unsubscribe(connID, msg.SubscriptionID)
+func (router *Router) recvClientCloseMsg(ctx context.Context, connID string, msg *nostr.ClientCloseMsg) error {
+	router.subs.Unsubscribe(connID, msg.SubscriptionID)
 
 	return nil
 }
 
-func (relay *Relay) serveSend(ctx context.Context, connID string, send chan<- nostr.ServerMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) serveSend(ctx context.Context, connID string, send chan<- nostr.ServerMsg, msgCh chan nostr.ServerMsg) error {
 	for {
 		select {
 		case <-ctx.Done():
