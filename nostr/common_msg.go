@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -234,6 +235,13 @@ func (ev *Event) Verify() (bool, error) {
 	}
 
 	return sig.Verify(idBin, pubkey), nil
+}
+
+func (ev *Event) CreatedAtTime() time.Time {
+	if ev == nil {
+		return time.Unix(0, 0)
+	}
+	return time.Unix(ev.CreatedAt, 0)
 }
 
 type Tag []string

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/high-moctane/mocrelay/nostr"
@@ -237,5 +238,37 @@ func (subs *subscribers) Publish(event *nostr.Event) {
 		for _, sub := range m {
 			sub.TrySendIfMatch(event)
 		}
+	}
+}
+
+type EventCreatedAtFilterMiddleware func(next Handler) Handler
+
+func NewEventCreatedAtFilterMiddleware(before, after time.Duration) EventCreatedAtFilterMiddleware {
+	return func(next Handler) Handler {
+		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+			ctx := r.Context()
+
+			ch := make(chan nostr.ClientMsg, 1)
+
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+
+					case msg := <-recv:
+						if m, ok := msg.(*nostr.ClientEventMsg); ok {
+							t := m.Event.CreatedAtTime()
+							if time.Now().Sub(t) > before || t.Sub(time.Now()) > after {
+								continue
+							}
+						}
+						ch <- msg
+					}
+				}
+			}()
+
+			return next.Handle(r, ch, send)
+		})
 	}
 }
