@@ -226,7 +226,7 @@ func (subs *subscribers) Publish(event *nostr.Event) {
 
 type EventCreatedAtFilterMiddleware func(next Handler) Handler
 
-func NewEventCreatedAtFilterMiddleware(before, after time.Duration) EventCreatedAtFilterMiddleware {
+func NewEventCreatedAtFilterMiddleware(from, to time.Duration) EventCreatedAtFilterMiddleware {
 	return func(next Handler) Handler {
 		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
 			ctx := r.Context()
@@ -243,7 +243,7 @@ func NewEventCreatedAtFilterMiddleware(before, after time.Duration) EventCreated
 						if m, ok := msg.(*nostr.ClientEventMsg); ok {
 							t := m.Event.CreatedAtTime()
 							now := time.Now()
-							if now.Sub(t) > before || t.Sub(now) > after {
+							if t.Sub(now) < from || to < t.Sub(now) {
 								continue
 							}
 						}
