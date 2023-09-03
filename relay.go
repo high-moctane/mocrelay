@@ -285,13 +285,16 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 								continue
 							}
 
-							if len(ids) >= buflen && len(ids) > 0 {
-								old := ids[0]
-								delete(seen, old)
-								ids = ids[1:]
+							if len(ids) >= buflen {
+								if len(ids) > 0 {
+									old := ids[0]
+									delete(seen, old)
+									ids = ids[1:]
+								}
+							} else {
+								ids = append(ids, m.Event.ID)
+								seen[m.Event.ID] = true
 							}
-							ids = append(ids, m.Event.ID)
-							seen[m.Event.ID] = true
 						}
 						ch <- msg
 					}
@@ -310,8 +313,10 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 		panic(fmt.Sprintf("SendEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen))
 	}
 
-	var ids []string
+	var keys []string
 	seen := make(map[string]bool)
+
+	key := func(subID, eventID string) string { return subID + ":" + eventID }
 
 	return func(handler Handler) Handler {
 		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
@@ -327,17 +332,22 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 
 					case msg := <-ch:
 						if m, ok := msg.(*nostr.ServerEventMsg); ok {
-							if seen[m.Event.ID] {
+							k := key(m.SubscriptionID, m.Event.ID)
+
+							if seen[k] {
 								continue
 							}
 
-							if len(ids) >= buflen && len(ids) > 0 {
-								old := ids[0]
-								delete(seen, old)
-								ids = ids[1:]
+							if len(keys) >= buflen {
+								if len(keys) > 0 {
+									old := keys[0]
+									delete(seen, old)
+									keys = keys[1:]
+								}
+							} else {
+								keys = append(keys, k)
+								seen[k] = true
 							}
-							ids = append(ids, m.Event.ID)
-							seen[m.Event.ID] = true
 						}
 						send <- msg
 					}
