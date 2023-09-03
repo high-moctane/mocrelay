@@ -242,7 +242,8 @@ func NewEventCreatedAtFilterMiddleware(before, after time.Duration) EventCreated
 					case msg := <-recv:
 						if m, ok := msg.(*nostr.ClientEventMsg); ok {
 							t := m.Event.CreatedAtTime()
-							if time.Now().Sub(t) > before || t.Sub(time.Now()) > after {
+							now := time.Now()
+							if now.Sub(t) > before || t.Sub(now) > after {
 								continue
 							}
 						}
