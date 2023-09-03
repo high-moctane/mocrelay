@@ -3,6 +3,7 @@ package mocrelay
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -251,6 +252,98 @@ func NewEventCreatedAtFilterMiddleware(before, after time.Duration) EventCreated
 			}()
 
 			return next.Handle(r, ch, send)
+		})
+	}
+}
+
+type RecvEventUniquefyMiddleware func(Handler) Handler
+
+func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
+	if buflen < 0 {
+		panic(fmt.Sprintf("RecvEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen))
+	}
+
+	var ids []string
+	seen := make(map[string]bool)
+
+	return func(handler Handler) Handler {
+		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+			ctx := r.Context()
+
+			ch := make(chan nostr.ClientMsg, 1)
+
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+
+					case msg := <-recv:
+						if m, ok := msg.(*nostr.ClientEventMsg); ok {
+							if seen[m.Event.ID] {
+								continue
+							}
+
+							if len(ids) >= buflen && len(ids) > 0 {
+								old := ids[0]
+								delete(seen, old)
+								ids = ids[1:]
+							}
+							ids = append(ids, m.Event.ID)
+							seen[m.Event.ID] = true
+						}
+						ch <- msg
+					}
+				}
+			}()
+
+			return handler.Handle(r, ch, send)
+		})
+	}
+}
+
+type SendEventUniquefyMiddleware func(Handler) Handler
+
+func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
+	if buflen < 0 {
+		panic(fmt.Sprintf("SendEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen))
+	}
+
+	var ids []string
+	seen := make(map[string]bool)
+
+	return func(handler Handler) Handler {
+		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+			ctx := r.Context()
+
+			ch := make(chan nostr.ServerMsg, 1)
+
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+
+					case msg := <-ch:
+						if m, ok := msg.(*nostr.ServerEventMsg); ok {
+							if seen[m.Event.ID] {
+								continue
+							}
+
+							if len(ids) >= buflen && len(ids) > 0 {
+								old := ids[0]
+								delete(seen, old)
+								ids = ids[1:]
+							}
+							ids = append(ids, m.Event.ID)
+							seen[m.Event.ID] = true
+						}
+						send <- msg
+					}
+				}
+			}()
+
+			return handler.Handle(r, recv, ch)
 		})
 	}
 }
