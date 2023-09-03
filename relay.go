@@ -62,46 +62,37 @@ func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan 
 			return ctx.Err()
 
 		case msg := <-recv:
-			return router.recv(ctx, connID, msg, msgCh)
+			router.recv(ctx, connID, msg, msgCh)
 		}
 	}
 }
 
-func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientMsg, msgCh chan nostr.ServerMsg) {
 	switch m := msg.(type) {
 	case *nostr.ClientReqMsg:
-		return router.recvClientReqMsg(ctx, connID, m, msgCh)
+		router.recvClientReqMsg(ctx, connID, m, msgCh)
 
 	case *nostr.ClientEventMsg:
-		return router.recvClientEventMsg(ctx, connID, m, msgCh)
+		router.recvClientEventMsg(ctx, connID, m, msgCh)
 
 	case *nostr.ClientCloseMsg:
-		return router.recvClientCloseMsg(ctx, connID, m)
-
-	default:
-		return nil
+		router.recvClientCloseMsg(ctx, connID, m)
 	}
 }
 
-func (router *Router) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh chan nostr.ServerMsg) {
 	sub := newSubscriber(connID, msg, msgCh)
 	router.subs.Subscribe(sub)
 	msgCh <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
-
-	return nil
 }
 
-func (router *Router) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh chan nostr.ServerMsg) {
 	router.subs.Publish(msg.Event)
 	msgCh <- nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, "")
-
-	return nil
 }
 
-func (router *Router) recvClientCloseMsg(ctx context.Context, connID string, msg *nostr.ClientCloseMsg) error {
+func (router *Router) recvClientCloseMsg(ctx context.Context, connID string, msg *nostr.ClientCloseMsg) {
 	router.subs.Unsubscribe(connID, msg.SubscriptionID)
-
-	return nil
 }
 
 func (router *Router) serveSend(ctx context.Context, connID string, send chan<- nostr.ServerMsg, msgCh chan nostr.ServerMsg) error {
