@@ -131,7 +131,7 @@ func (sub *subscriber) SendIfMatch(event *nostr.Event) {
 
 func newMatchFunc(filters nostr.Filters) func(*nostr.Event) bool {
 	return func(event *nostr.Event) bool {
-		for _, f := range filters {
+		return slices.ContainsFunc(filters, func(f *nostr.Filter) bool {
 			match := true
 
 			if f.IDs != nil {
@@ -170,12 +170,8 @@ func newMatchFunc(filters nostr.Filters) func(*nostr.Event) bool {
 				match = match && event.CreatedAt <= *f.Until
 			}
 
-			if match {
-				return true
-			}
-		}
-
-		return false
+			return match
+		})
 	}
 }
 
