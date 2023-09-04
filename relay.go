@@ -14,7 +14,10 @@ import (
 	"github.com/high-moctane/mocrelay/nostr"
 )
 
-var ErrRouterStop = errors.New("router stopped")
+var (
+	ErrRouterStop = errors.New("router stopped")
+	ErrRecvClosed = errors.New("recv client msg channel has been closed")
+)
 
 type RouterOption struct {
 	// TODO(high-moctane) Add logger
@@ -62,7 +65,10 @@ func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan 
 		case <-ctx.Done():
 			return ctx.Err()
 
-		case msg := <-recv:
+		case msg, ok := <-recv:
+			if !ok {
+				return ErrRecvClosed
+			}
 			router.recv(ctx, connID, msg, msgCh)
 		}
 	}
@@ -234,12 +240,17 @@ func NewEventCreatedAtFilterMiddleware(from, to time.Duration) EventCreatedAtFil
 			ch := make(chan nostr.ClientMsg, 1)
 
 			go func() {
+				defer close(ch)
+
 				for {
 					select {
 					case <-ctx.Done():
 						return
 
-					case msg := <-recv:
+					case msg, ok := <-recv:
+						if !ok {
+							return
+						}
 						if m, ok := msg.(*nostr.ClientEventMsg); ok {
 							t := m.Event.CreatedAtTime()
 							now := time.Now()
@@ -274,12 +285,17 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 			ch := make(chan nostr.ClientMsg, 1)
 
 			go func() {
+				defer close(ch)
+
 				for {
 					select {
 					case <-ctx.Done():
 						return
 
-					case msg := <-recv:
+					case msg, ok := <-recv:
+						if !ok {
+							return
+						}
 						if m, ok := msg.(*nostr.ClientEventMsg); ok {
 							if seen[m.Event.ID] {
 								continue
@@ -323,6 +339,7 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 			ctx := r.Context()
 
 			ch := make(chan nostr.ServerMsg, 1)
+			defer close(ch)
 
 			go func() {
 				for {
@@ -330,7 +347,10 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 					case <-ctx.Done():
 						return
 
-					case msg := <-ch:
+					case msg, ok := <-ch:
+						if !ok {
+							return
+						}
 						if m, ok := msg.(*nostr.ServerEventMsg); ok {
 							k := key(m.SubscriptionID, m.Event.ID)
 

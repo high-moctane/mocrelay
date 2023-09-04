@@ -15,7 +15,10 @@ import (
 	"github.com/high-moctane/mocrelay/nostr"
 )
 
-var ErrRelayStop = errors.New("relay stopped")
+var (
+	ErrRelayStop  = errors.New("relay stopped")
+	ErrSendClosed = errors.New("send server msg channel has been closed")
+)
 
 type Relay struct {
 	Handler Handler
@@ -41,11 +44,13 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	send := make(chan nostr.ServerMsg, 1)
 
 	go func() {
+		defer close(recv)
 		err := relay.serveRead(ctx, conn, recv)
 		errs <- fmt.Errorf("serveRead terminated: %w", err)
 	}()
 
 	go func() {
+		defer close(send)
 		err := relay.serveWrite(ctx, conn, send)
 		errs <- fmt.Errorf("serveWrite terminated: %w", err)
 	}()
@@ -55,7 +60,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errs <- fmt.Errorf("handle terminated: %w", err)
 	}()
 
-	err = errors.Join(<-errs, <-errs, ErrRelayStop)
+	err = errors.Join(<-errs, <-errs, <-errs, ErrRelayStop)
 	log.Println(err)
 }
 
@@ -93,7 +98,10 @@ func (relay *Relay) serveWrite(ctx context.Context, conn net.Conn, send <-chan n
 				return fmt.Errorf("failed to send ping: %w", err)
 			}
 
-		case msg := <-send:
+		case msg, ok := <-send:
+			if !ok {
+				return ErrSendClosed
+			}
 			jsonMsg, err := json.Marshal(msg)
 			if err != nil {
 				return fmt.Errorf("failed to marshal server msg: %w", err)
