@@ -16,8 +16,7 @@ import (
 )
 
 var (
-	ErrRelayStop  = errors.New("relay stopped")
-	ErrSendClosed = errors.New("send server msg channel has been closed")
+	ErrRelayStop = errors.New("relay stopped")
 )
 
 type Relay struct {
