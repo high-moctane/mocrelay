@@ -34,7 +34,7 @@ func (rb *ringBuffer[T]) Enqueue(v T) {
 	rb.tail++
 }
 
-func (rb *ringBuffer[T]) Dequeue(v T) T {
+func (rb *ringBuffer[T]) Dequeue() T {
 	var empty T
 	old := rb.s[rb.head]
 	rb.s[rb.head] = empty
