@@ -148,48 +148,53 @@ func (sub *subscriber) SendIfMatch(event *nostr.Event) {
 	}
 }
 
+func filterMatch(f *nostr.Filter, event *nostr.Event) (match bool) {
+	match = true
+
+	if f.IDs != nil {
+		match = match && slices.ContainsFunc(*f.IDs, func(id string) bool {
+			return strings.HasPrefix(event.ID, id)
+		})
+	}
+
+	if f.Kinds != nil {
+		match = match && slices.ContainsFunc(*f.Kinds, func(kind int64) bool {
+			return event.Kind == kind
+		})
+	}
+
+	if f.Authors != nil {
+		match = match && slices.ContainsFunc(*f.Authors, func(author string) bool {
+			return strings.HasPrefix(event.Pubkey, author)
+		})
+	}
+
+	if f.Tags != nil {
+		for tag, vs := range *f.Tags {
+			match = match && slices.ContainsFunc(vs, func(v string) bool {
+				return slices.ContainsFunc(event.Tags, func(tagArr nostr.Tag) bool {
+					return len(tagArr) >= 1 && tagArr[0] == string(tag[1]) && (len(tagArr) == 1 || strings.HasPrefix(tagArr[1], v))
+				})
+			})
+		}
+	}
+
+	if f.Since != nil {
+		match = match && *f.Since <= event.CreatedAt
+	}
+
+	if f.Until != nil {
+		match = match && event.CreatedAt <= *f.Until
+	}
+
+	return match
+
+}
+
 func newMatchFunc(filters nostr.Filters) func(*nostr.Event) bool {
 	return func(event *nostr.Event) bool {
 		return slices.ContainsFunc(filters, func(f *nostr.Filter) bool {
-			match := true
-
-			if f.IDs != nil {
-				match = match && slices.ContainsFunc(*f.IDs, func(id string) bool {
-					return strings.HasPrefix(event.ID, id)
-				})
-			}
-
-			if f.Kinds != nil {
-				match = match && slices.ContainsFunc(*f.Kinds, func(kind int64) bool {
-					return event.Kind == kind
-				})
-			}
-
-			if f.Authors != nil {
-				match = match && slices.ContainsFunc(*f.Authors, func(author string) bool {
-					return strings.HasPrefix(event.Pubkey, author)
-				})
-			}
-
-			if f.Tags != nil {
-				for tag, vs := range *f.Tags {
-					match = match && slices.ContainsFunc(vs, func(v string) bool {
-						return slices.ContainsFunc(event.Tags, func(tagArr nostr.Tag) bool {
-							return len(tagArr) >= 1 && tagArr[0] == string(tag[1]) && (len(tagArr) == 1 || strings.HasPrefix(tagArr[1], v))
-						})
-					})
-				}
-			}
-
-			if f.Since != nil {
-				match = match && *f.Since <= event.CreatedAt
-			}
-
-			if f.Until != nil {
-				match = match && event.CreatedAt <= *f.Until
-			}
-
-			return match
+			return filterMatch(f, event)
 		})
 	}
 }
@@ -240,6 +245,53 @@ func (subs *subscribers) Publish(event *nostr.Event) {
 			sub.SendIfMatch(event)
 		}
 	}
+}
+
+type CacheHandler struct{}
+
+func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+	return nil
+}
+
+type eventCache struct {
+	mu   sync.RWMutex
+	rb   *ringBuffer[*nostr.Event]
+	seen map[string]bool
+}
+
+func newEventCache(capacity int) *eventCache {
+	return &eventCache{
+		rb:   newRingBuffer[*nostr.Event](capacity),
+		seen: make(map[string]bool),
+	}
+}
+
+func (c *eventCache) Add(event *nostr.Event) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.seen[event.ID] {
+		return
+	}
+	c.seen[event.ID] = true
+
+	if c.rb.Len() == c.rb.Cap {
+		old := c.rb.Dequeue()
+		delete(c.seen, old.ID)
+	}
+
+	c.rb.Enqueue(event)
+}
+
+func (c *eventCache) Delete(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.seen, id)
+}
+
+func (c *eventCache) Find(filters *nostr.Filters) []*nostr.Event {
+	panic("unimplemented")
 }
 
 type EventCreatedAtFilterMiddleware func(next Handler) Handler
