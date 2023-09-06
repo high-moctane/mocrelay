@@ -199,6 +199,42 @@ func newMatchFunc(filters nostr.Filters) func(*nostr.Event) bool {
 	}
 }
 
+func newMatchCountFunc(filters nostr.Filters) func(*nostr.Event) (match bool, done bool) {
+	limited := false
+	counter := make([]int64, len(filters))
+	for i := 0; i < len(filters); i++ {
+		if l := filters[i].Limit; l == nil {
+			counter[i] = -1
+		} else {
+			counter[i] = *l
+			limited = true
+		}
+	}
+	d := false
+
+	return func(event *nostr.Event) (match bool, done bool) {
+		if d {
+			done = true
+			return
+		}
+
+		done = true
+		for i := 0; i < len(filters); i++ {
+			m := filterMatch(filters[i], event)
+			if m {
+				counter[i]--
+			}
+
+			done = done && limited && counter[i] < 0
+			match = !done && (match || m)
+		}
+
+		d = done
+
+		return
+	}
+}
+
 type subscribers struct {
 	mu sync.RWMutex
 
