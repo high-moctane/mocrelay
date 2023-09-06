@@ -2,18 +2,18 @@ package mocrelay
 
 import "fmt"
 
-type RingBuffer[T any] struct {
+type ringBuffer[T any] struct {
 	Cap int
 
 	s          []T
 	head, tail int
 }
 
-func NewRingBuffer[T any](capacity int) *RingBuffer[T] {
+func newRingBuffer[T any](capacity int) *ringBuffer[T] {
 	if capacity <= 0 {
 		panic(fmt.Sprintf("capacity must be positive but got %d", capacity))
 	}
-	return &RingBuffer[T]{
+	return &ringBuffer[T]{
 		Cap:  capacity,
 		s:    make([]T, capacity),
 		head: 0,
@@ -21,20 +21,20 @@ func NewRingBuffer[T any](capacity int) *RingBuffer[T] {
 	}
 }
 
-func (rb *RingBuffer[T]) mod(a int) int {
+func (rb *ringBuffer[T]) mod(a int) int {
 	return a % rb.Cap
 }
 
-func (rb *RingBuffer[T]) Len() int {
+func (rb *ringBuffer[T]) Len() int {
 	return rb.tail - rb.head
 }
 
-func (rb *RingBuffer[T]) Enqueue(v T) {
+func (rb *ringBuffer[T]) Enqueue(v T) {
 	rb.s[rb.tail] = v
 	rb.tail++
 }
 
-func (rb *RingBuffer[T]) Dequeue(v T) T {
+func (rb *ringBuffer[T]) Dequeue(v T) T {
 	var empty T
 	old := rb.s[rb.head]
 	rb.s[rb.head] = empty
@@ -42,7 +42,7 @@ func (rb *RingBuffer[T]) Dequeue(v T) T {
 	return old
 }
 
-func (rb *RingBuffer[T]) Do(f func(v T) (done bool)) {
+func (rb *ringBuffer[T]) Do(f func(v T) (done bool)) {
 	for i := rb.head; i < rb.tail; i++ {
 		idx := rb.mod(i)
 
