@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/high-moctane/mocrelay/nostr"
 )
 
@@ -290,15 +291,15 @@ func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 }
 
 type eventCache struct {
-	mu   sync.RWMutex
-	rb   *ringBuffer[*nostr.Event]
-	seen map[string]bool
+	mu    sync.RWMutex
+	rb    *ringBuffer[*nostr.Event]
+	alive map[string]bool
 }
 
 func newEventCache(capacity int) *eventCache {
 	return &eventCache{
-		rb:   newRingBuffer[*nostr.Event](capacity),
-		seen: make(map[string]bool),
+		rb:    newRingBuffer[*nostr.Event](capacity),
+		alive: make(map[string]bool),
 	}
 }
 
@@ -306,28 +307,55 @@ func (c *eventCache) Add(event *nostr.Event) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.seen[event.ID] {
+	if c.alive[event.ID] {
 		return
 	}
-	c.seen[event.ID] = true
+	c.alive[event.ID] = true
 
 	if c.rb.Len() == c.rb.Cap {
 		old := c.rb.Dequeue()
-		delete(c.seen, old.ID)
+		delete(c.alive, old.ID)
 	}
-
 	c.rb.Enqueue(event)
+
+	for i := 0; i+1 < c.rb.Len(); i++ {
+		if c.rb.At(i).CreatedAt < c.rb.At(i+1).CreatedAt {
+			c.rb.Swap(i, i+1)
+		}
+	}
 }
 
 func (c *eventCache) Delete(id string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	delete(c.seen, id)
+	delete(c.alive, id)
 }
 
-func (c *eventCache) Find(filters *nostr.Filters) []*nostr.Event {
-	panic("unimplemented")
+func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
+	var ret []*nostr.Event
+	cmatch := newMatchCountFunc(filters)
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	for i := 0; i < c.rb.Len(); i++ {
+		ev := c.rb.At(i)
+
+		if !c.alive[ev.ID] {
+			continue
+		}
+
+		match, done := cmatch(ev)
+		if done {
+			break
+		}
+		if match {
+			ret = append(ret, ev)
+		}
+	}
+
+	return ret
 }
 
 type EventCreatedAtFilterMiddleware func(next Handler) Handler

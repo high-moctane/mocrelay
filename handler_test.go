@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/high-moctane/mocrelay/nostr"
 	"github.com/high-moctane/mocrelay/utils"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestRouter_Handle(t *testing.T) {
