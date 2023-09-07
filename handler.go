@@ -291,30 +291,106 @@ func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 }
 
 type eventCache struct {
-	mu    sync.RWMutex
-	rb    *ringBuffer[*nostr.Event]
-	alive map[string]bool
+	mu   sync.RWMutex
+	rb   *ringBuffer[*nostr.Event]
+	ids  map[string]*nostr.Event
+	keys map[string]*nostr.Event
 }
 
 func newEventCache(capacity int) *eventCache {
 	return &eventCache{
-		rb:    newRingBuffer[*nostr.Event](capacity),
-		alive: make(map[string]bool),
+		rb:   newRingBuffer[*nostr.Event](capacity),
+		ids:  make(map[string]*nostr.Event),
+		keys: make(map[string]*nostr.Event),
 	}
+}
+
+func (*eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
+	regular := func() (string, bool) { return event.ID, true }
+	replaceable := func() (string, bool) {
+		return fmt.Sprintf("%s:%d", event.Pubkey, event.Kind), true
+	}
+	ephemeral := func() (string, bool) { return "", false }
+	parameterized := func() (string, bool) {
+		idx := slices.IndexFunc(event.Tags, func(t nostr.Tag) bool {
+			return len(t) >= 1 && t[0] == "d"
+		})
+		if idx < 0 {
+			return "", false
+		}
+
+		d := ""
+		if len(event.Tags[idx]) > 1 {
+			d = event.Tags[idx][1]
+		}
+
+		return fmt.Sprintf("%s:%d:%s", event.Pubkey, event.Kind, d), true
+	}
+
+	if kind := event.Kind; kind == 0 {
+		return replaceable()
+	} else if kind == 1 {
+		return regular()
+	} else if kind == 2 {
+		return regular()
+	} else if kind == 3 {
+		return replaceable()
+	} else if kind == 4 {
+		return regular()
+	} else if kind == 5 {
+		return regular()
+	} else if kind == 6 {
+		return regular()
+	} else if kind == 7 {
+		return regular()
+	} else if kind == 8 {
+		return regular()
+	} else if kind == 16 {
+		return regular()
+	} else if kind == 40 {
+		return regular()
+	} else if kind == 41 {
+		return regular()
+	} else if kind == 42 {
+		return regular()
+	} else if kind == 43 {
+		return regular()
+	} else if kind == 44 {
+		return regular()
+	} else if 1000 <= kind && kind < 10000 {
+		return regular()
+	} else if 10000 <= kind && kind < 20000 {
+		return replaceable()
+	} else if 20000 <= kind && kind < 30000 {
+		return ephemeral()
+	} else if 30000 <= kind && kind < 40000 {
+		return parameterized()
+	}
+
+	return regular()
 }
 
 func (c *eventCache) Add(event *nostr.Event) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.alive[event.ID] {
+	key, ok := c.eventKey(event)
+	if !ok {
 		return
 	}
-	c.alive[event.ID] = true
+
+	if c.ids[event.ID] != nil {
+		return
+	}
+	c.ids[event.ID] = event
+	c.keys[key] = event
 
 	if c.rb.Len() == c.rb.Cap {
 		old := c.rb.Dequeue()
-		delete(c.alive, old.ID)
+		if k, _ := c.eventKey(old); c.keys[k] == old {
+			delete(c.keys, k)
+		}
+		delete(c.ids, old.ID)
 	}
 	c.rb.Enqueue(event)
 
@@ -329,7 +405,15 @@ func (c *eventCache) Delete(id string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	delete(c.alive, id)
+	event := c.ids[id]
+	if event == nil {
+		return
+	}
+
+	if k, _ := c.eventKey(event); c.keys[k] == event {
+		delete(c.keys, k)
+	}
+	delete(c.ids, id)
 }
 
 func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
@@ -342,7 +426,10 @@ func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
 	for i := 0; i < c.rb.Len(); i++ {
 		ev := c.rb.At(i)
 
-		if !c.alive[ev.ID] {
+		if c.ids[ev.ID] == nil {
+			continue
+		}
+		if k, _ := c.eventKey(ev); c.keys[k] != ev {
 			continue
 		}
 
