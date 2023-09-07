@@ -374,12 +374,11 @@ func (c *eventCache) Add(event *nostr.Event) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	key, ok := c.eventKey(event)
-	if !ok {
+	if c.ids[event.ID] != nil {
 		return
 	}
-
-	if c.ids[event.ID] != nil {
+	key, ok := c.eventKey(event)
+	if !ok {
 		return
 	}
 	c.ids[event.ID] = event
