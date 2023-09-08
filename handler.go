@@ -284,10 +284,31 @@ func (subs *subscribers) Publish(event *nostr.Event) {
 	}
 }
 
-type CacheHandler struct{}
+type CacheHandler struct {
+	c *eventCache
+}
+
+var ErrCacheHandlerStop = errors.New("cache handler stopped")
+
+func NewCacheHandler(capacity int) *CacheHandler {
+	return &CacheHandler{
+		c: newEventCache(capacity),
+	}
+}
 
 func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
-	return nil
+	for msg := range recv {
+		switch m := msg.(type) {
+		case *nostr.ClientEventMsg:
+			h.c.Add(m.Event)
+
+		case *nostr.ClientReqMsg:
+			for _, e := range h.c.Find(m.Filters) {
+				send <- nostr.NewServerEventMsg(m.SubscriptionID, e)
+			}
+		}
+	}
+	return ErrCacheHandlerStop
 }
 
 type eventCache struct {
