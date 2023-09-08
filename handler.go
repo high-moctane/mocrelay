@@ -305,69 +305,39 @@ func newEventCache(capacity int) *eventCache {
 	}
 }
 
-func (*eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
-	regular := func() (string, bool) { return event.ID, true }
-	replaceable := func() (string, bool) {
-		return fmt.Sprintf("%s:%d", event.Pubkey, event.Kind), true
-	}
-	ephemeral := func() (string, bool) { return "", false }
-	parameterized := func() (string, bool) {
-		idx := slices.IndexFunc(event.Tags, func(t nostr.Tag) bool {
-			return len(t) >= 1 && t[0] == "d"
-		})
-		if idx < 0 {
-			return "", false
-		}
+func (*eventCache) eventKeyRegular(event *nostr.Event) string { return event.ID }
 
-		d := ""
-		if len(event.Tags[idx]) > 1 {
-			d = event.Tags[idx][1]
-		}
+func (*eventCache) eventKeyReplaceable(event *nostr.Event) string {
+	return fmt.Sprintf("%s:%d", event.Pubkey, event.Kind)
+}
 
-		return fmt.Sprintf("%s:%d:%s", event.Pubkey, event.Kind, d), true
+func (*eventCache) eventKeyParameterized(event *nostr.Event) string {
+	idx := slices.IndexFunc(event.Tags, func(t nostr.Tag) bool {
+		return len(t) >= 1 && t[0] == "d"
+	})
+	if idx < 0 {
+		return ""
 	}
 
-	if kind := event.Kind; kind == 0 {
-		return replaceable()
-	} else if kind == 1 {
-		return regular()
-	} else if kind == 2 {
-		return regular()
-	} else if kind == 3 {
-		return replaceable()
-	} else if kind == 4 {
-		return regular()
-	} else if kind == 5 {
-		return regular()
-	} else if kind == 6 {
-		return regular()
-	} else if kind == 7 {
-		return regular()
-	} else if kind == 8 {
-		return regular()
-	} else if kind == 16 {
-		return regular()
-	} else if kind == 40 {
-		return regular()
-	} else if kind == 41 {
-		return regular()
-	} else if kind == 42 {
-		return regular()
-	} else if kind == 43 {
-		return regular()
-	} else if kind == 44 {
-		return regular()
-	} else if 1000 <= kind && kind < 10000 {
-		return regular()
-	} else if 10000 <= kind && kind < 20000 {
-		return replaceable()
+	d := ""
+	if len(event.Tags[idx]) > 1 {
+		d = event.Tags[idx][1]
+	}
+
+	return fmt.Sprintf("%s:%d:%s", event.Pubkey, event.Kind, d)
+}
+
+func (c *eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
+	if kind := event.Kind; kind == 0 || kind == 3 || 10000 <= kind && kind < 20000 {
+		return c.eventKeyReplaceable(event), true
 	} else if 20000 <= kind && kind < 30000 {
-		return ephemeral()
+		return "", false
 	} else if 30000 <= kind && kind < 40000 {
-		return parameterized()
+		key := c.eventKeyParameterized(event)
+		return key, key != ""
 	}
 
-	return regular()
+	return c.eventKeyRegular(event), true
 }
 
 func (c *eventCache) Add(event *nostr.Event) {
