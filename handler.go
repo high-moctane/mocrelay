@@ -339,8 +339,8 @@ type eventCache struct {
 func newEventCache(capacity int) *eventCache {
 	return &eventCache{
 		rb:   newRingBuffer[*nostr.Event](capacity),
-		ids:  make(map[string]*nostr.Event),
-		keys: make(map[string]*nostr.Event),
+		ids:  make(map[string]*nostr.Event, capacity),
+		keys: make(map[string]*nostr.Event, capacity),
 	}
 }
 
