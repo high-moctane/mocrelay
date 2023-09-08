@@ -300,7 +300,11 @@ func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 	for msg := range recv {
 		switch m := msg.(type) {
 		case *nostr.ClientEventMsg:
-			h.c.Add(m.Event)
+			e := m.Event
+			if e.Kind == 5 {
+				h.kind5(e)
+			}
+			h.c.Add(e)
 
 		case *nostr.ClientReqMsg:
 			for _, e := range h.c.Find(m.Filters) {
@@ -309,6 +313,20 @@ func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 		}
 	}
 	return ErrCacheHandlerStop
+}
+
+func (h *CacheHandler) kind5(event *nostr.Event) {
+	for _, tag := range event.Tags {
+		if len(tag) < 2 {
+			continue
+		}
+		switch tag[0] {
+		case "e":
+			h.c.DeleteID(tag[1], event.Pubkey)
+		case "a":
+			h.c.DeleteNaddr(tag[1], event.Pubkey)
+		}
+	}
 }
 
 type eventCache struct {
@@ -391,12 +409,12 @@ func (c *eventCache) Add(event *nostr.Event) {
 	}
 }
 
-func (c *eventCache) Delete(id string) {
+func (c *eventCache) DeleteID(id, pubkey string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	event := c.ids[id]
-	if event == nil {
+	if event == nil || event.Pubkey != pubkey {
 		return
 	}
 
@@ -404,6 +422,18 @@ func (c *eventCache) Delete(id string) {
 		delete(c.keys, k)
 	}
 	delete(c.ids, id)
+}
+
+func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
+	c.mu.Lock()
+	defer c.mu.RUnlock()
+
+	event := c.keys[naddr]
+	if event == nil || event.Pubkey != pubkey {
+		return
+	}
+	delete(c.ids, event.ID)
+	delete(c.keys, naddr)
 }
 
 func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
