@@ -22,19 +22,19 @@ func TestMatchers(t *testing.T) {
 
 	m := NewMatchers(filters)
 
-	match := m.Match(event)
+	match := m.CountMatch(event)
 	assert.True(t, match)
 	assert.False(t, m.Done())
 
-	match = m.Match(event)
+	match = m.CountMatch(event)
 	assert.True(t, match)
 	assert.False(t, m.Done())
 
-	match = m.Match(event)
+	match = m.CountMatch(event)
 	assert.True(t, match)
 	assert.True(t, m.Done())
 
-	match = m.Match(event)
+	match = m.CountMatch(event)
 	assert.True(t, match)
 	assert.True(t, m.Done())
 }

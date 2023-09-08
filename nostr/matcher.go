@@ -6,8 +6,8 @@ import (
 )
 
 type Matcher struct {
-	Count int64
-	f     *Filter
+	cnt int64
+	f   *Filter
 }
 
 func NewMatcher(filter *Filter) *Matcher {
@@ -15,8 +15,8 @@ func NewMatcher(filter *Filter) *Matcher {
 		panic("filter must be non-nil pointer")
 	}
 	return &Matcher{
-		Count: 0,
-		f:     filter,
+		cnt: 0,
+		f:   filter,
 	}
 }
 
@@ -59,15 +59,23 @@ func (m *Matcher) Match(event *Event) bool {
 		match = match && event.CreatedAt <= *m.f.Until
 	}
 
-	if match {
-		m.Count++
-	}
-
 	return match
 }
 
+func (m *Matcher) CountMatch(event *Event) bool {
+	match := m.Match(event)
+	if match {
+		m.cnt++
+	}
+	return match
+}
+
+func (m *Matcher) Count() int64 {
+	return m.cnt
+}
+
 func (m *Matcher) Done() bool {
-	return m.f.Limit != nil && *m.f.Limit <= m.Count
+	return m.f.Limit != nil && *m.f.Limit <= m.cnt
 }
 
 type Matchers []*Matcher
@@ -89,6 +97,22 @@ func (m Matchers) Match(event *Event) bool {
 		match = mm.Match(event) || match
 	}
 	return match
+}
+
+func (m Matchers) CountMatch(event *Event) bool {
+	match := false
+	for _, mm := range m {
+		match = mm.CountMatch(event) || match
+	}
+	return match
+}
+
+func (m Matchers) Count() int64 {
+	var ret int64
+	for _, mm := range m {
+		ret = max(ret, mm.Count())
+	}
+	return ret
 }
 
 func (m Matchers) Done() bool {
