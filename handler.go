@@ -465,6 +465,126 @@ func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
 	return ret
 }
 
+type MergeHandler struct {
+	h1, h2 Handler
+}
+
+func NewMergeHandler(h1, h2 Handler) Handler {
+	return &MergeHandler{
+		h1: h1,
+		h2: h2,
+	}
+}
+
+func (h *MergeHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+	recv1 := make(chan nostr.ClientMsg, 1)
+	recv2 := make(chan nostr.ClientMsg, 1)
+	send1 := make(chan nostr.ServerMsg, 1)
+	send2 := make(chan nostr.ServerMsg, 1)
+
+	subIDs := make(map[string]int)
+	cmatchs := make(map[string]func(*nostr.Event) (bool, bool))
+	errs := make(chan error, 2)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		errs <- h.h1.Handle(r, recv1, send1)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		errs <- h.h2.Handle(r, recv2, send2)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(recv1)
+		defer close(recv2)
+		h.mergeRecv(recv, recv1, recv2, subIDs, cmatchs)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		h.mergeSend(send, send1, send2, subIDs, cmatchs)
+	}()
+
+	wg.Wait()
+
+	return errors.Join(<-errs, <-errs)
+}
+
+const (
+	mergeHandlerSubIDEOSE = 0
+	mergeHandlerSubIDIn   = 1
+	mergeHandlerSubIDOut1 = 2
+	mergeHandlerSubIDOut2 = 3
+)
+
+func (h *MergeHandler) mergeRecv(recv <-chan nostr.ClientMsg, r1, r2 chan nostr.ClientMsg, subIDs map[string]int, cmatchs map[string]func(*nostr.Event) (bool, bool)) {
+	for msg := range recv {
+		if m, ok := msg.(*nostr.ClientReqMsg); ok {
+			subIDs[m.SubscriptionID] = mergeHandlerSubIDIn
+			cmatchs[m.SubscriptionID] = newMatchCountFunc(m.Filters)
+		}
+
+		r1 <- msg
+		r2 <- msg
+	}
+}
+
+func (h *MergeHandler) mergeSend(send chan<- nostr.ServerMsg, s1, s2 chan nostr.ServerMsg, subIDs map[string]int, cmatchs map[string]func(*nostr.Event) (bool, bool)) {
+	lastEvents := make(map[string]*nostr.Event)
+
+	for {
+		select {
+		case msg, ok := <-s1:
+			if !ok {
+				h.mergeSend(send, nil, s2, subIDs, cmatchs)
+				return
+			}
+			h.send(send, msg, subIDs, cmatchs, lastEvents)
+
+		case msg, ok := <-s2:
+			if !ok {
+				h.mergeSend(send, s1, nil, subIDs, cmatchs)
+				return
+			}
+			h.send(send, msg, subIDs, cmatchs, lastEvents)
+		}
+	}
+}
+
+func (h *MergeHandler) send(send chan<- nostr.ServerMsg, msg nostr.ServerMsg, subIDs map[string]int, cmatchs map[string]func(*nostr.Event) (bool, bool), lastEvents map[string]*nostr.Event) {
+	switch m := msg.(type) {
+	case *nostr.ServerEOSEMsg:
+		subIDs[m.SubscriptionID]++
+		if subIDs[m.SubscriptionID] == mergeHandlerSubIDOut2 {
+			delete(subIDs, m.SubscriptionID)
+			delete(lastEvents, m.SubscriptionID)
+			delete(cmatchs, m.SubscriptionID)
+			send <- msg
+		}
+
+	case *nostr.ServerEventMsg:
+		if subIDs[m.SubscriptionID] != mergeHandlerSubIDEOSE {
+			match, ok := cmatchs[m.SubscriptionID](m.Event)
+			if !match || !ok {
+				return
+			}
+		}
+		send <- msg
+
+	default:
+		send <- msg
+	}
+}
+
 type EventCreatedAtFilterMiddleware func(next Handler) Handler
 
 func NewEventCreatedAtFilterMiddleware(from, to time.Duration) EventCreatedAtFilterMiddleware {
