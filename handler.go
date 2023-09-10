@@ -435,6 +435,96 @@ type mergeHandlerSendMsg struct {
 	Msg nostr.ServerMsg
 }
 
+type mergeHandlerReqState struct {
+	EOSE      []bool
+	LastEvent *nostr.Event
+	SeenIDs   map[string]bool
+	Matcher   nostr.Matchers
+}
+
+type mergeHandlerCountState struct {
+	counts []*nostr.ServerCountMsg
+}
+
+func newMergeHandlerCountState(length int) *mergeHandlerCountState {
+	return &mergeHandlerCountState{
+		counts: make([]*nostr.ServerCountMsg, length),
+	}
+}
+
+func (stat *mergeHandlerCountState) AddCount(idx int, c *nostr.ServerCountMsg) {
+	if stat == nil {
+		return
+	}
+	stat.counts[idx] = c
+}
+
+func (stat *mergeHandlerCountState) Ready() bool {
+	return stat != nil && !slices.Contains(stat.counts, nil)
+}
+
+func (stat *mergeHandlerCountState) Max() *nostr.ServerCountMsg {
+	return slices.MaxFunc(stat.counts, func(a, b *nostr.ServerCountMsg) int {
+		return cmp.Compare(a.Count, b.Count)
+	})
+}
+
+func newMergeHandlerReqState(length int, filters nostr.Filters) *mergeHandlerReqState {
+	return &mergeHandlerReqState{
+		EOSE:      make([]bool, length),
+		LastEvent: nil,
+		SeenIDs:   make(map[string]bool),
+		Matcher:   nostr.NewMatchers(filters),
+	}
+}
+
+func (stat *mergeHandlerReqState) AllEOSE() bool {
+	if stat == nil {
+		return true
+	}
+	return !slices.Contains(stat.EOSE, false)
+}
+
+func (stat *mergeHandlerReqState) AddEOSE(idx int) {
+	if stat == nil {
+		return
+	}
+	stat.EOSE[idx] = true
+}
+
+func (stat *mergeHandlerReqState) Match(msg *mergeHandlerSendMsg) bool {
+	if stat == nil {
+		return true
+	}
+
+	m := msg.Msg.(*nostr.ServerEventMsg)
+	ev := m.Event
+
+	if stat.EOSE[msg.Idx] {
+		return false
+	}
+
+	if stat.LastEvent != nil && ev.CreatedAt < stat.LastEvent.CreatedAt {
+		return false
+	}
+
+	if stat.SeenIDs[ev.ID] {
+		return false
+	}
+	stat.SeenIDs[ev.ID] = true
+
+	if stat.Matcher.Done() {
+		return false
+	}
+
+	if !stat.Matcher.CountMatch(ev) {
+		return false
+	}
+
+	stat.LastEvent = ev
+	return true
+}
+
 func (h *MergeHandler) serve(
 	ctx context.Context,
 	recv <-chan nostr.ClientMsg,
@@ -442,12 +532,9 @@ func (h *MergeHandler) serve(
 	send chan<- nostr.ServerMsg,
 	smerge chan *mergeHandlerSendMsg,
 ) {
-	eose := make(map[string][]bool)
-	lastEvent := make(map[string]*nostr.Event)
-	seenEvent := make(map[string]map[string]bool)
-	matchers := make(map[string]nostr.Matchers)
+	reqStats := make(map[string]*mergeHandlerReqState)
 	wantOK := make(map[string]bool)
-	counts := make(map[string][]*nostr.ServerCountMsg)
+	countStats := make(map[string]*mergeHandlerCountState)
 
 	for {
 		select {
@@ -464,20 +551,17 @@ func (h *MergeHandler) serve(
 
 			switch msg := msg.(type) {
 			case *nostr.ClientReqMsg:
-				eose[msg.SubscriptionID] = make([]bool, len(h.hs))
-				seenEvent[msg.SubscriptionID] = make(map[string]bool)
-				matchers[msg.SubscriptionID] = nostr.NewMatchers(msg.Filters)
-
-			case *nostr.ClientCountMsg:
-				counts[msg.SubscriptionID] = make([]*nostr.ServerCountMsg, len(h.hs))
+				reqStats[msg.SubscriptionID] = newMergeHandlerReqState(len(h.hs), msg.Filters)
 
 			case *nostr.ClientCloseMsg:
-				delete(eose, msg.SubscriptionID)
-				delete(matchers, msg.SubscriptionID)
-				delete(seenEvent, msg.SubscriptionID)
+				delete(reqStats, msg.SubscriptionID)
 
 			case *nostr.ClientEventMsg:
 				wantOK[msg.Event.ID] = true
+
+			case *nostr.ClientCountMsg:
+				countStats[msg.SubscriptionID] = newMergeHandlerCountState(len(h.hs))
+
 			}
 
 			for _, r := range recvs {
@@ -487,58 +571,32 @@ func (h *MergeHandler) serve(
 		case msg := <-smerge:
 			switch m := msg.Msg.(type) {
 			case *nostr.ServerEventMsg:
-				if len(eose[m.SubscriptionID]) > 0 {
-					if eose[m.SubscriptionID][msg.Idx] {
-						continue
-					}
-					if matchers[m.SubscriptionID].Done() {
-						continue
-					}
-					if le := lastEvent[m.SubscriptionID]; le != nil && m.Event.CreatedAt < le.CreatedAt {
-						continue
-					}
-					if seenEvent[m.SubscriptionID][m.Event.ID] {
-						continue
-					}
-					if !matchers[m.SubscriptionID].CountMatch(m.Event) {
-						continue
-					}
-					lastEvent[m.SubscriptionID] = m.Event
-					seenEvent[m.SubscriptionID][m.Event.ID] = true
+				if reqStats[m.SubscriptionID].Match(msg) {
+					send <- msg.Msg
 				}
-				send <- msg.Msg
 
 			case *nostr.ServerOKMsg:
-				if !wantOK[m.EventID] {
-					continue
+				if wantOK[m.EventID] {
+					delete(wantOK, m.EventID)
+					send <- msg.Msg
 				}
-				delete(wantOK, m.EventID)
-				send <- msg.Msg
 
 			case *nostr.ServerEOSEMsg:
-				if len(eose[m.SubscriptionID]) == 0 {
-					continue
+				stat := reqStats[m.SubscriptionID]
+				stat.AddEOSE(msg.Idx)
+				if stat.AllEOSE() {
+					delete(reqStats, m.SubscriptionID)
+					send <- msg.Msg
 				}
-				eose[m.SubscriptionID][msg.Idx] = true
-				if slices.Contains(eose[m.SubscriptionID], false) {
-					continue
-				}
-				delete(eose, m.SubscriptionID)
-				send <- msg.Msg
 
 			case *nostr.ServerCountMsg:
-				if len(counts[m.SubscriptionID]) == 0 {
-					continue
+				stat := countStats[m.SubscriptionID]
+				stat.AddCount(msg.Idx, m)
+				if stat.Ready() {
+					maxMsg := stat.Max()
+					delete(countStats, m.SubscriptionID)
+					send <- maxMsg
 				}
-				counts[m.SubscriptionID][msg.Idx] = m
-				if slices.Contains(counts[m.SubscriptionID], nil) {
-					continue
-				}
-				maxMsg := slices.MaxFunc(counts[m.SubscriptionID], func(a, b *nostr.ServerCountMsg) int {
-					return cmp.Compare(a.Count, b.Count)
-				})
-				delete(counts, m.SubscriptionID)
-				send <- maxMsg
 
 			default:
 				send <- msg.Msg
