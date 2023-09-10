@@ -612,6 +612,8 @@ func (h *MergeHandler) mergeSends(ctx context.Context, smerge chan *mergeHandler
 
 	idx := len(sends) - 1
 
+	go h.mergeSends(ctx, smerge, sends[:idx])
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -622,8 +624,6 @@ func (h *MergeHandler) mergeSends(ctx context.Context, smerge chan *mergeHandler
 				Idx: idx,
 				Msg: msg,
 			}
-
-		case <-h.mergeSends(ctx, smerge, sends[:idx]):
 		}
 	}
 }
