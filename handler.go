@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -377,125 +378,195 @@ func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
 }
 
 type MergeHandler struct {
-	h1, h2 Handler
+	hs []Handler
 }
 
-func NewMergeHandler(h1, h2 Handler) Handler {
+func NewMergeHandler(h1, h2 Handler, hs ...Handler) Handler {
 	return &MergeHandler{
-		h1: h1,
-		h2: h2,
+		hs: append([]Handler{h1, h2}, hs...),
 	}
 }
 
 func (h *MergeHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
-	recv1 := make(chan nostr.ClientMsg, 1)
-	recv2 := make(chan nostr.ClientMsg, 1)
-	send1 := make(chan nostr.ServerMsg, 1)
-	send2 := make(chan nostr.ServerMsg, 1)
+	ctx := r.Context()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	subIDs := make(map[string]int)
-	matchers := make(map[string]nostr.Matchers)
-	errs := make(chan error, 2)
+	recvs := make([]chan nostr.ClientMsg, len(h.hs))
+	sends := make([]chan nostr.ServerMsg, len(h.hs))
+	smerge := make(chan *mergeHandlerSendMsg, 1)
+	errs := make(chan error, len(h.hs))
+
+	for i := 0; i < len(h.hs); i++ {
+		recvs[i] = make(chan nostr.ClientMsg, 1)
+		sends[i] = make(chan nostr.ServerMsg, 1)
+	}
 
 	var wg sync.WaitGroup
+	wg.Add(len(h.hs))
+	for i := 0; i < len(h.hs); i++ {
+		go func(i int) {
+			defer wg.Done()
+			defer cancel()
+			errs <- h.hs[i].Handle(r.WithContext(ctx), recvs[i], sends[i])
+		}(i)
+	}
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errs <- h.h1.Handle(r, recv1, send1)
+		h.mergeSends(ctx, smerge, sends)
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		errs <- h.h2.Handle(r, recv2, send2)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(recv1)
-		defer close(recv2)
-		h.mergeRecv(recv, recv1, recv2, subIDs, matchers)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		h.mergeSend(send, send1, send2, subIDs, matchers)
-	}()
+	h.serve(ctx, recv, recvs, send, smerge)
 
 	wg.Wait()
-
-	return errors.Join(<-errs, <-errs)
-}
-
-const (
-	mergeHandlerSubIDEOSE = 0
-	mergeHandlerSubIDIn   = 1
-	mergeHandlerSubIDOut1 = 2
-	mergeHandlerSubIDOut2 = 3
-)
-
-func (h *MergeHandler) mergeRecv(recv <-chan nostr.ClientMsg, r1, r2 chan nostr.ClientMsg, subIDs map[string]int, matchers map[string]nostr.Matchers) {
-	for msg := range recv {
-		if m, ok := msg.(*nostr.ClientReqMsg); ok {
-			subIDs[m.SubscriptionID] = mergeHandlerSubIDIn
-			matchers[m.SubscriptionID] = nostr.NewMatchers(m.Filters)
-		}
-
-		r1 <- msg
-		r2 <- msg
+	close(errs)
+	var err error
+	for e := range errs {
+		err = errors.Join(err, e)
 	}
+
+	return err
 }
 
-func (h *MergeHandler) mergeSend(send chan<- nostr.ServerMsg, s1, s2 chan nostr.ServerMsg, subIDs map[string]int, matchers map[string]nostr.Matchers) {
-	lastEvents := make(map[string]*nostr.Event)
+type mergeHandlerSendMsg struct {
+	Idx int
+	Msg nostr.ServerMsg
+}
+
+func (h *MergeHandler) serve(
+	ctx context.Context,
+	recv <-chan nostr.ClientMsg,
+	recvs []chan nostr.ClientMsg,
+	send chan<- nostr.ServerMsg,
+	smerge chan *mergeHandlerSendMsg,
+) {
+	eose := make(map[string][]bool)
+	lastEvent := make(map[string]*nostr.Event)
+	seenEvent := make(map[string]map[string]bool)
+	matchers := make(map[string]nostr.Matchers)
+	wantOK := make(map[string]bool)
+	counts := make(map[string][]*nostr.ServerCountMsg)
 
 	for {
 		select {
-		case msg, ok := <-s1:
-			if !ok {
-				h.mergeSend(send, nil, s2, subIDs, matchers)
-				return
-			}
-			h.send(send, msg, subIDs, matchers, lastEvents)
+		case <-ctx.Done():
+			return
 
-		case msg, ok := <-s2:
+		case msg, ok := <-recv:
 			if !ok {
-				h.mergeSend(send, s1, nil, subIDs, matchers)
+				for _, r := range recvs {
+					close(r)
+				}
 				return
 			}
-			h.send(send, msg, subIDs, matchers, lastEvents)
+
+			switch msg := msg.(type) {
+			case *nostr.ClientReqMsg:
+				eose[msg.SubscriptionID] = make([]bool, len(h.hs))
+				seenEvent[msg.SubscriptionID] = make(map[string]bool)
+				matchers[msg.SubscriptionID] = nostr.NewMatchers(msg.Filters)
+
+			case *nostr.ClientCountMsg:
+				counts[msg.SubscriptionID] = make([]*nostr.ServerCountMsg, len(h.hs))
+
+			case *nostr.ClientCloseMsg:
+				delete(eose, msg.SubscriptionID)
+				delete(matchers, msg.SubscriptionID)
+				delete(seenEvent, msg.SubscriptionID)
+
+			case *nostr.ClientEventMsg:
+				wantOK[msg.Event.ID] = true
+			}
+
+			for _, r := range recvs {
+				r <- msg
+			}
+
+		case msg := <-smerge:
+			switch m := msg.Msg.(type) {
+			case *nostr.ServerEventMsg:
+				if len(eose[m.SubscriptionID]) > 0 {
+					if eose[m.SubscriptionID][msg.Idx] {
+						continue
+					}
+					if matchers[m.SubscriptionID].Done() {
+						continue
+					}
+					if le := lastEvent[m.SubscriptionID]; le != nil && m.Event.CreatedAt < le.CreatedAt {
+						continue
+					}
+					if seenEvent[m.SubscriptionID][m.Event.ID] {
+						continue
+					}
+					if !matchers[m.SubscriptionID].CountMatch(m.Event) {
+						continue
+					}
+					lastEvent[m.SubscriptionID] = m.Event
+					seenEvent[m.SubscriptionID][m.Event.ID] = true
+				}
+				send <- msg.Msg
+
+			case *nostr.ServerOKMsg:
+				if !wantOK[m.EventID] {
+					continue
+				}
+				delete(wantOK, m.EventID)
+				send <- msg.Msg
+
+			case *nostr.ServerEOSEMsg:
+				if len(eose[m.SubscriptionID]) == 0 {
+					continue
+				}
+				eose[m.SubscriptionID][msg.Idx] = true
+				if slices.Contains(eose[m.SubscriptionID], false) {
+					continue
+				}
+				delete(eose, m.SubscriptionID)
+				send <- msg.Msg
+
+			case *nostr.ServerCountMsg:
+				if len(counts[m.SubscriptionID]) == 0 {
+					continue
+				}
+				counts[m.SubscriptionID][msg.Idx] = m
+				if slices.Contains(counts[m.SubscriptionID], nil) {
+					continue
+				}
+				maxMsg := slices.MaxFunc(counts[m.SubscriptionID], func(a, b *nostr.ServerCountMsg) int {
+					return cmp.Compare(a.Count, b.Count)
+				})
+				delete(counts, m.SubscriptionID)
+				send <- maxMsg
+
+			default:
+				send <- msg.Msg
+			}
 		}
 	}
 }
 
-func (h *MergeHandler) send(send chan<- nostr.ServerMsg, msg nostr.ServerMsg, subIDs map[string]int, matchers map[string]nostr.Matchers, lastEvents map[string]*nostr.Event) {
-	switch m := msg.(type) {
-	case *nostr.ServerEOSEMsg:
-		subIDs[m.SubscriptionID]++
-		if subIDs[m.SubscriptionID] == mergeHandlerSubIDOut2 {
-			delete(subIDs, m.SubscriptionID)
-			delete(lastEvents, m.SubscriptionID)
-			delete(matchers, m.SubscriptionID)
-			send <- msg
-		}
+func (h *MergeHandler) mergeSends(ctx context.Context, smerge chan *mergeHandlerSendMsg, sends []chan nostr.ServerMsg) chan struct{} {
+	if len(sends) == 0 {
+		return nil
+	}
 
-	case *nostr.ServerEventMsg:
-		if subIDs[m.SubscriptionID] != mergeHandlerSubIDEOSE {
-			if matchers[m.SubscriptionID].Done() {
-				return
-			}
-			match := matchers[m.SubscriptionID].Match(m.Event)
-			if !match {
-				return
-			}
-		}
-		send <- msg
+	idx := len(sends) - 1
 
-	default:
-		send <- msg
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+
+		case msg := <-sends[idx]:
+			smerge <- &mergeHandlerSendMsg{
+				Idx: idx,
+				Msg: msg,
+			}
+
+		case <-h.mergeSends(ctx, smerge, sends[:idx]):
+		}
 	}
 }
 
