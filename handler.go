@@ -435,6 +435,25 @@ type mergeHandlerSendMsg struct {
 	Msg nostr.ServerMsg
 }
 
+type mergeHandlerState struct {
+	// map[subID]*state
+	Req map[string]*mergeHandlerReqState
+
+	// map[subID]*state
+	Count map[string]*mergeHandlerCountState
+
+	// map[eventID]needResponseOK
+	OK map[string]bool
+}
+
+func newMergeHandlerState() *mergeHandlerState {
+	return &mergeHandlerState{
+		Req:   make(map[string]*mergeHandlerReqState),
+		Count: make(map[string]*mergeHandlerCountState),
+		OK:    make(map[string]bool),
+	}
+}
+
 type mergeHandlerReqState struct {
 	EOSE      []bool
 	LastEvent *nostr.Event
@@ -532,9 +551,13 @@ func (h *MergeHandler) serve(
 	send chan<- nostr.ServerMsg,
 	smerge chan *mergeHandlerSendMsg,
 ) {
-	reqStats := make(map[string]*mergeHandlerReqState)
-	wantOK := make(map[string]bool)
-	countStats := make(map[string]*mergeHandlerCountState)
+	defer func() {
+		for _, r := range recvs {
+			close(r)
+		}
+	}()
+
+	stats := newMergeHandlerState()
 
 	for {
 		select {
@@ -543,65 +566,69 @@ func (h *MergeHandler) serve(
 
 		case msg, ok := <-recv:
 			if !ok {
-				for _, r := range recvs {
-					close(r)
-				}
 				return
 			}
-
-			switch msg := msg.(type) {
-			case *nostr.ClientReqMsg:
-				reqStats[msg.SubscriptionID] = newMergeHandlerReqState(len(h.hs), msg.Filters)
-
-			case *nostr.ClientCloseMsg:
-				delete(reqStats, msg.SubscriptionID)
-
-			case *nostr.ClientEventMsg:
-				wantOK[msg.Event.ID] = true
-
-			case *nostr.ClientCountMsg:
-				countStats[msg.SubscriptionID] = newMergeHandlerCountState(len(h.hs))
-
-			}
-
-			for _, r := range recvs {
-				r <- msg
-			}
+			h.serveRecv(stats, recvs, msg)
 
 		case msg := <-smerge:
-			switch m := msg.Msg.(type) {
-			case *nostr.ServerEventMsg:
-				if reqStats[m.SubscriptionID].Match(msg) {
-					send <- msg.Msg
-				}
-
-			case *nostr.ServerOKMsg:
-				if wantOK[m.EventID] {
-					delete(wantOK, m.EventID)
-					send <- msg.Msg
-				}
-
-			case *nostr.ServerEOSEMsg:
-				stat := reqStats[m.SubscriptionID]
-				stat.AddEOSE(msg.Idx)
-				if stat.AllEOSE() {
-					delete(reqStats, m.SubscriptionID)
-					send <- msg.Msg
-				}
-
-			case *nostr.ServerCountMsg:
-				stat := countStats[m.SubscriptionID]
-				stat.AddCount(msg.Idx, m)
-				if stat.Ready() {
-					maxMsg := stat.Max()
-					delete(countStats, m.SubscriptionID)
-					send <- maxMsg
-				}
-
-			default:
-				send <- msg.Msg
-			}
+			h.serveSend(stats, send, msg)
 		}
+	}
+}
+
+func (h *MergeHandler) serveRecv(stats *mergeHandlerState, recvs []chan nostr.ClientMsg, msg nostr.ClientMsg) {
+	switch msg := msg.(type) {
+	case *nostr.ClientReqMsg:
+		stats.Req[msg.SubscriptionID] = newMergeHandlerReqState(len(h.hs), msg.Filters)
+
+	case *nostr.ClientCloseMsg:
+		delete(stats.Req, msg.SubscriptionID)
+
+	case *nostr.ClientEventMsg:
+		stats.OK[msg.Event.ID] = true
+
+	case *nostr.ClientCountMsg:
+		stats.Count[msg.SubscriptionID] = newMergeHandlerCountState(len(h.hs))
+
+	}
+
+	for _, r := range recvs {
+		r <- msg
+	}
+}
+
+func (h *MergeHandler) serveSend(stats *mergeHandlerState, send chan<- nostr.ServerMsg, msg *mergeHandlerSendMsg) {
+	switch m := msg.Msg.(type) {
+	case *nostr.ServerEventMsg:
+		if stats.Req[m.SubscriptionID].Match(msg) {
+			send <- msg.Msg
+		}
+
+	case *nostr.ServerOKMsg:
+		if stats.OK[m.EventID] {
+			delete(stats.OK, m.EventID)
+			send <- msg.Msg
+		}
+
+	case *nostr.ServerEOSEMsg:
+		stat := stats.Req[m.SubscriptionID]
+		stat.AddEOSE(msg.Idx)
+		if stat.AllEOSE() {
+			delete(stats.Req, m.SubscriptionID)
+			send <- msg.Msg
+		}
+
+	case *nostr.ServerCountMsg:
+		stat := stats.Count[m.SubscriptionID]
+		stat.AddCount(msg.Idx, m)
+		if stat.Ready() {
+			maxMsg := stat.Max()
+			delete(stats.Count, m.SubscriptionID)
+			send <- maxMsg
+		}
+
+	default:
+		send <- msg.Msg
 	}
 }
 
