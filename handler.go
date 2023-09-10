@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -130,7 +129,7 @@ func (router *Router) serveSend(ctx context.Context, connID string, send chan<- 
 type subscriber struct {
 	ConnID         string
 	SubscriptionID string
-	MatchFunc      func(event *nostr.Event) bool
+	Matcher        nostr.Matchers
 	Ch             chan nostr.ServerMsg
 }
 
@@ -138,101 +137,14 @@ func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerM
 	return &subscriber{
 		ConnID:         connID,
 		SubscriptionID: msg.SubscriptionID,
-		MatchFunc:      newMatchFunc(msg.Filters),
+		Matcher:        nostr.NewMatchers(msg.Filters),
 		Ch:             ch,
 	}
 }
 
 func (sub *subscriber) SendIfMatch(event *nostr.Event) {
-	if sub.MatchFunc(event) {
+	if sub.Matcher.Match(event) {
 		sub.Ch <- nostr.NewServerEventMsg(sub.SubscriptionID, event)
-	}
-}
-
-func filterMatch(f *nostr.Filter, event *nostr.Event) (match bool) {
-	match = true
-
-	if f.IDs != nil {
-		match = match && slices.ContainsFunc(*f.IDs, func(id string) bool {
-			return strings.HasPrefix(event.ID, id)
-		})
-	}
-
-	if f.Kinds != nil {
-		match = match && slices.ContainsFunc(*f.Kinds, func(kind int64) bool {
-			return event.Kind == kind
-		})
-	}
-
-	if f.Authors != nil {
-		match = match && slices.ContainsFunc(*f.Authors, func(author string) bool {
-			return strings.HasPrefix(event.Pubkey, author)
-		})
-	}
-
-	if f.Tags != nil {
-		for tag, vs := range *f.Tags {
-			match = match && slices.ContainsFunc(vs, func(v string) bool {
-				return slices.ContainsFunc(event.Tags, func(tagArr nostr.Tag) bool {
-					return len(tagArr) >= 1 && tagArr[0] == string(tag[1]) && (len(tagArr) == 1 || strings.HasPrefix(tagArr[1], v))
-				})
-			})
-		}
-	}
-
-	if f.Since != nil {
-		match = match && *f.Since <= event.CreatedAt
-	}
-
-	if f.Until != nil {
-		match = match && event.CreatedAt <= *f.Until
-	}
-
-	return match
-
-}
-
-func newMatchFunc(filters nostr.Filters) func(*nostr.Event) bool {
-	return func(event *nostr.Event) bool {
-		return slices.ContainsFunc(filters, func(f *nostr.Filter) bool {
-			return filterMatch(f, event)
-		})
-	}
-}
-
-func newMatchCountFunc(filters nostr.Filters) func(*nostr.Event) (match bool, done bool) {
-	limited := false
-	counter := make([]int64, len(filters))
-	for i := 0; i < len(filters); i++ {
-		if l := filters[i].Limit; l == nil {
-			counter[i] = -1
-		} else {
-			counter[i] = *l
-			limited = true
-		}
-	}
-	d := false
-
-	return func(event *nostr.Event) (match bool, done bool) {
-		if d {
-			done = true
-			return
-		}
-
-		done = true
-		for i := 0; i < len(filters); i++ {
-			m := filterMatch(filters[i], event)
-			if m {
-				counter[i]--
-			}
-
-			done = done && limited && counter[i] < 0
-			match = !done && (match || m)
-		}
-
-		d = done
-
-		return
 	}
 }
 
@@ -438,7 +350,7 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 
 func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
 	var ret []*nostr.Event
-	cmatch := newMatchCountFunc(filters)
+	matcher := nostr.NewMatchers(filters)
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -453,11 +365,10 @@ func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
 			continue
 		}
 
-		match, done := cmatch(ev)
-		if done {
+		if matcher.Done() {
 			break
 		}
-		if match {
+		if matcher.CountMatch(ev) {
 			ret = append(ret, ev)
 		}
 	}
@@ -483,7 +394,7 @@ func (h *MergeHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 	send2 := make(chan nostr.ServerMsg, 1)
 
 	subIDs := make(map[string]int)
-	cmatchs := make(map[string]func(*nostr.Event) (bool, bool))
+	matchers := make(map[string]nostr.Matchers)
 	errs := make(chan error, 2)
 
 	var wg sync.WaitGroup
@@ -505,13 +416,13 @@ func (h *MergeHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 		defer wg.Done()
 		defer close(recv1)
 		defer close(recv2)
-		h.mergeRecv(recv, recv1, recv2, subIDs, cmatchs)
+		h.mergeRecv(recv, recv1, recv2, subIDs, matchers)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		h.mergeSend(send, send1, send2, subIDs, cmatchs)
+		h.mergeSend(send, send1, send2, subIDs, matchers)
 	}()
 
 	wg.Wait()
@@ -526,11 +437,11 @@ const (
 	mergeHandlerSubIDOut2 = 3
 )
 
-func (h *MergeHandler) mergeRecv(recv <-chan nostr.ClientMsg, r1, r2 chan nostr.ClientMsg, subIDs map[string]int, cmatchs map[string]func(*nostr.Event) (bool, bool)) {
+func (h *MergeHandler) mergeRecv(recv <-chan nostr.ClientMsg, r1, r2 chan nostr.ClientMsg, subIDs map[string]int, matchers map[string]nostr.Matchers) {
 	for msg := range recv {
 		if m, ok := msg.(*nostr.ClientReqMsg); ok {
 			subIDs[m.SubscriptionID] = mergeHandlerSubIDIn
-			cmatchs[m.SubscriptionID] = newMatchCountFunc(m.Filters)
+			matchers[m.SubscriptionID] = nostr.NewMatchers(m.Filters)
 		}
 
 		r1 <- msg
@@ -538,43 +449,46 @@ func (h *MergeHandler) mergeRecv(recv <-chan nostr.ClientMsg, r1, r2 chan nostr.
 	}
 }
 
-func (h *MergeHandler) mergeSend(send chan<- nostr.ServerMsg, s1, s2 chan nostr.ServerMsg, subIDs map[string]int, cmatchs map[string]func(*nostr.Event) (bool, bool)) {
+func (h *MergeHandler) mergeSend(send chan<- nostr.ServerMsg, s1, s2 chan nostr.ServerMsg, subIDs map[string]int, matchers map[string]nostr.Matchers) {
 	lastEvents := make(map[string]*nostr.Event)
 
 	for {
 		select {
 		case msg, ok := <-s1:
 			if !ok {
-				h.mergeSend(send, nil, s2, subIDs, cmatchs)
+				h.mergeSend(send, nil, s2, subIDs, matchers)
 				return
 			}
-			h.send(send, msg, subIDs, cmatchs, lastEvents)
+			h.send(send, msg, subIDs, matchers, lastEvents)
 
 		case msg, ok := <-s2:
 			if !ok {
-				h.mergeSend(send, s1, nil, subIDs, cmatchs)
+				h.mergeSend(send, s1, nil, subIDs, matchers)
 				return
 			}
-			h.send(send, msg, subIDs, cmatchs, lastEvents)
+			h.send(send, msg, subIDs, matchers, lastEvents)
 		}
 	}
 }
 
-func (h *MergeHandler) send(send chan<- nostr.ServerMsg, msg nostr.ServerMsg, subIDs map[string]int, cmatchs map[string]func(*nostr.Event) (bool, bool), lastEvents map[string]*nostr.Event) {
+func (h *MergeHandler) send(send chan<- nostr.ServerMsg, msg nostr.ServerMsg, subIDs map[string]int, matchers map[string]nostr.Matchers, lastEvents map[string]*nostr.Event) {
 	switch m := msg.(type) {
 	case *nostr.ServerEOSEMsg:
 		subIDs[m.SubscriptionID]++
 		if subIDs[m.SubscriptionID] == mergeHandlerSubIDOut2 {
 			delete(subIDs, m.SubscriptionID)
 			delete(lastEvents, m.SubscriptionID)
-			delete(cmatchs, m.SubscriptionID)
+			delete(matchers, m.SubscriptionID)
 			send <- msg
 		}
 
 	case *nostr.ServerEventMsg:
 		if subIDs[m.SubscriptionID] != mergeHandlerSubIDEOSE {
-			match, ok := cmatchs[m.SubscriptionID](m.Event)
-			if !match || !ok {
+			if matchers[m.SubscriptionID].Done() {
+				return
+			}
+			match := matchers[m.SubscriptionID].Match(m.Event)
+			if !match {
 				return
 			}
 		}
