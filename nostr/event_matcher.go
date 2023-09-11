@@ -5,6 +5,19 @@ import (
 	"strings"
 )
 
+type EventMatcher interface {
+	Match(*Event) bool
+}
+
+type EventCountMatcher interface {
+	EventMatcher
+	CountMatch(*Event) bool
+	Count() int64
+	Done() bool
+}
+
+var _ EventCountMatcher = (*ReqFilterMatcher)(nil)
+
 type ReqFilterMatcher struct {
 	cnt int64
 	f   *ReqFilter
@@ -77,6 +90,8 @@ func (m *ReqFilterMatcher) Count() int64 {
 func (m *ReqFilterMatcher) Done() bool {
 	return m.f.Limit != nil && *m.f.Limit <= m.cnt
 }
+
+var _ EventMatcher = (ReqFiltersMatcher)(nil)
 
 type ReqFiltersMatcher []*ReqFilterMatcher
 
