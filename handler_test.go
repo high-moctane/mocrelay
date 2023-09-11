@@ -95,7 +95,7 @@ func TestRouter_Handle(t *testing.T) {
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					ReqFilters:     []*nostr.ReqFilter{{IDs: utils.ToRef([]string{"49"})}},
+					ReqFilters:     []*nostr.ReqFilter{{IDs: utils.Ptr([]string{"49"})}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -317,7 +317,7 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					ReqFilters:     []*nostr.ReqFilter{{IDs: utils.ToRef([]string{"49"})}},
+					ReqFilters:     []*nostr.ReqFilter{{IDs: utils.Ptr([]string{"49"})}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -583,7 +583,7 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					ReqFilters:     []*nostr.ReqFilter{{IDs: utils.ToRef([]string{"49"})}},
+					ReqFilters:     []*nostr.ReqFilter{{IDs: utils.Ptr([]string{"49"})}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{

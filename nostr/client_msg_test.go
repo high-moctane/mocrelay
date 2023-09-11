@@ -376,26 +376,26 @@ func TestParseClientReqMsg(t *testing.T) {
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
 				ReqFilters: []*ReqFilter{
 					{
-						IDs:     utils.ToRef([]string{"powa11", "powa12"}),
-						Authors: utils.ToRef([]string{"meu11", "meu12"}),
-						Kinds:   utils.ToRef([]int64{1, 3}),
-						Tags: utils.ToRef(map[string][]string{
+						IDs:     utils.Ptr([]string{"powa11", "powa12"}),
+						Authors: utils.Ptr([]string{"meu11", "meu12"}),
+						Kinds:   utils.Ptr([]int64{1, 3}),
+						Tags: utils.Ptr(map[string][]string{
 							"#e": {"moyasu11", "moyasu12"},
 						}),
-						Since: utils.ToRef(int64(16)),
-						Until: utils.ToRef(int64(184838)),
-						Limit: utils.ToRef(int64(143)),
+						Since: utils.Ptr(int64(16)),
+						Until: utils.Ptr(int64(184838)),
+						Limit: utils.Ptr(int64(143)),
 					},
 					{
-						IDs:     utils.ToRef([]string{"powa21", "powa22"}),
-						Authors: utils.ToRef([]string{"meu21", "meu22"}),
-						Kinds:   utils.ToRef([]int64{11, 33}),
-						Tags: utils.ToRef(map[string][]string{
+						IDs:     utils.Ptr([]string{"powa21", "powa22"}),
+						Authors: utils.Ptr([]string{"meu21", "meu22"}),
+						Kinds:   utils.Ptr([]int64{11, 33}),
+						Tags: utils.Ptr(map[string][]string{
 							"#e": {"moyasu21", "moyasu22"},
 						}),
-						Since: utils.ToRef(int64(17)),
-						Until: utils.ToRef(int64(184839)),
-						Limit: utils.ToRef(int64(144)),
+						Since: utils.Ptr(int64(17)),
+						Until: utils.Ptr(int64(184839)),
+						Limit: utils.Ptr(int64(144)),
 					},
 				},
 				Err: nil,
@@ -575,26 +575,26 @@ func TestParseClientCountMsg(t *testing.T) {
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
 				ReqFilters: []*ReqFilter{
 					{
-						IDs:     utils.ToRef([]string{"powa11", "powa12"}),
-						Authors: utils.ToRef([]string{"meu11", "meu12"}),
-						Kinds:   utils.ToRef([]int64{1, 3}),
-						Tags: utils.ToRef(map[string][]string{
+						IDs:     utils.Ptr([]string{"powa11", "powa12"}),
+						Authors: utils.Ptr([]string{"meu11", "meu12"}),
+						Kinds:   utils.Ptr([]int64{1, 3}),
+						Tags: utils.Ptr(map[string][]string{
 							"#e": {"moyasu11", "moyasu12"},
 						}),
-						Since: utils.ToRef(int64(16)),
-						Until: utils.ToRef(int64(184838)),
-						Limit: utils.ToRef(int64(143)),
+						Since: utils.Ptr(int64(16)),
+						Until: utils.Ptr(int64(184838)),
+						Limit: utils.Ptr(int64(143)),
 					},
 					{
-						IDs:     utils.ToRef([]string{"powa21", "powa22"}),
-						Authors: utils.ToRef([]string{"meu21", "meu22"}),
-						Kinds:   utils.ToRef([]int64{11, 33}),
-						Tags: utils.ToRef(map[string][]string{
+						IDs:     utils.Ptr([]string{"powa21", "powa22"}),
+						Authors: utils.Ptr([]string{"meu21", "meu22"}),
+						Kinds:   utils.Ptr([]int64{11, 33}),
+						Tags: utils.Ptr(map[string][]string{
 							"#e": {"moyasu21", "moyasu22"},
 						}),
-						Since: utils.ToRef(int64(17)),
-						Until: utils.ToRef(int64(184839)),
-						Limit: utils.ToRef(int64(144)),
+						Since: utils.Ptr(int64(17)),
+						Until: utils.Ptr(int64(184839)),
+						Limit: utils.Ptr(int64(144)),
 					},
 				},
 				Err: nil,
@@ -673,15 +673,15 @@ func TestParseReqFilter(t *testing.T) {
 			Input: []byte(`{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
 			Expect: Expect{
 				ReqFilter: ReqFilter{
-					IDs:     utils.ToRef([]string{"powa"}),
-					Authors: utils.ToRef([]string{"meu"}),
-					Kinds:   utils.ToRef([]int64{1, 3}),
-					Tags: utils.ToRef(map[string][]string{
+					IDs:     utils.Ptr([]string{"powa"}),
+					Authors: utils.Ptr([]string{"meu"}),
+					Kinds:   utils.Ptr([]int64{1, 3}),
+					Tags: utils.Ptr(map[string][]string{
 						"#e": {"moyasu"},
 					}),
-					Since: utils.ToRef(int64(16)),
-					Until: utils.ToRef(int64(184838)),
-					Limit: utils.ToRef(int64(143)),
+					Since: utils.Ptr(int64(16)),
+					Until: utils.Ptr(int64(184838)),
+					Limit: utils.Ptr(int64(143)),
 				},
 				Err: nil,
 			},
@@ -691,14 +691,14 @@ func TestParseReqFilter(t *testing.T) {
 			Input: []byte(`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
 			Expect: Expect{
 				ReqFilter: ReqFilter{
-					IDs:   utils.ToRef([]string{"powa"}),
-					Kinds: utils.ToRef([]int64{1, 3}),
-					Tags: utils.ToRef(map[string][]string{
+					IDs:   utils.Ptr([]string{"powa"}),
+					Kinds: utils.Ptr([]int64{1, 3}),
+					Tags: utils.Ptr(map[string][]string{
 						"#e": {"moyasu"},
 					}),
-					Since: utils.ToRef(int64(16)),
-					Until: utils.ToRef(int64(184838)),
-					Limit: utils.ToRef(int64(143)),
+					Since: utils.Ptr(int64(16)),
+					Until: utils.Ptr(int64(184838)),
+					Limit: utils.Ptr(int64(143)),
 				},
 				Err: nil,
 			},

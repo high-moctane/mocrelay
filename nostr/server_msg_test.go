@@ -410,7 +410,7 @@ func TestServerCountMsg_MarshalJSON(t *testing.T) {
 			Input: &ServerCountMsg{
 				SubscriptionID: "sub_id",
 				Count:          192,
-				Approximate:    utils.ToRef(false),
+				Approximate:    utils.Ptr(false),
 			},
 			Expect: Expect{
 				Json: []byte(`["COUNT","sub_id",{"count":192,"approximate":false}]`),
@@ -497,7 +497,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 	var count ServerMsg = &ServerCountMsg{
 		SubscriptionID: "sub_id",
 		Count:          192,
-		Approximate:    utils.ToRef(false),
+		Approximate:    utils.Ptr(false),
 	}
 
 	b.ResetTimer()
@@ -608,7 +608,7 @@ func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
 	var count ServerMsg = &ServerCountMsg{
 		SubscriptionID: "sub_id",
 		Count:          192,
-		Approximate:    utils.ToRef(false),
+		Approximate:    utils.Ptr(false),
 	}
 
 	b.ResetTimer()

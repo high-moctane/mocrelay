@@ -9,7 +9,7 @@ import (
 )
 
 func TestMatcher(t *testing.T) {
-	filters := []*ReqFilter{{Limit: utils.ToRef(int64(2))}, {Limit: utils.ToRef(int64(3))}}
+	filters := []*ReqFilter{{Limit: utils.Ptr(int64(2))}, {Limit: utils.Ptr(int64(3))}}
 	event := &Event{
 		ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 		Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
