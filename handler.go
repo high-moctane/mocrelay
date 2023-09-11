@@ -130,7 +130,7 @@ func (router *Router) serveSend(ctx context.Context, connID string, send chan<- 
 type subscriber struct {
 	ConnID         string
 	SubscriptionID string
-	Matcher        nostr.ReqFiltersMatcher
+	Matcher        nostr.EventMatcher
 	Ch             chan nostr.ServerMsg
 }
 
@@ -138,7 +138,7 @@ func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerM
 	return &subscriber{
 		ConnID:         connID,
 		SubscriptionID: msg.SubscriptionID,
-		Matcher:        nostr.NewReqFiltersMatcher(msg.ReqFilters),
+		Matcher:        nostr.NewReqFiltersEventMatchers(msg.ReqFilters),
 		Ch:             ch,
 	}
 }
@@ -351,7 +351,7 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 
 func (c *eventCache) Find(filters []*nostr.ReqFilter) []*nostr.Event {
 	var ret []*nostr.Event
-	matcher := nostr.NewReqFiltersMatcher(filters)
+	matcher := nostr.NewReqFiltersEventMatchers(filters)
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -458,7 +458,7 @@ type mergeHandlerReqState struct {
 	EOSE      []bool
 	LastEvent *nostr.Event
 	SeenIDs   map[string]bool
-	Matcher   nostr.ReqFiltersMatcher
+	Matcher   nostr.EventCountMatcher
 }
 
 type mergeHandlerCountState struct {
@@ -493,7 +493,7 @@ func newMergeHandlerReqState(length int, filters []*nostr.ReqFilter) *mergeHandl
 		EOSE:      make([]bool, length),
 		LastEvent: nil,
 		SeenIDs:   make(map[string]bool),
-		Matcher:   nostr.NewReqFiltersMatcher(filters),
+		Matcher:   nostr.NewReqFiltersEventMatchers(filters),
 	}
 }
 
