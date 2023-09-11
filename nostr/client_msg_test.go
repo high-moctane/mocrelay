@@ -360,7 +360,7 @@ func TestParseClientEventMsg(t *testing.T) {
 func TestParseClientReqMsg(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
-		Filters        Filters
+		Filters        []*Filter
 		Err            error
 	}
 
@@ -374,7 +374,7 @@ func TestParseClientReqMsg(t *testing.T) {
 			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: Filters{
+				Filters: []*Filter{
 					{
 						IDs:     utils.ToRef([]string{"powa11", "powa12"}),
 						Authors: utils.ToRef([]string{"meu11", "meu12"}),
@@ -406,7 +406,7 @@ func TestParseClientReqMsg(t *testing.T) {
 			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: Filters{
+				Filters: []*Filter{
 					{
 						IDs:     nil,
 						Authors: nil,
@@ -559,7 +559,7 @@ func TestParseClientAuthMsg(t *testing.T) {
 func TestParseClientCountMsg(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
-		Filters        Filters
+		Filters        []*Filter
 		Err            error
 	}
 
@@ -573,7 +573,7 @@ func TestParseClientCountMsg(t *testing.T) {
 			Input: []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: Filters{
+				Filters: []*Filter{
 					{
 						IDs:     utils.ToRef([]string{"powa11", "powa12"}),
 						Authors: utils.ToRef([]string{"meu11", "meu12"}),
@@ -605,7 +605,7 @@ func TestParseClientCountMsg(t *testing.T) {
 			Input: []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: Filters{
+				Filters: []*Filter{
 					{
 						IDs:     nil,
 						Authors: nil,

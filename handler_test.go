@@ -29,7 +29,7 @@ func TestRouter_Handle(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -41,7 +41,7 @@ func TestRouter_Handle(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -91,11 +91,11 @@ func TestRouter_Handle(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					Filters:        nostr.Filters{{IDs: utils.ToRef([]string{"49"})}},
+					Filters:        []*nostr.Filter{{IDs: utils.ToRef([]string{"49"})}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -213,7 +213,7 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -225,7 +225,7 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -313,11 +313,11 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					Filters:        nostr.Filters{{IDs: utils.ToRef([]string{"49"})}},
+					Filters:        []*nostr.Filter{{IDs: utils.ToRef([]string{"49"})}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -475,7 +475,7 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -487,7 +487,7 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -579,11 +579,11 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 			input: []nostr.ClientMsg{
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
-					Filters:        nostr.Filters{{}},
+					Filters:        []*nostr.Filter{{}},
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					Filters:        nostr.Filters{{IDs: utils.ToRef([]string{"49"})}},
+					Filters:        []*nostr.Filter{{IDs: utils.ToRef([]string{"49"})}},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{

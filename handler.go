@@ -349,7 +349,7 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 	delete(c.keys, naddr)
 }
 
-func (c *eventCache) Find(filters nostr.Filters) []*nostr.Event {
+func (c *eventCache) Find(filters []*nostr.Filter) []*nostr.Event {
 	var ret []*nostr.Event
 	matcher := nostr.NewFiltersMatcher(filters)
 
@@ -488,7 +488,7 @@ func (stat *mergeHandlerCountState) Max() *nostr.ServerCountMsg {
 	})
 }
 
-func newMergeHandlerReqState(length int, filters nostr.Filters) *mergeHandlerReqState {
+func newMergeHandlerReqState(length int, filters []*nostr.Filter) *mergeHandlerReqState {
 	return &mergeHandlerReqState{
 		EOSE:      make([]bool, length),
 		LastEvent: nil,

@@ -175,7 +175,7 @@ var _ ClientMsg = (*ClientReqMsg)(nil)
 
 type ClientReqMsg struct {
 	SubscriptionID string
-	Filters        Filters
+	Filters        []*Filter
 
 	raw []byte
 }
@@ -203,7 +203,7 @@ func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
 		return
 	}
 
-	filters := make(Filters, 0, len(arr)-2)
+	filters := make([]*Filter, 0, len(arr)-2)
 
 	for i := 2; i < len(arr); i++ {
 		var filter *Filter
@@ -326,7 +326,7 @@ var _ ClientMsg = (*ClientCountMsg)(nil)
 
 type ClientCountMsg struct {
 	SubscriptionID string
-	Filters        Filters
+	Filters        []*Filter
 
 	raw []byte
 }
@@ -350,7 +350,7 @@ func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
 		return
 	}
 
-	filters := make(Filters, 0, len(arr)-2)
+	filters := make([]*Filter, 0, len(arr)-2)
 	for i := 2; i < len(arr); i++ {
 		var filter *Filter
 		filter, err = ParseFilter(arr[i])
@@ -486,5 +486,3 @@ func (fil *Filter) Raw() []byte {
 	}
 	return fil.raw
 }
-
-type Filters []*Filter

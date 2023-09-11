@@ -80,7 +80,7 @@ func (m *FilterMatcher) Done() bool {
 
 type FiltersMatcher []*FilterMatcher
 
-func NewFiltersMatcher(filters Filters) FiltersMatcher {
+func NewFiltersMatcher(filters []*Filter) FiltersMatcher {
 	if filters == nil {
 		panic("filters must be non-nil slice")
 	}
