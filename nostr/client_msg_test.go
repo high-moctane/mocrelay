@@ -360,7 +360,7 @@ func TestParseClientEventMsg(t *testing.T) {
 func TestParseClientReqMsg(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
-		Filters        []*Filter
+		ReqFilters     []*ReqFilter
 		Err            error
 	}
 
@@ -374,7 +374,7 @@ func TestParseClientReqMsg(t *testing.T) {
 			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: []*Filter{
+				ReqFilters: []*ReqFilter{
 					{
 						IDs:     utils.ToRef([]string{"powa11", "powa12"}),
 						Authors: utils.ToRef([]string{"meu11", "meu12"}),
@@ -406,7 +406,7 @@ func TestParseClientReqMsg(t *testing.T) {
 			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: []*Filter{
+				ReqFilters: []*ReqFilter{
 					{
 						IDs:     nil,
 						Authors: nil,
@@ -441,9 +441,9 @@ func TestParseClientReqMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
-			assert.Len(t, msg.Filters, len(tt.Expect.Filters))
-			for i := 0; i < len(tt.Expect.Filters); i++ {
-				assert.EqualExportedValues(t, *tt.Expect.Filters[i], *msg.Filters[i])
+			assert.Len(t, msg.ReqFilters, len(tt.Expect.ReqFilters))
+			for i := 0; i < len(tt.Expect.ReqFilters); i++ {
+				assert.EqualExportedValues(t, *tt.Expect.ReqFilters[i], *msg.ReqFilters[i])
 			}
 			assert.Equal(t, tt.Input, msg.Raw())
 		})
@@ -559,7 +559,7 @@ func TestParseClientAuthMsg(t *testing.T) {
 func TestParseClientCountMsg(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
-		Filters        []*Filter
+		ReqFilters     []*ReqFilter
 		Err            error
 	}
 
@@ -573,7 +573,7 @@ func TestParseClientCountMsg(t *testing.T) {
 			Input: []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: []*Filter{
+				ReqFilters: []*ReqFilter{
 					{
 						IDs:     utils.ToRef([]string{"powa11", "powa12"}),
 						Authors: utils.ToRef([]string{"meu11", "meu12"}),
@@ -605,7 +605,7 @@ func TestParseClientCountMsg(t *testing.T) {
 			Input: []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{}]`),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				Filters: []*Filter{
+				ReqFilters: []*ReqFilter{
 					{
 						IDs:     nil,
 						Authors: nil,
@@ -640,19 +640,19 @@ func TestParseClientCountMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
-			assert.Len(t, msg.Filters, len(tt.Expect.Filters))
-			for i := 0; i < len(tt.Expect.Filters); i++ {
-				assert.EqualExportedValues(t, *tt.Expect.Filters[i], *msg.Filters[i])
+			assert.Len(t, msg.ReqFilters, len(tt.Expect.ReqFilters))
+			for i := 0; i < len(tt.Expect.ReqFilters); i++ {
+				assert.EqualExportedValues(t, *tt.Expect.ReqFilters[i], *msg.ReqFilters[i])
 			}
 			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
 
-func TestParseFilter(t *testing.T) {
+func TestParseReqFilter(t *testing.T) {
 	type Expect struct {
-		Filter Filter
-		Err    error
+		ReqFilter ReqFilter
+		Err       error
 	}
 
 	tests := []struct {
@@ -664,15 +664,15 @@ func TestParseFilter(t *testing.T) {
 			Name:  "ok: empty",
 			Input: []byte("{}"),
 			Expect: Expect{
-				Filter: Filter{},
-				Err:    nil,
+				ReqFilter: ReqFilter{},
+				Err:       nil,
 			},
 		},
 		{
 			Name:  "ok: full",
 			Input: []byte(`{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
 			Expect: Expect{
-				Filter: Filter{
+				ReqFilter: ReqFilter{
 					IDs:     utils.ToRef([]string{"powa"}),
 					Authors: utils.ToRef([]string{"meu"}),
 					Kinds:   utils.ToRef([]int64{1, 3}),
@@ -690,7 +690,7 @@ func TestParseFilter(t *testing.T) {
 			Name:  "ok: partial",
 			Input: []byte(`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
 			Expect: Expect{
-				Filter: Filter{
+				ReqFilter: ReqFilter{
 					IDs:   utils.ToRef([]string{"powa"}),
 					Kinds: utils.ToRef([]int64{1, 3}),
 					Tags: utils.ToRef(map[string][]string{
@@ -707,7 +707,7 @@ func TestParseFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			fil, err := ParseFilter(tt.Input)
+			fil, err := ParseReqFilter(tt.Input)
 			if tt.Expect.Err != nil || err != nil {
 				assert.ErrorIs(t, err, tt.Expect.Err)
 				return
@@ -716,7 +716,7 @@ func TestParseFilter(t *testing.T) {
 				t.Errorf("expect non-nil filter but got nil")
 				return
 			}
-			assert.EqualExportedValues(t, tt.Expect.Filter, *fil)
+			assert.EqualExportedValues(t, tt.Expect.ReqFilter, *fil)
 			assert.Equal(t, tt.Input, fil.Raw())
 		})
 	}

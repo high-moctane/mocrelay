@@ -5,22 +5,22 @@ import (
 	"strings"
 )
 
-type FilterMatcher struct {
+type ReqFilterMatcher struct {
 	cnt int64
-	f   *Filter
+	f   *ReqFilter
 }
 
-func NewFilterMatcher(filter *Filter) *FilterMatcher {
+func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterMatcher {
 	if filter == nil {
 		panic("filter must be non-nil pointer")
 	}
-	return &FilterMatcher{
+	return &ReqFilterMatcher{
 		cnt: 0,
 		f:   filter,
 	}
 }
 
-func (m *FilterMatcher) Match(event *Event) bool {
+func (m *ReqFilterMatcher) Match(event *Event) bool {
 	match := true
 
 	if m.f.IDs != nil {
@@ -62,7 +62,7 @@ func (m *FilterMatcher) Match(event *Event) bool {
 	return match
 }
 
-func (m *FilterMatcher) CountMatch(event *Event) bool {
+func (m *ReqFilterMatcher) CountMatch(event *Event) bool {
 	match := m.Match(event)
 	if match {
 		m.cnt++
@@ -70,28 +70,28 @@ func (m *FilterMatcher) CountMatch(event *Event) bool {
 	return match
 }
 
-func (m *FilterMatcher) Count() int64 {
+func (m *ReqFilterMatcher) Count() int64 {
 	return m.cnt
 }
 
-func (m *FilterMatcher) Done() bool {
+func (m *ReqFilterMatcher) Done() bool {
 	return m.f.Limit != nil && *m.f.Limit <= m.cnt
 }
 
-type FiltersMatcher []*FilterMatcher
+type ReqFiltersMatcher []*ReqFilterMatcher
 
-func NewFiltersMatcher(filters []*Filter) FiltersMatcher {
+func NewReqFiltersMatcher(filters []*ReqFilter) ReqFiltersMatcher {
 	if filters == nil {
 		panic("filters must be non-nil slice")
 	}
-	ret := make(FiltersMatcher, len(filters))
+	ret := make(ReqFiltersMatcher, len(filters))
 	for i, f := range filters {
-		ret[i] = NewFilterMatcher(f)
+		ret[i] = NewReqFilterMatcher(f)
 	}
 	return ret
 }
 
-func (m FiltersMatcher) Match(event *Event) bool {
+func (m ReqFiltersMatcher) Match(event *Event) bool {
 	match := false
 	for _, mm := range m {
 		match = mm.Match(event) || match
@@ -99,7 +99,7 @@ func (m FiltersMatcher) Match(event *Event) bool {
 	return match
 }
 
-func (m FiltersMatcher) CountMatch(event *Event) bool {
+func (m ReqFiltersMatcher) CountMatch(event *Event) bool {
 	match := false
 	for _, mm := range m {
 		match = mm.CountMatch(event) || match
@@ -107,7 +107,7 @@ func (m FiltersMatcher) CountMatch(event *Event) bool {
 	return match
 }
 
-func (m FiltersMatcher) Count() int64 {
+func (m ReqFiltersMatcher) Count() int64 {
 	var ret int64
 	for _, mm := range m {
 		ret = max(ret, mm.Count())
@@ -115,7 +115,7 @@ func (m FiltersMatcher) Count() int64 {
 	return ret
 }
 
-func (m FiltersMatcher) Done() bool {
+func (m ReqFiltersMatcher) Done() bool {
 	done := true
 	for _, mm := range m {
 		done = done && mm.Done()

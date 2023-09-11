@@ -130,7 +130,7 @@ func (router *Router) serveSend(ctx context.Context, connID string, send chan<- 
 type subscriber struct {
 	ConnID         string
 	SubscriptionID string
-	Matcher        nostr.FiltersMatcher
+	Matcher        nostr.ReqFiltersMatcher
 	Ch             chan nostr.ServerMsg
 }
 
@@ -138,7 +138,7 @@ func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerM
 	return &subscriber{
 		ConnID:         connID,
 		SubscriptionID: msg.SubscriptionID,
-		Matcher:        nostr.NewFiltersMatcher(msg.Filters),
+		Matcher:        nostr.NewReqFiltersMatcher(msg.ReqFilters),
 		Ch:             ch,
 	}
 }
@@ -220,7 +220,7 @@ func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 			h.c.Add(e)
 
 		case *nostr.ClientReqMsg:
-			for _, e := range h.c.Find(m.Filters) {
+			for _, e := range h.c.Find(m.ReqFilters) {
 				send <- nostr.NewServerEventMsg(m.SubscriptionID, e)
 			}
 		}
@@ -349,9 +349,9 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 	delete(c.keys, naddr)
 }
 
-func (c *eventCache) Find(filters []*nostr.Filter) []*nostr.Event {
+func (c *eventCache) Find(filters []*nostr.ReqFilter) []*nostr.Event {
 	var ret []*nostr.Event
-	matcher := nostr.NewFiltersMatcher(filters)
+	matcher := nostr.NewReqFiltersMatcher(filters)
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -458,7 +458,7 @@ type mergeHandlerReqState struct {
 	EOSE      []bool
 	LastEvent *nostr.Event
 	SeenIDs   map[string]bool
-	Matcher   nostr.FiltersMatcher
+	Matcher   nostr.ReqFiltersMatcher
 }
 
 type mergeHandlerCountState struct {
@@ -488,12 +488,12 @@ func (stat *mergeHandlerCountState) Max() *nostr.ServerCountMsg {
 	})
 }
 
-func newMergeHandlerReqState(length int, filters []*nostr.Filter) *mergeHandlerReqState {
+func newMergeHandlerReqState(length int, filters []*nostr.ReqFilter) *mergeHandlerReqState {
 	return &mergeHandlerReqState{
 		EOSE:      make([]bool, length),
 		LastEvent: nil,
 		SeenIDs:   make(map[string]bool),
-		Matcher:   nostr.NewFiltersMatcher(filters),
+		Matcher:   nostr.NewReqFiltersMatcher(filters),
 	}
 }
 
@@ -579,7 +579,7 @@ func (h *MergeHandler) serve(
 func (h *MergeHandler) serveRecv(stats *mergeHandlerState, recvs []chan nostr.ClientMsg, msg nostr.ClientMsg) {
 	switch msg := msg.(type) {
 	case *nostr.ClientReqMsg:
-		stats.Req[msg.SubscriptionID] = newMergeHandlerReqState(len(h.hs), msg.Filters)
+		stats.Req[msg.SubscriptionID] = newMergeHandlerReqState(len(h.hs), msg.ReqFilters)
 
 	case *nostr.ClientCloseMsg:
 		delete(stats.Req, msg.SubscriptionID)
@@ -655,9 +655,9 @@ func (h *MergeHandler) mergeSends(ctx context.Context, smerge chan *mergeHandler
 	}
 }
 
-type EventCreatedAtFilterMiddleware func(next Handler) Handler
+type EventCreatedAtReqFilterMiddleware func(next Handler) Handler
 
-func NewEventCreatedAtFilterMiddleware(from, to time.Duration) EventCreatedAtFilterMiddleware {
+func NewEventCreatedAtReqFilterMiddleware(from, to time.Duration) EventCreatedAtReqFilterMiddleware {
 	return func(next Handler) Handler {
 		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
 			ctx := r.Context()

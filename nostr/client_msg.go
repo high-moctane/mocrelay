@@ -175,7 +175,7 @@ var _ ClientMsg = (*ClientReqMsg)(nil)
 
 type ClientReqMsg struct {
 	SubscriptionID string
-	Filters        []*Filter
+	ReqFilters     []*ReqFilter
 
 	raw []byte
 }
@@ -203,11 +203,11 @@ func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
 		return
 	}
 
-	filters := make([]*Filter, 0, len(arr)-2)
+	filters := make([]*ReqFilter, 0, len(arr)-2)
 
 	for i := 2; i < len(arr); i++ {
-		var filter *Filter
-		filter, err = ParseFilter(arr[i])
+		var filter *ReqFilter
+		filter, err = ParseReqFilter(arr[i])
 		if err != nil {
 			return
 		}
@@ -216,7 +216,7 @@ func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
 
 	msg = &ClientReqMsg{
 		SubscriptionID: subID,
-		Filters:        filters,
+		ReqFilters:     filters,
 		raw:            b,
 	}
 
@@ -326,7 +326,7 @@ var _ ClientMsg = (*ClientCountMsg)(nil)
 
 type ClientCountMsg struct {
 	SubscriptionID string
-	Filters        []*Filter
+	ReqFilters     []*ReqFilter
 
 	raw []byte
 }
@@ -350,10 +350,10 @@ func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
 		return
 	}
 
-	filters := make([]*Filter, 0, len(arr)-2)
+	filters := make([]*ReqFilter, 0, len(arr)-2)
 	for i := 2; i < len(arr); i++ {
-		var filter *Filter
-		filter, err = ParseFilter(arr[i])
+		var filter *ReqFilter
+		filter, err = ParseReqFilter(arr[i])
 		if err != nil {
 			return
 		}
@@ -362,7 +362,7 @@ func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
 
 	msg = &ClientCountMsg{
 		SubscriptionID: subID,
-		Filters:        filters,
+		ReqFilters:     filters,
 		raw:            b,
 	}
 
@@ -380,7 +380,7 @@ func (msg *ClientCountMsg) Raw() []byte {
 	return msg.raw
 }
 
-type Filter struct {
+type ReqFilter struct {
 	IDs     *[]string
 	Authors *[]string
 	Kinds   *[]int64
@@ -392,7 +392,7 @@ type Filter struct {
 	raw []byte
 }
 
-var ErrInvalidFilter = errors.New("invalid filter")
+var ErrInvalidReqFilter = errors.New("invalid filter")
 
 var filterKeys = func() []string {
 	var ret []string
@@ -407,10 +407,10 @@ var filterKeys = func() []string {
 	return ret
 }()
 
-func ParseFilter(b []byte) (fil *Filter, err error) {
+func ParseReqFilter(b []byte) (fil *ReqFilter, err error) {
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, ErrInvalidFilter)
+			err = errors.Join(err, ErrInvalidReqFilter)
 		}
 	}()
 
@@ -419,7 +419,7 @@ func ParseFilter(b []byte) (fil *Filter, err error) {
 		return
 	}
 
-	var ret Filter
+	var ret ReqFilter
 	var v json.RawMessage
 	var ok bool
 
@@ -480,7 +480,7 @@ func ParseFilter(b []byte) (fil *Filter, err error) {
 	return
 }
 
-func (fil *Filter) Raw() []byte {
+func (fil *ReqFilter) Raw() []byte {
 	if fil == nil {
 		return nil
 	}
