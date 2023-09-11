@@ -5,22 +5,22 @@ import (
 	"strings"
 )
 
-type Matcher struct {
+type FilterMatcher struct {
 	cnt int64
 	f   *Filter
 }
 
-func NewMatcher(filter *Filter) *Matcher {
+func NewFilterMatcher(filter *Filter) *FilterMatcher {
 	if filter == nil {
 		panic("filter must be non-nil pointer")
 	}
-	return &Matcher{
+	return &FilterMatcher{
 		cnt: 0,
 		f:   filter,
 	}
 }
 
-func (m *Matcher) Match(event *Event) bool {
+func (m *FilterMatcher) Match(event *Event) bool {
 	match := true
 
 	if m.f.IDs != nil {
@@ -62,7 +62,7 @@ func (m *Matcher) Match(event *Event) bool {
 	return match
 }
 
-func (m *Matcher) CountMatch(event *Event) bool {
+func (m *FilterMatcher) CountMatch(event *Event) bool {
 	match := m.Match(event)
 	if match {
 		m.cnt++
@@ -70,28 +70,28 @@ func (m *Matcher) CountMatch(event *Event) bool {
 	return match
 }
 
-func (m *Matcher) Count() int64 {
+func (m *FilterMatcher) Count() int64 {
 	return m.cnt
 }
 
-func (m *Matcher) Done() bool {
+func (m *FilterMatcher) Done() bool {
 	return m.f.Limit != nil && *m.f.Limit <= m.cnt
 }
 
-type Matchers []*Matcher
+type FiltersMatcher []*FilterMatcher
 
-func NewMatchers(filters Filters) Matchers {
+func NewFiltersMatcher(filters Filters) FiltersMatcher {
 	if filters == nil {
 		panic("filters must be non-nil slice")
 	}
-	ret := make(Matchers, len(filters))
+	ret := make(FiltersMatcher, len(filters))
 	for i, f := range filters {
-		ret[i] = NewMatcher(f)
+		ret[i] = NewFilterMatcher(f)
 	}
 	return ret
 }
 
-func (m Matchers) Match(event *Event) bool {
+func (m FiltersMatcher) Match(event *Event) bool {
 	match := false
 	for _, mm := range m {
 		match = mm.Match(event) || match
@@ -99,7 +99,7 @@ func (m Matchers) Match(event *Event) bool {
 	return match
 }
 
-func (m Matchers) CountMatch(event *Event) bool {
+func (m FiltersMatcher) CountMatch(event *Event) bool {
 	match := false
 	for _, mm := range m {
 		match = mm.CountMatch(event) || match
@@ -107,7 +107,7 @@ func (m Matchers) CountMatch(event *Event) bool {
 	return match
 }
 
-func (m Matchers) Count() int64 {
+func (m FiltersMatcher) Count() int64 {
 	var ret int64
 	for _, mm := range m {
 		ret = max(ret, mm.Count())
@@ -115,7 +115,7 @@ func (m Matchers) Count() int64 {
 	return ret
 }
 
-func (m Matchers) Done() bool {
+func (m FiltersMatcher) Done() bool {
 	done := true
 	for _, mm := range m {
 		done = done && mm.Done()
