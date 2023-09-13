@@ -60,37 +60,3 @@ type priorityQueue[T any] struct {
 	s    []T
 	less func(T, T) bool
 }
-
-func newPriorityQueue[T any](less func(T, T) bool) *priorityQueue[T] {
-	return &priorityQueue[T]{
-		s:    nil,
-		less: less,
-	}
-}
-
-func (q *priorityQueue[T]) Len() int { return len(q.s) }
-
-func (q *priorityQueue[T]) Less(i, j int) bool { return q.less(q.s[i], q.s[j]) }
-
-func (q *priorityQueue[T]) Swap(i, j int) { q.s[i], q.s[j] = q.s[j], q.s[i] }
-
-func (q *priorityQueue[T]) Push(v any) {
-	q.TypedPush(v.(T))
-}
-
-func (q *priorityQueue[T]) TypedPush(v T) {
-	q.s = append(q.s, v)
-}
-
-func (q *priorityQueue[T]) Pop() any {
-	return q.TypedPop()
-}
-
-func (q *priorityQueue[T]) TypedPop() T {
-	var empty T
-	l := len(q.s)
-	v := q.s[l-1]
-	q.s[l-1] = empty
-	q.s = q.s[:l-1]
-	return v
-}
