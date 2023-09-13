@@ -1,24 +1,26 @@
-package nostr
+package mocrelay
 
 import (
 	"slices"
 	"strings"
+
+	"github.com/high-moctane/mocrelay/nostr"
 )
 
 type EventMatcher interface {
-	Match(*Event) bool
+	Match(*nostr.Event) bool
 }
 
 type EventCountMatcher interface {
 	EventMatcher
-	CountMatch(*Event) bool
+	CountMatch(*nostr.Event) bool
 	Count() int64
 	Done() bool
 }
 
 type EventCountMatchers[T EventCountMatcher] []T
 
-func (m EventCountMatchers[T]) Match(event *Event) bool {
+func (m EventCountMatchers[T]) Match(event *nostr.Event) bool {
 	match := false
 	for _, mm := range m {
 		match = mm.Match(event) || match
@@ -26,7 +28,7 @@ func (m EventCountMatchers[T]) Match(event *Event) bool {
 	return match
 }
 
-func (m EventCountMatchers[T]) CountMatch(event *Event) bool {
+func (m EventCountMatchers[T]) CountMatch(event *nostr.Event) bool {
 	match := false
 	for _, mm := range m {
 		match = mm.CountMatch(event) || match
@@ -54,10 +56,10 @@ var _ EventCountMatcher = (*ReqFilterEventMatcher)(nil)
 
 type ReqFilterEventMatcher struct {
 	cnt int64
-	f   *ReqFilter
+	f   *nostr.ReqFilter
 }
 
-func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterEventMatcher {
+func NewReqFilterMatcher(filter *nostr.ReqFilter) *ReqFilterEventMatcher {
 	if filter == nil {
 		panic("filter must be non-nil pointer")
 	}
@@ -67,7 +69,7 @@ func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterEventMatcher {
 	}
 }
 
-func (m *ReqFilterEventMatcher) Match(event *Event) bool {
+func (m *ReqFilterEventMatcher) Match(event *nostr.Event) bool {
 	match := true
 
 	if m.f.IDs != nil {
@@ -91,7 +93,7 @@ func (m *ReqFilterEventMatcher) Match(event *Event) bool {
 	if m.f.Tags != nil {
 		for tag, vs := range *m.f.Tags {
 			match = match && slices.ContainsFunc(vs, func(v string) bool {
-				return slices.ContainsFunc(event.Tags, func(tagArr Tag) bool {
+				return slices.ContainsFunc(event.Tags, func(tagArr nostr.Tag) bool {
 					return len(tagArr) >= 1 && tagArr[0] == string(tag[1]) && (len(tagArr) == 1 || strings.HasPrefix(tagArr[1], v))
 				})
 			})
@@ -109,7 +111,7 @@ func (m *ReqFilterEventMatcher) Match(event *Event) bool {
 	return match
 }
 
-func (m *ReqFilterEventMatcher) CountMatch(event *Event) bool {
+func (m *ReqFilterEventMatcher) CountMatch(event *nostr.Event) bool {
 	match := m.Match(event)
 	if match {
 		m.cnt++
@@ -127,7 +129,7 @@ func (m *ReqFilterEventMatcher) Done() bool {
 
 type ReqFiltersMatcher []*ReqFilterEventMatcher
 
-func NewReqFiltersEventMatchers(filters []*ReqFilter) EventCountMatchers[*ReqFilterEventMatcher] {
+func NewReqFiltersEventMatchers(filters []*nostr.ReqFilter) EventCountMatchers[*ReqFilterEventMatcher] {
 	if filters == nil {
 		panic("filters must be non-nil slice")
 	}
