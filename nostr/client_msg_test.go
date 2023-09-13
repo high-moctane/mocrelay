@@ -166,43 +166,6 @@ func BenchmarkParseClientMsg_All(b *testing.B) {
 	}
 }
 
-func BenchmarkParseClientMsgOld_All(b *testing.B) {
-	eventJSON := []byte(`["EVENT",` +
-		`{` +
-		`  "kind": 1,` +
-		`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-		`  "created_at": 1693157791,` +
-		`  "tags": [` +
-		`    [` +
-		`      "e",` +
-		`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-		`      "",` +
-		`      "root"` +
-		`    ],` +
-		`    [` +
-		`      "p",` +
-		`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
-		`    ]` +
-		`  ],` +
-		`  "content": "powa",` +
-		`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
-		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
-		`}]`)
-	reqJSON := []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`)
-	closeJSON := []byte(`["CLOSE","sub_id"]`)
-	authJSON := []byte(`["AUTH","challenge"]`)
-	countJSON := []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i += 5 {
-		ParseClientMsgOld(eventJSON)
-		ParseClientMsgOld(reqJSON)
-		ParseClientMsgOld(closeJSON)
-		ParseClientMsgOld(authJSON)
-		ParseClientMsgOld(countJSON)
-	}
-}
-
 func BenchmarkParseClientMsg_Event(b *testing.B) {
 	eventJSON := []byte(`["EVENT",` +
 		`{` +
@@ -284,7 +247,7 @@ func TestParseClientUnknownMsg(t *testing.T) {
 			Input: []byte(`["POWA","meu",{"moyasu":29}]`),
 			Expect: Expect{
 				Msg: &ClientUnknownMsg{
-					Label: "POWA",
+					MsgTypeStr: "POWA",
 					Msg: []interface{}{
 						"POWA",
 						"meu",
