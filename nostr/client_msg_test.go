@@ -158,7 +158,7 @@ func BenchmarkParseClientMsg_All(b *testing.B) {
 	countJSON := []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; i < b.N; i += 5 {
 		ParseClientMsg(eventJSON)
 		ParseClientMsg(reqJSON)
 		ParseClientMsg(closeJSON)
