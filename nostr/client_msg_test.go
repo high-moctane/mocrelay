@@ -125,7 +125,6 @@ func TestParseClientMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.MsgType, msg.MsgType())
-			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -282,7 +281,6 @@ func TestParseClientUnknownMsg(t *testing.T) {
 				return
 			}
 			assert.EqualExportedValues(t, *tt.Expect.Msg, *msg)
-			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -352,7 +350,6 @@ func TestParseClientEventMsg(t *testing.T) {
 				return
 			}
 			assert.EqualExportedValues(t, tt.Expect.Event, *msg.Event)
-			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -445,7 +442,6 @@ func TestParseClientReqMsg(t *testing.T) {
 			for i := 0; i < len(tt.Expect.ReqFilters); i++ {
 				assert.EqualExportedValues(t, *tt.Expect.ReqFilters[i], *msg.ReqFilters[i])
 			}
-			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -498,7 +494,6 @@ func TestParseClientCloseMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
-			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -551,7 +546,6 @@ func TestParseClientAuthMsg(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.Expect.Challenge, msg.Challenge)
-			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -644,7 +638,6 @@ func TestParseClientCountMsg(t *testing.T) {
 			for i := 0; i < len(tt.Expect.ReqFilters); i++ {
 				assert.EqualExportedValues(t, *tt.Expect.ReqFilters[i], *msg.ReqFilters[i])
 			}
-			assert.Equal(t, tt.Input, msg.Raw())
 		})
 	}
 }
@@ -717,7 +710,6 @@ func TestParseReqFilter(t *testing.T) {
 				return
 			}
 			assert.EqualExportedValues(t, tt.Expect.ReqFilter, *fil)
-			assert.Equal(t, tt.Input, fil.Raw())
 		})
 	}
 }

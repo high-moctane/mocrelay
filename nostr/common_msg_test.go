@@ -121,7 +121,6 @@ func TestParseEvent(t *testing.T) {
 				return
 			}
 			assert.EqualExportedValues(t, *tt.Expect.Event, *event)
-			assert.Equal(t, tt.Input, event.Raw())
 		})
 	}
 }

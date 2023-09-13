@@ -21,8 +21,6 @@ type Event struct {
 	Tags      []Tag  `json:"tags"`
 	Content   string `json:"content"`
 	Sig       string `json:"sig"`
-
-	raw []byte
 }
 
 var (
@@ -109,17 +107,9 @@ func ParseEvent(b []byte) (ev *Event, err error) {
 		return
 	}
 
-	ret.raw = b
 	ev = &ret
 
 	return
-}
-
-func (ev *Event) Raw() []byte {
-	if ev == nil {
-		return nil
-	}
-	return ev.raw
 }
 
 var ErrMarshalEvent = errors.New("failed to marshal event")
@@ -129,22 +119,12 @@ func (ev *Event) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalEvent
 	}
 
-	if raw := ev.Raw(); raw != nil {
-		buf := new(bytes.Buffer)
-		err := json.Compact(buf, raw)
-		if err != nil {
-			err = errors.Join(err, ErrMarshalEvent)
-		}
-		return buf.Bytes(), err
-
-	} else {
-		type alias Event
-		ret, err := json.Marshal(alias(*ev))
-		if err != nil {
-			err = errors.Join(err, ErrMarshalEvent)
-		}
-		return ret, err
+	type alias Event
+	ret, err := json.Marshal(alias(*ev))
+	if err != nil {
+		err = errors.Join(err, ErrMarshalEvent)
 	}
+	return ret, err
 }
 
 var hexRegexp = regexp.MustCompile(`^[0-9a-f]$`)

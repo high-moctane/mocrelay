@@ -23,7 +23,6 @@ const (
 
 type ClientMsg interface {
 	MsgType() ClientMsgType
-	Raw() []byte
 }
 
 var clientMsgRegexp = regexp.MustCompile(`^\[\s*"(\w*)"`)
@@ -73,7 +72,6 @@ var _ ClientMsg = (*ClientUnknownMsg)(nil)
 type ClientUnknownMsg struct {
 	MsgTypeStr string
 	Msg        []interface{}
-	raw        []byte
 }
 
 var ErrInvalidClientUnknownMsg = errors.New("invalid client message")
@@ -105,7 +103,6 @@ func ParseClientUnknownMsg(b []byte) (msg *ClientUnknownMsg, err error) {
 	msg = &ClientUnknownMsg{
 		MsgTypeStr: s,
 		Msg:        arr,
-		raw:        b,
 	}
 
 	return
@@ -115,19 +112,10 @@ func (msg *ClientUnknownMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeUnknown
 }
 
-func (msg *ClientUnknownMsg) Raw() []byte {
-	if msg == nil {
-		return nil
-	}
-	return msg.raw
-}
-
 var _ ClientMsg = (*ClientEventMsg)(nil)
 
 type ClientEventMsg struct {
 	Event *Event
-
-	raw []byte
 }
 
 var ErrInvalidClientEventMsg = errors.New("invalid client event msg")
@@ -155,7 +143,6 @@ func ParseClientEventMsg(b []byte) (msg *ClientEventMsg, err error) {
 
 	msg = &ClientEventMsg{
 		Event: ev,
-		raw:   b,
 	}
 	return
 }
@@ -164,20 +151,11 @@ func (*ClientEventMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeEvent
 }
 
-func (msg *ClientEventMsg) Raw() []byte {
-	if msg == nil {
-		return nil
-	}
-	return msg.raw
-}
-
 var _ ClientMsg = (*ClientReqMsg)(nil)
 
 type ClientReqMsg struct {
 	SubscriptionID string
 	ReqFilters     []*ReqFilter
-
-	raw []byte
 }
 
 var ErrInvalidClientReqMsg = errors.New("invalid client req message")
@@ -217,7 +195,6 @@ func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
 	msg = &ClientReqMsg{
 		SubscriptionID: subID,
 		ReqFilters:     filters,
-		raw:            b,
 	}
 
 	return
@@ -227,20 +204,12 @@ func (*ClientReqMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeReq
 }
 
-func (msg *ClientReqMsg) Raw() []byte {
-	if msg == nil {
-		return nil
-	}
-	return msg.raw
-}
-
 var _ ClientMsg = (*ClientCloseMsg)(nil)
 
 var ErrInvalidClientCloseMsg = errors.New("invalid client close msg")
 
 type ClientCloseMsg struct {
 	SubscriptionID string
-	raw            []byte
 }
 
 func ParseClientCloseMsg(b []byte) (msg *ClientCloseMsg, err error) {
@@ -261,7 +230,6 @@ func ParseClientCloseMsg(b []byte) (msg *ClientCloseMsg, err error) {
 
 	msg = &ClientCloseMsg{
 		SubscriptionID: arr[1],
-		raw:            b,
 	}
 	return
 }
@@ -270,19 +238,10 @@ func (*ClientCloseMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeClose
 }
 
-func (msg *ClientCloseMsg) Raw() []byte {
-	if msg == nil {
-		return nil
-	}
-	return msg.raw
-}
-
 var _ ClientMsg = (*ClientAuthMsg)(nil)
 
 type ClientAuthMsg struct {
 	Challenge string
-
-	raw []byte
 }
 
 var ErrInvalidClientAuthMsg = errors.New("invalid client auth msg")
@@ -305,7 +264,6 @@ func ParseClientAuthMsg(b []byte) (msg *ClientAuthMsg, err error) {
 
 	msg = &ClientAuthMsg{
 		Challenge: arr[1],
-		raw:       b,
 	}
 
 	return
@@ -315,20 +273,11 @@ func (*ClientAuthMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeAuth
 }
 
-func (msg *ClientAuthMsg) Raw() []byte {
-	if msg == nil {
-		return nil
-	}
-	return msg.raw
-}
-
 var _ ClientMsg = (*ClientCountMsg)(nil)
 
 type ClientCountMsg struct {
 	SubscriptionID string
 	ReqFilters     []*ReqFilter
-
-	raw []byte
 }
 
 var ErrInvalidClientCountMsg = errors.New("invalid client count msg")
@@ -363,7 +312,6 @@ func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
 	msg = &ClientCountMsg{
 		SubscriptionID: subID,
 		ReqFilters:     filters,
-		raw:            b,
 	}
 
 	return
@@ -371,13 +319,6 @@ func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
 
 func (*ClientCountMsg) MsgType() ClientMsgType {
 	return ClientMsgTypeCount
-}
-
-func (msg *ClientCountMsg) Raw() []byte {
-	if msg == nil {
-		return nil
-	}
-	return msg.raw
 }
 
 type ReqFilter struct {
@@ -388,8 +329,6 @@ type ReqFilter struct {
 	Since   *int64
 	Until   *int64
 	Limit   *int64
-
-	raw []byte
 }
 
 var ErrInvalidReqFilter = errors.New("invalid filter")
@@ -474,15 +413,7 @@ func ParseReqFilter(b []byte) (fil *ReqFilter, err error) {
 		}
 	}
 
-	ret.raw = b
 	fil = &ret
 
 	return
-}
-
-func (fil *ReqFilter) Raw() []byte {
-	if fil == nil {
-		return nil
-	}
-	return fil.raw
 }
