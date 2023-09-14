@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/high-moctane/mocrelay/nostr"
+	"github.com/high-moctane/mocrelay/utils"
 )
 
 var (
@@ -33,7 +34,15 @@ func (f HandlerFunc) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send c
 var ErrRouterStop = errors.New("router stopped")
 
 type RouterOption struct {
+	BufLen int
 	// TODO(high-moctane) Add logger
+}
+
+func (opt *RouterOption) bufLen() int {
+	if opt == nil {
+		return 50
+	}
+	return opt.BufLen
 }
 
 type Router struct {
@@ -55,7 +64,7 @@ func (router *Router) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send 
 	connID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(connID)
 
-	msgCh := make(chan nostr.ServerMsg, 1)
+	msgCh := utils.NewTryChan[nostr.ServerMsg](router.Option.bufLen())
 
 	errCh := make(chan error, 2)
 
@@ -72,7 +81,7 @@ func (router *Router) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send 
 	return errors.Join(<-errCh, <-errCh, ErrRouterStop)
 }
 
-func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan nostr.ClientMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan nostr.ClientMsg, msgCh utils.TryChan[nostr.ServerMsg]) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -87,7 +96,7 @@ func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan 
 	}
 }
 
-func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientMsg, msgCh chan nostr.ServerMsg) {
+func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientMsg, msgCh utils.TryChan[nostr.ServerMsg]) {
 	switch m := msg.(type) {
 	case *nostr.ClientReqMsg:
 		router.recvClientReqMsg(ctx, connID, m, msgCh)
@@ -100,29 +109,28 @@ func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientM
 	}
 }
 
-func (router *Router) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh chan nostr.ServerMsg) {
+func (router *Router) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh utils.TryChan[nostr.ServerMsg]) {
 	sub := newSubscriber(connID, msg, msgCh)
 	router.subs.Subscribe(sub)
-	msgCh <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
+	msgCh.TrySend(nostr.NewServerEOSEMsg(msg.SubscriptionID))
 }
 
-func (router *Router) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh chan nostr.ServerMsg) {
+func (router *Router) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh utils.TryChan[nostr.ServerMsg]) {
 	router.subs.Publish(msg.Event)
-	msgCh <- nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, "")
+	msgCh.TrySend(nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, ""))
 }
 
 func (router *Router) recvClientCloseMsg(ctx context.Context, connID string, msg *nostr.ClientCloseMsg) {
 	router.subs.Unsubscribe(connID, msg.SubscriptionID)
 }
 
-func (router *Router) serveSend(ctx context.Context, connID string, send chan<- nostr.ServerMsg, msgCh chan nostr.ServerMsg) error {
+func (router *Router) serveSend(ctx context.Context, connID string, send chan<- nostr.ServerMsg, msgCh utils.TryChan[nostr.ServerMsg]) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
-		case msg := <-msgCh:
-			send <- msg
+		case send <- <-msgCh:
 		}
 	}
 }
@@ -131,7 +139,7 @@ type subscriber struct {
 	ConnID         string
 	SubscriptionID string
 	Matcher        EventMatcher
-	Ch             chan nostr.ServerMsg
+	Ch             utils.TryChan[nostr.ServerMsg]
 }
 
 func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerMsg) *subscriber {
@@ -145,7 +153,7 @@ func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerM
 
 func (sub *subscriber) SendIfMatch(event *nostr.Event) {
 	if sub.Matcher.Match(event) {
-		sub.Ch <- nostr.NewServerEventMsg(sub.SubscriptionID, event)
+		sub.Ch.TrySend(nostr.NewServerEventMsg(sub.SubscriptionID, event))
 	}
 }
 
