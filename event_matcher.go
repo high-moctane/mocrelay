@@ -14,7 +14,6 @@ type EventMatcher interface {
 type EventCountMatcher interface {
 	EventMatcher
 	CountMatch(*nostr.Event) bool
-	Count() int64
 	Done() bool
 }
 
@@ -34,14 +33,6 @@ func (m EventCountMatchers[T]) CountMatch(event *nostr.Event) bool {
 		match = mm.CountMatch(event) || match
 	}
 	return match
-}
-
-func (m EventCountMatchers[T]) Count() int64 {
-	var ret int64
-	for _, mm := range m {
-		ret = max(ret, mm.Count())
-	}
-	return ret
 }
 
 func (m EventCountMatchers[T]) Done() bool {
@@ -117,10 +108,6 @@ func (m *ReqFilterEventMatcher) CountMatch(event *nostr.Event) bool {
 		m.cnt++
 	}
 	return match
-}
-
-func (m *ReqFilterEventMatcher) Count() int64 {
-	return m.cnt
 }
 
 func (m *ReqFilterEventMatcher) Done() bool {
