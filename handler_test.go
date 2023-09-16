@@ -4,14 +4,73 @@ import (
 	"bufio"
 	"context"
 	"net/http"
-	"reflect"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/high-moctane/mocrelay/nostr"
 	"github.com/high-moctane/mocrelay/utils"
 )
+
+func helperTestHandler(t *testing.T, h Handler, in []nostr.ClientMsg, out []nostr.ServerMsg) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
+	recv := make(chan nostr.ClientMsg, len(in))
+	send := make(chan nostr.ServerMsg, len(out)*2)
+
+	go h.Handle(r, recv, send)
+
+	for _, msg := range in {
+		recv <- msg
+	}
+
+	var gots []nostr.ServerMsg
+
+	for i := 0; i < len(out); i++ {
+		select {
+		case <-ctx.Done():
+			t.Errorf("timeout")
+			return
+
+		case got := <-send:
+			gots = append(gots, got)
+		}
+	}
+
+	var gotjsons, wantjsons []string
+
+	for _, v := range gots {
+		j, err := v.MarshalJSON()
+		if err != nil {
+			t.Errorf("unexpect error: %s", err)
+			return
+		}
+		gotjsons = append(gotjsons, string(j))
+	}
+	for _, v := range out {
+		j, err := v.MarshalJSON()
+		if err != nil {
+			t.Errorf("unexpect error: %s", err)
+			return
+		}
+		wantjsons = append(wantjsons, string(j))
+	}
+
+	slices.Sort(gotjsons)
+	slices.Sort(wantjsons)
+
+	assert.EqualValues(t, wantjsons, gotjsons)
+
+	select {
+	case msg := <-send:
+		t.Errorf("too much server msg: %#+v", msg)
+	default:
+	}
+}
 
 func TestRouter_Handle(t *testing.T) {
 	tests := []struct {
@@ -153,46 +212,7 @@ func TestRouter_Handle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			router := NewRouter(nil)
-
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(3*time.Second))
-			defer cancel()
-
-			r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
-			recv := make(chan nostr.ClientMsg, 1)
-			send := make(chan nostr.ServerMsg, 1)
-
-			go router.Handle(r, recv, send)
-
-			for _, msg := range tt.input {
-				recv <- msg
-			}
-
-			var gots []nostr.ServerMsg
-
-			for i := 0; i < len(tt.want); i++ {
-				select {
-				case <-ctx.Done():
-					t.Errorf("timeout")
-					return
-
-				case got := <-send:
-					gots = append(gots, got)
-				}
-			}
-
-			for idx, w := range tt.want {
-				if !slices.ContainsFunc(gots, func(msg nostr.ServerMsg) bool {
-					return reflect.DeepEqual(msg, w)
-				}) {
-					t.Errorf("[%d] %#+v not found: gots=%#+v", idx, w, gots)
-				}
-			}
-
-			select {
-			case msg := <-send:
-				t.Errorf("too much server msg: %#+v", msg)
-			default:
-			}
+			helperTestHandler(t, router, tt.input, tt.want)
 		})
 	}
 }
@@ -416,45 +436,7 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 			handler = NewRouter(nil)
 			handler = NewRecvEventUniquefyMiddleware(2)(handler)
 
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(3*time.Second))
-			defer cancel()
-
-			r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
-			recv := make(chan nostr.ClientMsg, len(tt.input))
-			send := make(chan nostr.ServerMsg, len(tt.want))
-
-			go handler.Handle(r, recv, send)
-
-			for _, msg := range tt.input {
-				recv <- msg
-			}
-
-			var gots []nostr.ServerMsg
-
-			for i := 0; i < len(tt.want); i++ {
-				select {
-				case <-ctx.Done():
-					t.Errorf("timeout")
-					return
-
-				case got := <-send:
-					gots = append(gots, got)
-				}
-			}
-
-			for idx, w := range tt.want {
-				if !slices.ContainsFunc(gots, func(msg nostr.ServerMsg) bool {
-					return reflect.DeepEqual(msg, w)
-				}) {
-					t.Errorf("[%d] %#+v not found: gots=%#+v", idx, w, gots)
-				}
-			}
-
-			select {
-			case msg := <-send:
-				t.Errorf("too much server msg: %#+v", msg)
-			default:
-			}
+			helperTestHandler(t, handler, tt.input, tt.want)
 		})
 	}
 }
@@ -686,45 +668,7 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 			handler = NewRouter(nil)
 			handler = NewSendEventUniquefyMiddleware(5)(handler)
 
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(3*time.Second))
-			defer cancel()
-
-			r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
-			recv := make(chan nostr.ClientMsg, len(tt.input))
-			send := make(chan nostr.ServerMsg, len(tt.want)+1)
-
-			go handler.Handle(r, recv, send)
-
-			for _, msg := range tt.input {
-				recv <- msg
-			}
-
-			var gots []nostr.ServerMsg
-
-			for i := 0; i < len(tt.want); i++ {
-				select {
-				case <-ctx.Done():
-					t.Errorf("timeout")
-					return
-
-				case got := <-send:
-					gots = append(gots, got)
-				}
-			}
-
-			for idx, w := range tt.want {
-				if !slices.ContainsFunc(gots, func(msg nostr.ServerMsg) bool {
-					return reflect.DeepEqual(msg, w)
-				}) {
-					t.Errorf("[%d] %#+v not found: gots=%#+v", idx, w, gots)
-				}
-			}
-
-			select {
-			case msg := <-send:
-				t.Errorf("too much server msg: %#+v", msg)
-			default:
-			}
+			helperTestHandler(t, handler, tt.input, tt.want)
 		})
 	}
 }
