@@ -64,7 +64,11 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println(err)
 }
 
-func (relay *Relay) serveRead(ctx context.Context, conn net.Conn, recv chan<- nostr.ClientMsg) error {
+func (relay *Relay) serveRead(
+	ctx context.Context,
+	conn net.Conn,
+	recv chan<- nostr.ClientMsg,
+) error {
 	// TODO(high-moctane) rate-limit
 
 	for {
@@ -82,7 +86,11 @@ func (relay *Relay) serveRead(ctx context.Context, conn net.Conn, recv chan<- no
 	}
 }
 
-func (relay *Relay) serveWrite(ctx context.Context, conn net.Conn, send <-chan nostr.ServerMsg) error {
+func (relay *Relay) serveWrite(
+	ctx context.Context,
+	conn net.Conn,
+	send <-chan nostr.ServerMsg,
+) error {
 	// TODO(high-moctane) circuit braker
 
 	pingTicker := time.NewTicker(10 * time.Second)

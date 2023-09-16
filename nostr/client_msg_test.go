@@ -88,8 +88,10 @@ func TestParseClientMsg(t *testing.T) {
 			},
 		},
 		{
-			Name:  "ok: client req message",
-			Input: []byte(`["REQ","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4",{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}]`),
+			Name: "ok: client req message",
+			Input: []byte(
+				`["REQ","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4",{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}]`,
+			),
 			Expect: Expect{
 				MsgType: ClientMsgTypeReq,
 				Err:     nil,
@@ -104,8 +106,10 @@ func TestParseClientMsg(t *testing.T) {
 			},
 		},
 		{
-			Name:  "ok: client count message",
-			Input: []byte(`["COUNT","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4",{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}]`),
+			Name: "ok: client count message",
+			Input: []byte(
+				`["COUNT","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4",{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}]`,
+			),
 			Expect: Expect{
 				MsgType: ClientMsgTypeCount,
 				Err:     nil,
@@ -151,10 +155,14 @@ func BenchmarkParseClientMsg_All(b *testing.B) {
 		`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
 		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
 		`}]`)
-	reqJSON := []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`)
+	reqJSON := []byte(
+		`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
+	)
 	closeJSON := []byte(`["CLOSE","sub_id"]`)
 	authJSON := []byte(`["AUTH","challenge"]`)
-	countJSON := []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`)
+	countJSON := []byte(
+		`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
+	)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i += 5 {
@@ -196,7 +204,9 @@ func BenchmarkParseClientMsg_Event(b *testing.B) {
 }
 
 func BenchmarkParseClientMsg_Req(b *testing.B) {
-	reqJSON := []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`)
+	reqJSON := []byte(
+		`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
+	)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -223,7 +233,9 @@ func BenchmarkParseClientMsg_Auth(b *testing.B) {
 }
 
 func BenchmarkParseClientMsg_Count(b *testing.B) {
-	countJSON := []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`)
+	countJSON := []byte(
+		`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
+	)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -367,8 +379,10 @@ func TestParseClientReqMsg(t *testing.T) {
 		Expect Expect
 	}{
 		{
-			Name:  "ok: client REQ message",
-			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`),
+			Name: "ok: client REQ message",
+			Input: []byte(
+				`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
+			),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
 				ReqFilters: []*ReqFilter{
@@ -563,8 +577,10 @@ func TestParseClientCountMsg(t *testing.T) {
 		Expect Expect
 	}{
 		{
-			Name:  "ok: client count message",
-			Input: []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`),
+			Name: "ok: client count message",
+			Input: []byte(
+				`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
+			),
 			Expect: Expect{
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
 				ReqFilters: []*ReqFilter{
@@ -662,8 +678,10 @@ func TestParseReqFilter(t *testing.T) {
 			},
 		},
 		{
-			Name:  "ok: full",
-			Input: []byte(`{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
+			Name: "ok: full",
+			Input: []byte(
+				`{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`,
+			),
 			Expect: Expect{
 				ReqFilter: ReqFilter{
 					IDs:     utils.Ptr([]string{"powa"}),
@@ -680,8 +698,10 @@ func TestParseReqFilter(t *testing.T) {
 			},
 		},
 		{
-			Name:  "ok: partial",
-			Input: []byte(`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`),
+			Name: "ok: partial",
+			Input: []byte(
+				`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`,
+			),
 			Expect: Expect{
 				ReqFilter: ReqFilter{
 					IDs:   utils.Ptr([]string{"powa"}),

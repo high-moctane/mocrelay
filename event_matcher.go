@@ -85,7 +85,8 @@ func (m *ReqFilterEventMatcher) Match(event *nostr.Event) bool {
 		for tag, vs := range *m.f.Tags {
 			match = match && slices.ContainsFunc(vs, func(v string) bool {
 				return slices.ContainsFunc(event.Tags, func(tagArr nostr.Tag) bool {
-					return len(tagArr) >= 1 && tagArr[0] == string(tag[1]) && (len(tagArr) == 1 || strings.HasPrefix(tagArr[1], v))
+					return len(tagArr) >= 1 && tagArr[0] == string(tag[1]) &&
+						(len(tagArr) == 1 || strings.HasPrefix(tagArr[1], v))
 				})
 			})
 		}
@@ -116,7 +117,9 @@ func (m *ReqFilterEventMatcher) Done() bool {
 
 type ReqFiltersMatcher []*ReqFilterEventMatcher
 
-func NewReqFiltersEventMatchers(filters []*nostr.ReqFilter) EventCountMatchers[*ReqFilterEventMatcher] {
+func NewReqFiltersEventMatchers(
+	filters []*nostr.ReqFilter,
+) EventCountMatchers[*ReqFilterEventMatcher] {
 	if filters == nil {
 		panic("filters must be non-nil slice")
 	}

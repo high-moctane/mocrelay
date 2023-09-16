@@ -128,7 +128,18 @@ func TestRouter_Handle(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -148,10 +159,28 @@ func TestRouter_Handle(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
 			},
 		},
 		{
@@ -182,7 +211,18 @@ func TestRouter_Handle(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -203,17 +243,43 @@ func TestRouter_Handle(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
 				nostr.NewServerEventMsg("sub_id_with_filter", &nostr.Event{
 					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
 			},
 		},
 	}
@@ -277,9 +343,20 @@ func TestCacheHandler(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-						Content:   "powa",
-						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						},
+						Content: "powa",
+						Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id2",
@@ -288,8 +365,18 @@ func TestCacheHandler(t *testing.T) {
 			},
 			want: []nostr.ServerMsg{
 				nostr.NewServerEOSEMsg("sub_id1"),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					"",
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					"",
+					"",
+				),
 				nostr.NewServerEventMsg("sub_id2", &nostr.Event{
 					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
@@ -305,9 +392,17 @@ func TestCacheHandler(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-					Content:   "powa",
-					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					},
+					Content: "powa",
+					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
 				nostr.NewServerEOSEMsg("sub_id2"),
 			},
@@ -344,9 +439,20 @@ func TestCacheHandler(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-						Content:   "powa",
-						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						},
+						Content: "powa",
+						Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id",
@@ -354,9 +460,24 @@ func TestCacheHandler(t *testing.T) {
 				},
 			},
 			want: []nostr.ServerMsg{
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", false, nostr.ServerOKMsgPrefixDuplicate, "already have this event"),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					"",
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					false,
+					nostr.ServerOKMsgPrefixDuplicate,
+					"already have this event",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					"",
+					"",
+				),
 				nostr.NewServerEventMsg("sub_id", &nostr.Event{
 					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
@@ -372,9 +493,17 @@ func TestCacheHandler(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-					Content:   "powa",
-					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					},
+					Content: "powa",
+					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
 				nostr.NewServerEOSEMsg("sub_id"),
 			},
@@ -400,9 +529,20 @@ func TestCacheHandler(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-						Content:   "powa",
-						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						},
+						Content: "powa",
+						Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -421,9 +561,24 @@ func TestCacheHandler(t *testing.T) {
 				},
 			},
 			want: []nostr.ServerMsg{
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
-				nostr.NewServerOKMsg("5b2b799aa222cdf555d46b72a868014ffe602d9842cc29d3bedca794c8b32b3e", true, "", ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					"",
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					"",
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"5b2b799aa222cdf555d46b72a868014ffe602d9842cc29d3bedca794c8b32b3e",
+					true,
+					"",
+					"",
+				),
 				nostr.NewServerEventMsg("sub_id", &nostr.Event{
 					ID:        "5b2b799aa222cdf555d46b72a868014ffe602d9842cc29d3bedca794c8b32b3e",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
@@ -438,9 +593,17 @@ func TestCacheHandler(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-					Content:   "powa",
-					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					},
+					Content: "powa",
+					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
 				}),
 				nostr.NewServerEOSEMsg("sub_id"),
 			},
@@ -466,9 +629,20 @@ func TestCacheHandler(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-						Content:   "powa",
-						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						},
+						Content: "powa",
+						Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -477,7 +651,10 @@ func TestCacheHandler(t *testing.T) {
 						CreatedAt: 1694867396,
 						Kind:      5,
 						Tags: []nostr.Tag{
-							{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c"},
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							},
 						},
 						Content: "",
 						Sig:     "3aea60cff4da67e42e5216064250357f957cd44bf12bd88c337070dbd57592d11605bfe8f8d8697494559d0770958a9b19b6b18a1926db97bf1555f225e98d0c",
@@ -489,17 +666,35 @@ func TestCacheHandler(t *testing.T) {
 				},
 			},
 			want: []nostr.ServerMsg{
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					"",
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					"",
+					"",
+				),
 				nostr.NewServerOKMsg("powa", true, "", ""),
 				nostr.NewServerEventMsg("sub_id", &nostr.Event{
 					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-					Content:   "powa",
-					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					},
+					Content: "powa",
+					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
 				}),
 				nostr.NewServerEventMsg("sub_id", &nostr.Event{
 					ID:        "powa",
@@ -576,9 +771,20 @@ func TestMergeHandler(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-						Content:   "powa",
-						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						},
+						Content: "powa",
+						Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientReqMsg{
 					SubscriptionID: "sub_id2",
@@ -587,8 +793,18 @@ func TestMergeHandler(t *testing.T) {
 			},
 			want: []nostr.ServerMsg{
 				nostr.NewServerEOSEMsg("sub_id1"),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					"",
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					"",
+					"",
+				),
 				nostr.NewServerEventMsg("sub_id1", &nostr.Event{
 					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
@@ -604,9 +820,17 @@ func TestMergeHandler(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-					Content:   "powa",
-					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					},
+					Content: "powa",
+					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
 				nostr.NewServerEventMsg("sub_id2", &nostr.Event{
 					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
@@ -623,9 +847,17 @@ func TestMergeHandler(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
-					Content:   "powa",
-					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					},
+					Content: "powa",
+					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
 				nostr.NewServerEOSEMsg("sub_id2"),
 			},
@@ -688,7 +920,18 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -707,7 +950,18 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -726,7 +980,18 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -746,10 +1011,28 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
 			},
 		},
 		{
@@ -780,7 +1063,18 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -799,7 +1093,18 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -818,7 +1123,18 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -839,17 +1155,43 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
 				nostr.NewServerEventMsg("sub_id_with_filter", &nostr.Event{
 					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
 			},
 		},
 	}
@@ -912,7 +1254,18 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -931,7 +1284,18 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -950,7 +1314,18 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -970,14 +1345,52 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
 			},
 		},
 		{
@@ -1008,7 +1421,18 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -1027,7 +1451,18 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 				&nostr.ClientEventMsg{
 					Event: &nostr.Event{
@@ -1046,7 +1481,18 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 						CreatedAt: 1693157791,
 						Kind:      1,
-						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+						Tags: []nostr.Tag{
+							{
+								"e",
+								"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+								"",
+								"root",
+							},
+							{
+								"p",
+								"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+							},
+						}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				},
 			},
 			want: []nostr.ServerMsg{
@@ -1067,21 +1513,67 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
 				nostr.NewServerEventMsg("sub_id_with_filter", &nostr.Event{
 					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					CreatedAt: 1693157791,
 					Kind:      1,
-					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+					Tags: []nostr.Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
 				),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
-				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, nostr.ServerOKMsgPrefixNoPrefix, ""),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
+				nostr.NewServerOKMsg(
+					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					true,
+					nostr.ServerOKMsgPrefixNoPrefix,
+					"",
+				),
 			},
 		},
 	}

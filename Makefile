@@ -23,7 +23,7 @@ run: $(TARGET)
 
 .PHONY: check
 check:
-	find . -name \*.go -exec goimports -l -v -local "github.com/high-moctane/mocrelay" {} \;
+	find . -name \*.go -exec golines -l {} \;
 	go vet ./...
 	# staticcheck ./...
 
@@ -40,7 +40,7 @@ clean:
 
 .PHONY: fmt
 fmt:
-	find . -name \*.go -exec goimports -w -v -local "github.com/high-moctane/mocrelay" {} \;
+	find . -name \*.go -exec golines -w {} \;
 
 
 .PHONY: githook
@@ -50,4 +50,5 @@ githook:
 
 .PHONY: tool
 tool:
+	go install github.com/segmentio/golines@latest
 	go install golang.org/x/tools/cmd/goimports@latest

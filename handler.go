@@ -26,7 +26,11 @@ type Handler interface {
 
 type HandlerFunc func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error
 
-func (f HandlerFunc) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+func (f HandlerFunc) Handle(
+	r *http.Request,
+	recv <-chan nostr.ClientMsg,
+	send chan<- nostr.ServerMsg,
+) error {
 	return f(r, recv, send)
 }
 
@@ -57,7 +61,11 @@ func NewRouter(option *RouterOption) *Router {
 	}
 }
 
-func (router *Router) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+func (router *Router) Handle(
+	r *http.Request,
+	recv <-chan nostr.ClientMsg,
+	send chan<- nostr.ServerMsg,
+) error {
 	ctx, cancel := context.WithCancel(r.Context())
 
 	connID := uuid.NewString()
@@ -80,7 +88,12 @@ func (router *Router) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send 
 	return errors.Join(<-errCh, <-errCh, ErrRouterStop)
 }
 
-func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan nostr.ClientMsg, msgCh utils.TryChan[nostr.ServerMsg]) error {
+func (router *Router) serveRecv(
+	ctx context.Context,
+	connID string,
+	recv <-chan nostr.ClientMsg,
+	msgCh utils.TryChan[nostr.ServerMsg],
+) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -95,7 +108,12 @@ func (router *Router) serveRecv(ctx context.Context, connID string, recv <-chan 
 	}
 }
 
-func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientMsg, msgCh utils.TryChan[nostr.ServerMsg]) {
+func (router *Router) recv(
+	ctx context.Context,
+	connID string,
+	msg nostr.ClientMsg,
+	msgCh utils.TryChan[nostr.ServerMsg],
+) {
 	switch m := msg.(type) {
 	case *nostr.ClientReqMsg:
 		router.recvClientReqMsg(ctx, connID, m, msgCh)
@@ -108,22 +126,41 @@ func (router *Router) recv(ctx context.Context, connID string, msg nostr.ClientM
 	}
 }
 
-func (router *Router) recvClientReqMsg(ctx context.Context, connID string, msg *nostr.ClientReqMsg, msgCh utils.TryChan[nostr.ServerMsg]) {
+func (router *Router) recvClientReqMsg(
+	ctx context.Context,
+	connID string,
+	msg *nostr.ClientReqMsg,
+	msgCh utils.TryChan[nostr.ServerMsg],
+) {
 	sub := newSubscriber(connID, msg, msgCh)
 	router.subs.Subscribe(sub)
 	msgCh.TrySend(nostr.NewServerEOSEMsg(msg.SubscriptionID))
 }
 
-func (router *Router) recvClientEventMsg(ctx context.Context, connID string, msg *nostr.ClientEventMsg, msgCh utils.TryChan[nostr.ServerMsg]) {
+func (router *Router) recvClientEventMsg(
+	ctx context.Context,
+	connID string,
+	msg *nostr.ClientEventMsg,
+	msgCh utils.TryChan[nostr.ServerMsg],
+) {
 	router.subs.Publish(msg.Event)
 	msgCh.TrySend(nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, ""))
 }
 
-func (router *Router) recvClientCloseMsg(ctx context.Context, connID string, msg *nostr.ClientCloseMsg) {
+func (router *Router) recvClientCloseMsg(
+	ctx context.Context,
+	connID string,
+	msg *nostr.ClientCloseMsg,
+) {
 	router.subs.Unsubscribe(connID, msg.SubscriptionID)
 }
 
-func (router *Router) serveSend(ctx context.Context, connID string, send chan<- nostr.ServerMsg, msgCh utils.TryChan[nostr.ServerMsg]) error {
+func (router *Router) serveSend(
+	ctx context.Context,
+	connID string,
+	send chan<- nostr.ServerMsg,
+	msgCh utils.TryChan[nostr.ServerMsg],
+) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -216,7 +253,11 @@ func NewCacheHandler(capacity int) *CacheHandler {
 	}
 }
 
-func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+func (h *CacheHandler) Handle(
+	r *http.Request,
+	recv <-chan nostr.ClientMsg,
+	send chan<- nostr.ServerMsg,
+) error {
 	for msg := range recv {
 		switch msg := msg.(type) {
 		case *nostr.ClientEventMsg:
@@ -405,7 +446,11 @@ func NewMergeHandler(handlers ...Handler) Handler {
 	}
 }
 
-func (h *MergeHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+func (h *MergeHandler) Handle(
+	r *http.Request,
+	recv <-chan nostr.ClientMsg,
+	send chan<- nostr.ServerMsg,
+) error {
 	return newMergeHandlerSession(h).Handle(r, recv, send)
 }
 
@@ -432,7 +477,11 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 	}
 }
 
-func (ss *mergeHandlerSession) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+func (ss *mergeHandlerSession) Handle(
+	r *http.Request,
+	recv <-chan nostr.ClientMsg,
+	send chan<- nostr.ServerMsg,
+) error {
 	ctx, cancel := context.WithCancel(r.Context())
 	r = r.WithContext(ctx)
 	defer cancel()
@@ -544,23 +593,38 @@ func (ss *mergeHandlerSession) handleRecvMsg(ctx context.Context, msg nostr.Clie
 	}
 }
 
-func (ss *mergeHandlerSession) handleRecvEventMsg(ctx context.Context, msg *nostr.ClientEventMsg) error {
+func (ss *mergeHandlerSession) handleRecvEventMsg(
+	ctx context.Context,
+	msg *nostr.ClientEventMsg,
+) error {
 	panic("unimplemneted")
 }
 
-func (ss *mergeHandlerSession) handleRecvReqMsg(ctx context.Context, msg *nostr.ClientReqMsg) error {
+func (ss *mergeHandlerSession) handleRecvReqMsg(
+	ctx context.Context,
+	msg *nostr.ClientReqMsg,
+) error {
 	panic("unimplemneted")
 }
 
-func (ss *mergeHandlerSession) handleRecvCloseMsg(ctx context.Context, msg *nostr.ClientCloseMsg) error {
+func (ss *mergeHandlerSession) handleRecvCloseMsg(
+	ctx context.Context,
+	msg *nostr.ClientCloseMsg,
+) error {
 	panic("unimplemneted")
 }
 
-func (ss *mergeHandlerSession) handleRecvAuthMsg(ctx context.Context, msg *nostr.ClientAuthMsg) error {
+func (ss *mergeHandlerSession) handleRecvAuthMsg(
+	ctx context.Context,
+	msg *nostr.ClientAuthMsg,
+) error {
 	return ss.broadcastRecvs(ctx, msg)
 }
 
-func (ss *mergeHandlerSession) handleRecvCountMsg(ctx context.Context, msg *nostr.ClientCountMsg) error {
+func (ss *mergeHandlerSession) handleRecvCountMsg(
+	ctx context.Context,
+	msg *nostr.ClientCountMsg,
+) error {
 	panic("unimplemneted")
 }
 
@@ -589,7 +653,11 @@ func (ss *mergeHandlerSession) handleSend(ctx context.Context, send chan<- nostr
 	}
 }
 
-func (ss *mergeHandlerSession) handleSendMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg nostr.ServerMsg) error {
+func (ss *mergeHandlerSession) handleSendMsg(
+	ctx context.Context,
+	send chan<- nostr.ServerMsg,
+	msg nostr.ServerMsg,
+) error {
 	switch msg := msg.(type) {
 	case *nostr.ServerEOSEMsg:
 		return ss.handleSendEOSEMsg(ctx, send, msg)
@@ -609,65 +677,93 @@ func (ss *mergeHandlerSession) handleSendMsg(ctx context.Context, send chan<- no
 	}
 }
 
-func (ss *mergeHandlerSession) handleSendEOSEMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerEOSEMsg) error {
+func (ss *mergeHandlerSession) handleSendEOSEMsg(
+	ctx context.Context,
+	send chan<- nostr.ServerMsg,
+	msg *nostr.ServerEOSEMsg,
+) error {
 	panic("unimplemented")
 }
 
-func (ss *mergeHandlerSession) handleSendEventMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerEventMsg) error {
+func (ss *mergeHandlerSession) handleSendEventMsg(
+	ctx context.Context,
+	send chan<- nostr.ServerMsg,
+	msg *nostr.ServerEventMsg,
+) error {
 	panic("unimplemented")
 }
 
-func (ss *mergeHandlerSession) handleSendNoticeMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerNoticeMsg) error {
+func (ss *mergeHandlerSession) handleSendNoticeMsg(
+	ctx context.Context,
+	send chan<- nostr.ServerMsg,
+	msg *nostr.ServerNoticeMsg,
+) error {
 	panic("unimplemented")
 }
 
-func (ss *mergeHandlerSession) handleSendOKMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerOKMsg) error {
+func (ss *mergeHandlerSession) handleSendOKMsg(
+	ctx context.Context,
+	send chan<- nostr.ServerMsg,
+	msg *nostr.ServerOKMsg,
+) error {
 	panic("unimplemented")
 }
 
-func (ss *mergeHandlerSession) handleSendAuthMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerAuthMsg) error {
+func (ss *mergeHandlerSession) handleSendAuthMsg(
+	ctx context.Context,
+	send chan<- nostr.ServerMsg,
+	msg *nostr.ServerAuthMsg,
+) error {
 	panic("unimplemented")
 }
 
-func (ss *mergeHandlerSession) handleSendCountMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerCountMsg) error {
+func (ss *mergeHandlerSession) handleSendCountMsg(
+	ctx context.Context,
+	send chan<- nostr.ServerMsg,
+	msg *nostr.ServerCountMsg,
+) error {
 	panic("unimplemented")
 }
 
 type EventCreatedAtReqFilterMiddleware func(next Handler) Handler
 
-func NewEventCreatedAtReqFilterMiddleware(from, to time.Duration) EventCreatedAtReqFilterMiddleware {
+func NewEventCreatedAtReqFilterMiddleware(
+	from, to time.Duration,
+) EventCreatedAtReqFilterMiddleware {
 	return func(next Handler) Handler {
-		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
-			ctx := r.Context()
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+				ctx := r.Context()
 
-			ch := make(chan nostr.ClientMsg, 1)
+				ch := make(chan nostr.ClientMsg, 1)
 
-			go func() {
-				defer close(ch)
+				go func() {
+					defer close(ch)
 
-				for {
-					select {
-					case <-ctx.Done():
-						return
-
-					case msg, ok := <-recv:
-						if !ok {
+					for {
+						select {
+						case <-ctx.Done():
 							return
-						}
-						if m, ok := msg.(*nostr.ClientEventMsg); ok {
-							t := m.Event.CreatedAtTime()
-							now := time.Now()
-							if t.Sub(now) < from || to < t.Sub(now) {
-								continue
-							}
-						}
-						ch <- msg
-					}
-				}
-			}()
 
-			return next.Handle(r, ch, send)
-		})
+						case msg, ok := <-recv:
+							if !ok {
+								return
+							}
+							if m, ok := msg.(*nostr.ClientEventMsg); ok {
+								t := m.Event.CreatedAtTime()
+								now := time.Now()
+								if t.Sub(now) < from || to < t.Sub(now) {
+									continue
+								}
+							}
+							ch <- msg
+						}
+					}
+				}()
+
+				return next.Handle(r, ch, send)
+			},
+		)
 	}
 }
 
@@ -675,53 +771,57 @@ type RecvEventUniquefyMiddleware func(Handler) Handler
 
 func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 	if buflen < 0 {
-		panic(fmt.Sprintf("RecvEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen))
+		panic(
+			fmt.Sprintf("RecvEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen),
+		)
 	}
 
 	var ids []string
 	seen := make(map[string]bool)
 
 	return func(handler Handler) Handler {
-		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
-			ctx := r.Context()
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+				ctx := r.Context()
 
-			ch := make(chan nostr.ClientMsg, 1)
+				ch := make(chan nostr.ClientMsg, 1)
 
-			go func() {
-				defer close(ch)
+				go func() {
+					defer close(ch)
 
-				for {
-					select {
-					case <-ctx.Done():
-						return
-
-					case msg, ok := <-recv:
-						if !ok {
+					for {
+						select {
+						case <-ctx.Done():
 							return
-						}
-						if m, ok := msg.(*nostr.ClientEventMsg); ok {
-							if seen[m.Event.ID] {
-								continue
-							}
 
-							if len(ids) >= buflen {
-								if len(ids) > 0 {
-									old := ids[0]
-									delete(seen, old)
-									ids = ids[1:]
+						case msg, ok := <-recv:
+							if !ok {
+								return
+							}
+							if m, ok := msg.(*nostr.ClientEventMsg); ok {
+								if seen[m.Event.ID] {
+									continue
 								}
-							} else {
-								ids = append(ids, m.Event.ID)
-								seen[m.Event.ID] = true
-							}
-						}
-						ch <- msg
-					}
-				}
-			}()
 
-			return handler.Handle(r, ch, send)
-		})
+								if len(ids) >= buflen {
+									if len(ids) > 0 {
+										old := ids[0]
+										delete(seen, old)
+										ids = ids[1:]
+									}
+								} else {
+									ids = append(ids, m.Event.ID)
+									seen[m.Event.ID] = true
+								}
+							}
+							ch <- msg
+						}
+					}
+				}()
+
+				return handler.Handle(r, ch, send)
+			},
+		)
 	}
 }
 
@@ -729,7 +829,9 @@ type SendEventUniquefyMiddleware func(Handler) Handler
 
 func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 	if buflen < 0 {
-		panic(fmt.Sprintf("SendEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen))
+		panic(
+			fmt.Sprintf("SendEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen),
+		)
 	}
 
 	var keys []string
@@ -738,46 +840,48 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 	key := func(subID, eventID string) string { return subID + ":" + eventID }
 
 	return func(handler Handler) Handler {
-		return HandlerFunc(func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
-			ctx := r.Context()
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+				ctx := r.Context()
 
-			ch := make(chan nostr.ServerMsg, 1)
-			defer close(ch)
+				ch := make(chan nostr.ServerMsg, 1)
+				defer close(ch)
 
-			go func() {
-				for {
-					select {
-					case <-ctx.Done():
-						return
-
-					case msg, ok := <-ch:
-						if !ok {
+				go func() {
+					for {
+						select {
+						case <-ctx.Done():
 							return
-						}
-						if m, ok := msg.(*nostr.ServerEventMsg); ok {
-							k := key(m.SubscriptionID, m.Event.ID)
 
-							if seen[k] {
-								continue
+						case msg, ok := <-ch:
+							if !ok {
+								return
 							}
+							if m, ok := msg.(*nostr.ServerEventMsg); ok {
+								k := key(m.SubscriptionID, m.Event.ID)
 
-							if len(keys) >= buflen {
-								if len(keys) > 0 {
-									old := keys[0]
-									delete(seen, old)
-									keys = keys[1:]
+								if seen[k] {
+									continue
 								}
-							} else {
-								keys = append(keys, k)
-								seen[k] = true
-							}
-						}
-						send <- msg
-					}
-				}
-			}()
 
-			return handler.Handle(r, recv, ch)
-		})
+								if len(keys) >= buflen {
+									if len(keys) > 0 {
+										old := keys[0]
+										delete(seen, old)
+										keys = keys[1:]
+									}
+								} else {
+									keys = append(keys, k)
+									seen[k] = true
+								}
+							}
+							send <- msg
+						}
+					}
+				}()
+
+				return handler.Handle(r, recv, ch)
+			},
+		)
 	}
 }

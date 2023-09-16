@@ -225,7 +225,11 @@ func (msg *ServerCountMsg) MarshalJSON() ([]byte, error) {
 		Approximate *bool  `json:"approximate,omitempty"`
 	}
 
-	v := [3]interface{}{"COUNT", msg.SubscriptionID, payload{Count: msg.Count, Approximate: msg.Approximate}}
+	v := [3]interface{}{
+		"COUNT",
+		msg.SubscriptionID,
+		payload{Count: msg.Count, Approximate: msg.Approximate},
+	}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerCountMsg)
