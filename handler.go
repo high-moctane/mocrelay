@@ -1,7 +1,6 @@
 package mocrelay
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -397,46 +396,91 @@ type MergeHandler struct {
 	hs []Handler
 }
 
-func NewMergeHandler(h1, h2 Handler, hs ...Handler) Handler {
+func NewMergeHandler(handlers ...Handler) Handler {
+	if len(handlers) < 2 {
+		panic(fmt.Sprintf("handlers must be two or more but got %d", len(handlers)))
+	}
 	return &MergeHandler{
-		hs: append([]Handler{h1, h2}, hs...),
+		hs: handlers,
 	}
 }
 
 func (h *MergeHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
-	ctx := r.Context()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	return newMergeHandlerSession(h).Handle(r, recv, send)
+}
 
+type mergeHandlerSession struct {
+	h         *MergeHandler
+	recvs     []chan nostr.ClientMsg
+	sends     []chan nostr.ServerMsg
+	preSendCh chan nostr.ServerMsg
+}
+
+func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 	recvs := make([]chan nostr.ClientMsg, len(h.hs))
 	sends := make([]chan nostr.ServerMsg, len(h.hs))
-	smerge := make(chan *mergeHandlerSendMsg, 1)
-	errs := make(chan error, len(h.hs))
-
 	for i := 0; i < len(h.hs); i++ {
 		recvs[i] = make(chan nostr.ClientMsg, 1)
 		sends[i] = make(chan nostr.ServerMsg, 1)
 	}
 
+	return &mergeHandlerSession{
+		h:         h,
+		recvs:     recvs,
+		sends:     sends,
+		preSendCh: make(chan nostr.ServerMsg, len(h.hs)),
+	}
+}
+
+func (ss *mergeHandlerSession) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+	ctx, cancel := context.WithCancel(r.Context())
+	r = r.WithContext(ctx)
+	defer cancel()
+
 	var wg sync.WaitGroup
-	wg.Add(len(h.hs))
-	for i := 0; i < len(h.hs); i++ {
+
+	errs := make(chan error, 3)
+
+	wg.Add(4)
+	func() {
+		defer wg.Done()
+		defer cancel()
+		errs <- ss.runHandlers(r)
+	}()
+	func() {
+		defer wg.Done()
+		defer cancel()
+		ss.mergeSends(ctx)
+	}()
+	func() {
+		defer wg.Done()
+		defer cancel()
+		errs <- ss.handleRecv(ctx, recv)
+	}()
+	func() {
+		defer wg.Done()
+		defer cancel()
+		errs <- ss.handleSend(ctx, send)
+	}()
+	wg.Wait()
+
+	return errors.Join(<-errs, <-errs, <-errs)
+}
+
+func (ss *mergeHandlerSession) runHandlers(r *http.Request) error {
+	hs := ss.h.hs
+	var wg sync.WaitGroup
+	errs := make(chan error, len(hs))
+
+	wg.Add(len(hs))
+	for i := 0; i < len(ss.h.hs); i++ {
 		go func(i int) {
 			defer wg.Done()
-			defer cancel()
-			errs <- h.hs[i].Handle(r.WithContext(ctx), recvs[i], sends[i])
+			errs <- hs[i].Handle(r, ss.recvs[i], ss.sends[i])
 		}(i)
 	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		h.mergeSends(ctx, smerge, sends)
-	}()
-
-	h.serve(ctx, recv, recvs, send, smerge)
-
 	wg.Wait()
+
 	close(errs)
 	var err error
 	for e := range errs {
@@ -446,229 +490,147 @@ func (h *MergeHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send
 	return err
 }
 
-type mergeHandlerSendMsg struct {
-	Idx int
-	Msg nostr.ServerMsg
+func (ss *mergeHandlerSession) mergeSends(ctx context.Context) {
+	ss.mergeSend(ctx, ss.sends)
 }
 
-type mergeHandlerState struct {
-	// map[subID]*state
-	Req map[string]*mergeHandlerReqState
-
-	// map[subID]*state
-	Count map[string]*mergeHandlerCountState
-
-	// map[eventID]needResponseOK
-	OK map[string]bool
-}
-
-func newMergeHandlerState() *mergeHandlerState {
-	return &mergeHandlerState{
-		Req:   make(map[string]*mergeHandlerReqState),
-		Count: make(map[string]*mergeHandlerCountState),
-		OK:    make(map[string]bool),
-	}
-}
-
-type mergeHandlerReqState struct {
-	EOSE      []bool
-	LastEvent *nostr.Event
-	SeenIDs   map[string]bool
-	Matcher   EventCountMatcher
-}
-
-type mergeHandlerCountState struct {
-	counts []*nostr.ServerCountMsg
-}
-
-func newMergeHandlerCountState(length int) *mergeHandlerCountState {
-	return &mergeHandlerCountState{
-		counts: make([]*nostr.ServerCountMsg, length),
-	}
-}
-
-func (stat *mergeHandlerCountState) AddCount(idx int, c *nostr.ServerCountMsg) {
-	if stat == nil {
-		return
-	}
-	stat.counts[idx] = c
-}
-
-func (stat *mergeHandlerCountState) Ready() bool {
-	return stat != nil && !slices.Contains(stat.counts, nil)
-}
-
-func (stat *mergeHandlerCountState) Max() *nostr.ServerCountMsg {
-	return slices.MaxFunc(stat.counts, func(a, b *nostr.ServerCountMsg) int {
-		return cmp.Compare(a.Count, b.Count)
-	})
-}
-
-func newMergeHandlerReqState(length int, filters []*nostr.ReqFilter) *mergeHandlerReqState {
-	return &mergeHandlerReqState{
-		EOSE:      make([]bool, length),
-		LastEvent: nil,
-		SeenIDs:   make(map[string]bool),
-		Matcher:   NewReqFiltersEventMatchers(filters),
-	}
-}
-
-func (stat *mergeHandlerReqState) AllEOSE() bool {
-	if stat == nil {
-		return true
-	}
-	return !slices.Contains(stat.EOSE, false)
-}
-
-func (stat *mergeHandlerReqState) AddEOSE(idx int) {
-	if stat == nil {
-		return
-	}
-	stat.EOSE[idx] = true
-}
-
-func (stat *mergeHandlerReqState) Match(msg *mergeHandlerSendMsg) bool {
-	if stat == nil {
-		return true
-	}
-
-	m := msg.Msg.(*nostr.ServerEventMsg)
-	ev := m.Event
-
-	if stat.EOSE[msg.Idx] {
-		return false
-	}
-
-	if stat.LastEvent != nil && ev.CreatedAt < stat.LastEvent.CreatedAt {
-		return false
-	}
-
-	if stat.SeenIDs[ev.ID] {
-		return false
-	}
-	stat.SeenIDs[ev.ID] = true
-
-	if stat.Matcher.Done() {
-		return false
-	}
-
-	if !stat.Matcher.CountMatch(ev) {
-		return false
-	}
-
-	stat.LastEvent = ev
-	return true
-}
-
-func (h *MergeHandler) serve(
-	ctx context.Context,
-	recv <-chan nostr.ClientMsg,
-	recvs []chan nostr.ClientMsg,
-	send chan<- nostr.ServerMsg,
-	smerge chan *mergeHandlerSendMsg,
-) {
-	defer func() {
-		for _, r := range recvs {
-			close(r)
-		}
-	}()
-
-	stats := newMergeHandlerState()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-
-		case msg, ok := <-recv:
-			if !ok {
-				return
-			}
-			h.serveRecv(stats, recvs, msg)
-
-		case msg := <-smerge:
-			h.serveSend(stats, send, msg)
-		}
-	}
-}
-
-func (h *MergeHandler) serveRecv(stats *mergeHandlerState, recvs []chan nostr.ClientMsg, msg nostr.ClientMsg) {
-	switch msg := msg.(type) {
-	case *nostr.ClientReqMsg:
-		stats.Req[msg.SubscriptionID] = newMergeHandlerReqState(len(h.hs), msg.ReqFilters)
-
-	case *nostr.ClientCloseMsg:
-		delete(stats.Req, msg.SubscriptionID)
-
-	case *nostr.ClientEventMsg:
-		stats.OK[msg.Event.ID] = true
-
-	case *nostr.ClientCountMsg:
-		stats.Count[msg.SubscriptionID] = newMergeHandlerCountState(len(h.hs))
-
-	}
-
-	for _, r := range recvs {
-		r <- msg
-	}
-}
-
-func (h *MergeHandler) serveSend(stats *mergeHandlerState, send chan<- nostr.ServerMsg, msg *mergeHandlerSendMsg) {
-	switch m := msg.Msg.(type) {
-	case *nostr.ServerEventMsg:
-		if stats.Req[m.SubscriptionID].Match(msg) {
-			send <- msg.Msg
-		}
-
-	case *nostr.ServerOKMsg:
-		if stats.OK[m.EventID] {
-			delete(stats.OK, m.EventID)
-			send <- msg.Msg
-		}
-
-	case *nostr.ServerEOSEMsg:
-		stat := stats.Req[m.SubscriptionID]
-		stat.AddEOSE(msg.Idx)
-		if stat.AllEOSE() {
-			delete(stats.Req, m.SubscriptionID)
-			send <- msg.Msg
-		}
-
-	case *nostr.ServerCountMsg:
-		stat := stats.Count[m.SubscriptionID]
-		stat.AddCount(msg.Idx, m)
-		if stat.Ready() {
-			maxMsg := stat.Max()
-			delete(stats.Count, m.SubscriptionID)
-			send <- maxMsg
-		}
-
-	default:
-		send <- msg.Msg
-	}
-}
-
-func (h *MergeHandler) mergeSends(ctx context.Context, smerge chan *mergeHandlerSendMsg, sends []chan nostr.ServerMsg) chan struct{} {
+func (ss *mergeHandlerSession) mergeSend(ctx context.Context, sends []chan nostr.ServerMsg) {
 	if len(sends) == 0 {
-		return nil
+		return
 	}
 
 	idx := len(sends) - 1
 
-	go h.mergeSends(ctx, smerge, sends[:idx])
+	go ss.mergeSend(ctx, sends[:idx])
 
+	select {
+	case <-ctx.Done():
+		return
+	case ss.preSendCh <- <-sends[idx]:
+	}
+}
+
+func (ss *mergeHandlerSession) handleRecv(ctx context.Context, recv <-chan nostr.ClientMsg) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 
-		case msg := <-sends[idx]:
-			smerge <- &mergeHandlerSendMsg{
-				Idx: idx,
-				Msg: msg,
+		case msg, ok := <-recv:
+			if !ok {
+				return ErrRecvClosed
+			}
+			if err := ss.handleRecvMsg(ctx, msg); err != nil {
+				return err
 			}
 		}
 	}
+}
+
+func (ss *mergeHandlerSession) handleRecvMsg(ctx context.Context, msg nostr.ClientMsg) error {
+	switch msg := msg.(type) {
+	case *nostr.ClientEventMsg:
+		return ss.handleRecvEventMsg(ctx, msg)
+	case *nostr.ClientReqMsg:
+		return ss.handleRecvReqMsg(ctx, msg)
+	case *nostr.ClientCloseMsg:
+		return ss.handleRecvCloseMsg(ctx, msg)
+	case *nostr.ClientAuthMsg:
+		return ss.handleRecvAuthMsg(ctx, msg)
+	case *nostr.ClientCountMsg:
+		return ss.handleRecvCountMsg(ctx, msg)
+	default:
+		return ss.broadcastRecvs(ctx, msg)
+	}
+}
+
+func (ss *mergeHandlerSession) handleRecvEventMsg(ctx context.Context, msg *nostr.ClientEventMsg) error {
+	panic("unimplemneted")
+}
+
+func (ss *mergeHandlerSession) handleRecvReqMsg(ctx context.Context, msg *nostr.ClientReqMsg) error {
+	panic("unimplemneted")
+}
+
+func (ss *mergeHandlerSession) handleRecvCloseMsg(ctx context.Context, msg *nostr.ClientCloseMsg) error {
+	panic("unimplemneted")
+}
+
+func (ss *mergeHandlerSession) handleRecvAuthMsg(ctx context.Context, msg *nostr.ClientAuthMsg) error {
+	return ss.broadcastRecvs(ctx, msg)
+}
+
+func (ss *mergeHandlerSession) handleRecvCountMsg(ctx context.Context, msg *nostr.ClientCountMsg) error {
+	panic("unimplemneted")
+}
+
+func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg nostr.ClientMsg) error {
+	for _, r := range ss.recvs {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case r <- msg:
+		}
+	}
+	return nil
+}
+
+func (ss *mergeHandlerSession) handleSend(ctx context.Context, send chan<- nostr.ServerMsg) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case msg := <-ss.preSendCh:
+			if err := ss.handleSendMsg(ctx, send, msg); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (ss *mergeHandlerSession) handleSendMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg nostr.ServerMsg) error {
+	switch msg := msg.(type) {
+	case *nostr.ServerEOSEMsg:
+		return ss.handleSendEOSEMsg(ctx, send, msg)
+	case *nostr.ServerEventMsg:
+		return ss.handleSendEventMsg(ctx, send, msg)
+	case *nostr.ServerNoticeMsg:
+		return ss.handleSendNoticeMsg(ctx, send, msg)
+	case *nostr.ServerOKMsg:
+		return ss.handleSendOKMsg(ctx, send, msg)
+	case *nostr.ServerAuthMsg:
+		return ss.handleSendAuthMsg(ctx, send, msg)
+	case *nostr.ServerCountMsg:
+		return ss.handleSendCountMsg(ctx, send, msg)
+	default:
+		send <- msg
+		return nil
+	}
+}
+
+func (ss *mergeHandlerSession) handleSendEOSEMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerEOSEMsg) error {
+	panic("unimplemented")
+}
+
+func (ss *mergeHandlerSession) handleSendEventMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerEventMsg) error {
+	panic("unimplemented")
+}
+
+func (ss *mergeHandlerSession) handleSendNoticeMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerNoticeMsg) error {
+	panic("unimplemented")
+}
+
+func (ss *mergeHandlerSession) handleSendOKMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerOKMsg) error {
+	panic("unimplemented")
+}
+
+func (ss *mergeHandlerSession) handleSendAuthMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerAuthMsg) error {
+	panic("unimplemented")
+}
+
+func (ss *mergeHandlerSession) handleSendCountMsg(ctx context.Context, send chan<- nostr.ServerMsg, msg *nostr.ServerCountMsg) error {
+	panic("unimplemented")
 }
 
 type EventCreatedAtReqFilterMiddleware func(next Handler) Handler
