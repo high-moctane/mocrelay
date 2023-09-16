@@ -219,18 +219,23 @@ func NewCacheHandler(capacity int) *CacheHandler {
 
 func (h *CacheHandler) Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
 	for msg := range recv {
-		switch m := msg.(type) {
+		switch msg := msg.(type) {
 		case *nostr.ClientEventMsg:
-			e := m.Event
+			e := msg.Event
 			if e.Kind == 5 {
 				h.kind5(e)
 			}
-			h.c.Add(e)
+			if h.c.Add(e) {
+				send <- nostr.NewServerOKMsg(e.ID, true, "", "")
+			} else {
+				send <- nostr.NewServerOKMsg(e.ID, false, nostr.ServerOKMsgPrefixDuplicate, "already have this event")
+			}
 
 		case *nostr.ClientReqMsg:
-			for _, e := range h.c.Find(m.ReqFilters) {
-				send <- nostr.NewServerEventMsg(m.SubscriptionID, e)
+			for _, e := range h.c.Find(msg.ReqFilters) {
+				send <- nostr.NewServerEventMsg(msg.SubscriptionID, e)
 			}
+			send <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
 		}
 	}
 	return ErrCacheHandlerStop
@@ -300,7 +305,7 @@ func (c *eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
 	return c.eventKeyRegular(event), true
 }
 
-func (c *eventCache) Add(event *nostr.Event) {
+func (c *eventCache) Add(event *nostr.Event) (added bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -328,6 +333,9 @@ func (c *eventCache) Add(event *nostr.Event) {
 			c.rb.Swap(i, i+1)
 		}
 	}
+
+	added = true
+	return
 }
 
 func (c *eventCache) DeleteID(id, pubkey string) {

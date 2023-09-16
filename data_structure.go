@@ -26,7 +26,7 @@ func (rb *ringBuffer[T]) mod(a int) int {
 }
 
 func (rb *ringBuffer[T]) idx(i int) int {
-	return rb.mod(rb.tail - i)
+	return rb.mod(rb.tail - 1 - i)
 }
 
 func (rb *ringBuffer[T]) At(i int) T {
@@ -38,14 +38,15 @@ func (rb *ringBuffer[T]) Len() int {
 }
 
 func (rb *ringBuffer[T]) Enqueue(v T) {
-	rb.s[rb.tail] = v
+	rb.s[rb.mod(rb.tail)] = v
 	rb.tail++
 }
 
 func (rb *ringBuffer[T]) Dequeue() T {
 	var empty T
-	old := rb.s[rb.head]
-	rb.s[rb.head] = empty
+	modhead := rb.mod(rb.head)
+	old := rb.s[modhead]
+	rb.s[modhead] = empty
 	rb.head++
 	return old
 }

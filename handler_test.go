@@ -33,7 +33,7 @@ func helperTestHandler(t *testing.T, h Handler, in []nostr.ClientMsg, out []nost
 	for i := 0; i < len(out); i++ {
 		select {
 		case <-ctx.Done():
-			t.Errorf("timeout")
+			t.Errorf("timeout: gots: %#+v", gots)
 			return
 
 		case got := <-send:
@@ -213,6 +213,305 @@ func TestRouter_Handle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			router := NewRouter(nil)
 			helperTestHandler(t, router, tt.input, tt.want)
+		})
+	}
+}
+
+func TestCacheHandler(t *testing.T) {
+	tests := []struct {
+		name  string
+		cap   int
+		input []nostr.ClientMsg
+		want  []nostr.ServerMsg
+	}{
+		{
+			name:  "empty",
+			cap:   10,
+			input: nil,
+			want:  nil,
+		},
+		{
+			name: "req",
+			cap:  10,
+			input: []nostr.ClientMsg{
+				&nostr.ClientReqMsg{
+					SubscriptionID: "sub_id",
+					ReqFilters:     []*nostr.ReqFilter{{}},
+				},
+			},
+			want: []nostr.ServerMsg{
+				nostr.NewServerEOSEMsg("sub_id"),
+			},
+		},
+		{
+			name: "req event",
+			cap:  10,
+			input: []nostr.ClientMsg{
+				&nostr.ClientReqMsg{
+					SubscriptionID: "sub_id1",
+					ReqFilters:     []*nostr.ReqFilter{{}},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693156107,
+						Kind:      1,
+						Tags:      []nostr.Tag{},
+						Content:   "ぽわ〜",
+						Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+					},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693157791,
+						Kind:      1,
+						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+						Content:   "powa",
+						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+				},
+				&nostr.ClientReqMsg{
+					SubscriptionID: "sub_id2",
+					ReqFilters:     []*nostr.ReqFilter{{}},
+				},
+			},
+			want: []nostr.ServerMsg{
+				nostr.NewServerEOSEMsg("sub_id1"),
+				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
+				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerEventMsg("sub_id2", &nostr.Event{
+					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693156107,
+					Kind:      1,
+					Tags:      []nostr.Tag{},
+					Content:   "ぽわ〜",
+					Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+				},
+				),
+				nostr.NewServerEventMsg("sub_id2", &nostr.Event{
+					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693157791,
+					Kind:      1,
+					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+					Content:   "powa",
+					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+				),
+				nostr.NewServerEOSEMsg("sub_id2"),
+			},
+		},
+		{
+			name: "req event: duplicate",
+			cap:  10,
+			input: []nostr.ClientMsg{
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693156107,
+						Kind:      1,
+						Tags:      []nostr.Tag{},
+						Content:   "ぽわ〜",
+						Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+					},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693156107,
+						Kind:      1,
+						Tags:      []nostr.Tag{},
+						Content:   "ぽわ〜",
+						Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+					},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693157791,
+						Kind:      1,
+						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+						Content:   "powa",
+						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+				},
+				&nostr.ClientReqMsg{
+					SubscriptionID: "sub_id",
+					ReqFilters:     []*nostr.ReqFilter{{}},
+				},
+			},
+			want: []nostr.ServerMsg{
+				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
+				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", false, nostr.ServerOKMsgPrefixDuplicate, "already have this event"),
+				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerEventMsg("sub_id", &nostr.Event{
+					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693156107,
+					Kind:      1,
+					Tags:      []nostr.Tag{},
+					Content:   "ぽわ〜",
+					Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+				},
+				),
+				nostr.NewServerEventMsg("sub_id", &nostr.Event{
+					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693157791,
+					Kind:      1,
+					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+					Content:   "powa",
+					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+				),
+				nostr.NewServerEOSEMsg("sub_id"),
+			},
+		},
+		{
+			name: "req event: capacity",
+			cap:  2,
+			input: []nostr.ClientMsg{
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693156107,
+						Kind:      1,
+						Tags:      []nostr.Tag{},
+						Content:   "ぽわ〜",
+						Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+					},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693157791,
+						Kind:      1,
+						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+						Content:   "powa",
+						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "5b2b799aa222cdf555d46b72a868014ffe602d9842cc29d3bedca794c8b32b3e",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1694867396,
+						Kind:      1,
+						Tags:      []nostr.Tag{},
+						Content:   "ﾈﾑ",
+						Sig:       "3aea60cff4da67e42e5216064250357f957cd44bf12bd88c337070dbd57592d11605bfe8f8d8697494559d0770958a9b19b6b18a1926db97bf1555f225e98d0c",
+					},
+				},
+				&nostr.ClientReqMsg{
+					SubscriptionID: "sub_id",
+					ReqFilters:     []*nostr.ReqFilter{{}},
+				},
+			},
+			want: []nostr.ServerMsg{
+				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
+				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerOKMsg("5b2b799aa222cdf555d46b72a868014ffe602d9842cc29d3bedca794c8b32b3e", true, "", ""),
+				nostr.NewServerEventMsg("sub_id", &nostr.Event{
+					ID:        "5b2b799aa222cdf555d46b72a868014ffe602d9842cc29d3bedca794c8b32b3e",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1694867396,
+					Kind:      1,
+					Tags:      []nostr.Tag{},
+					Content:   "ﾈﾑ",
+					Sig:       "3aea60cff4da67e42e5216064250357f957cd44bf12bd88c337070dbd57592d11605bfe8f8d8697494559d0770958a9b19b6b18a1926db97bf1555f225e98d0c",
+				}),
+				nostr.NewServerEventMsg("sub_id", &nostr.Event{
+					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693157791,
+					Kind:      1,
+					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+					Content:   "powa",
+					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+				}),
+				nostr.NewServerEOSEMsg("sub_id"),
+			},
+		},
+		{
+			name: "req event: kind5",
+			cap:  10,
+			input: []nostr.ClientMsg{
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693156107,
+						Kind:      1,
+						Tags:      []nostr.Tag{},
+						Content:   "ぽわ〜",
+						Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+					},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1693157791,
+						Kind:      1,
+						Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+						Content:   "powa",
+						Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"},
+				},
+				&nostr.ClientEventMsg{
+					Event: &nostr.Event{
+						ID:        "powa",
+						Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						CreatedAt: 1694867396,
+						Kind:      5,
+						Tags: []nostr.Tag{
+							{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c"},
+						},
+						Content: "",
+						Sig:     "3aea60cff4da67e42e5216064250357f957cd44bf12bd88c337070dbd57592d11605bfe8f8d8697494559d0770958a9b19b6b18a1926db97bf1555f225e98d0c",
+					},
+				},
+				&nostr.ClientReqMsg{
+					SubscriptionID: "sub_id",
+					ReqFilters:     []*nostr.ReqFilter{{}},
+				},
+			},
+			want: []nostr.ServerMsg{
+				nostr.NewServerOKMsg("d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", true, "", ""),
+				nostr.NewServerOKMsg("49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2", true, "", ""),
+				nostr.NewServerOKMsg("powa", true, "", ""),
+				nostr.NewServerEventMsg("sub_id", &nostr.Event{
+					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693157791,
+					Kind:      1,
+					Tags:      []nostr.Tag{{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c", "", "root"}, {"p", "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"}},
+					Content:   "powa",
+					Sig:       "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+				}),
+				nostr.NewServerEventMsg("sub_id", &nostr.Event{
+					ID:        "powa",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1694867396,
+					Kind:      5,
+					Tags: []nostr.Tag{
+						{"e", "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c"},
+					},
+					Content: "",
+					Sig:     "3aea60cff4da67e42e5216064250357f957cd44bf12bd88c337070dbd57592d11605bfe8f8d8697494559d0770958a9b19b6b18a1926db97bf1555f225e98d0c",
+				}),
+				nostr.NewServerEOSEMsg("sub_id"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewCacheHandler(tt.cap)
+			helperTestHandler(t, h, tt.input, tt.want)
 		})
 	}
 }
