@@ -1,9 +1,4 @@
 ---
-pre-push:
-  commands:
-    test:
-      run: make test
-
 pre-commit:
   parallel: true
   commands:
