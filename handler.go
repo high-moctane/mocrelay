@@ -488,9 +488,9 @@ func (ss *mergeHandlerSession) Handle(
 
 	var wg sync.WaitGroup
 
-	errs := make(chan error, 3)
+	errs := make(chan error, 2)
 
-	wg.Add(4)
+	wg.Add(3)
 	func() {
 		defer wg.Done()
 		defer cancel()
@@ -503,17 +503,13 @@ func (ss *mergeHandlerSession) Handle(
 	}()
 	func() {
 		defer wg.Done()
+		defer ss.closeRecvs()
 		defer cancel()
-		errs <- ss.handleRecv(ctx, recv)
-	}()
-	func() {
-		defer wg.Done()
-		defer cancel()
-		errs <- ss.handleSend(ctx, send)
+		errs <- ss.handleRecvSend(ctx, recv, send)
 	}()
 	wg.Wait()
 
-	return errors.Join(<-errs, <-errs, <-errs)
+	return errors.Join(<-errs, <-errs)
 }
 
 func (ss *mergeHandlerSession) runHandlers(r *http.Request) error {
@@ -559,7 +555,17 @@ func (ss *mergeHandlerSession) mergeSend(ctx context.Context, sends []chan nostr
 	}
 }
 
-func (ss *mergeHandlerSession) handleRecv(ctx context.Context, recv <-chan nostr.ClientMsg) error {
+func (ss *mergeHandlerSession) closeRecvs() {
+	for _, r := range ss.recvs {
+		close(r)
+	}
+}
+
+func (ss *mergeHandlerSession) handleRecvSend(
+	ctx context.Context,
+	recv <-chan nostr.ClientMsg,
+	send chan<- nostr.ServerMsg,
+) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -570,6 +576,11 @@ func (ss *mergeHandlerSession) handleRecv(ctx context.Context, recv <-chan nostr
 				return ErrRecvClosed
 			}
 			if err := ss.handleRecvMsg(ctx, msg); err != nil {
+				return err
+			}
+
+		case msg := <-ss.preSendCh:
+			if err := ss.handleSendMsg(ctx, send, msg); err != nil {
 				return err
 			}
 		}
@@ -637,20 +648,6 @@ func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg nostr.Cli
 		}
 	}
 	return nil
-}
-
-func (ss *mergeHandlerSession) handleSend(ctx context.Context, send chan<- nostr.ServerMsg) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-
-		case msg := <-ss.preSendCh:
-			if err := ss.handleSendMsg(ctx, send, msg); err != nil {
-				return err
-			}
-		}
-	}
 }
 
 func (ss *mergeHandlerSession) handleSendMsg(
