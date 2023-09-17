@@ -461,7 +461,7 @@ type mergeHandlerSession struct {
 	sends     []chan nostr.ServerMsg
 	preSendCh chan *mergeHandlerSessionSendMsg
 	okStat    *mergeHandlerSessionOKState
-	eoseStat  *mergeHandlerSessionEOSEState
+	reqStat   *mergeHandlerSessionReqState
 }
 
 func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
@@ -480,7 +480,7 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 		sends:     sends,
 		preSendCh: make(chan *mergeHandlerSessionSendMsg, len(h.hs)),
 		okStat:    newMergeHandlerSessionOKState(size),
-		eoseStat:  newMergeHandlerSessionEOSEState(size),
+		reqStat:   newMergeHandlerSessionReqState(size),
 	}
 }
 
@@ -625,7 +625,7 @@ func (ss *mergeHandlerSession) handleRecvReqMsg(
 	ctx context.Context,
 	msg *nostr.ClientReqMsg,
 ) error {
-	ss.eoseStat.TrySetSubID(msg.SubscriptionID)
+	ss.reqStat.TrySetSubID(msg.SubscriptionID)
 	ss.broadcastRecvs(ctx, msg)
 	return nil
 }
@@ -704,10 +704,10 @@ func (ss *mergeHandlerSession) handleSendEOSEMsg(
 	msg *mergeHandlerSessionSendMsg,
 ) error {
 	m := msg.Msg.(*nostr.ServerEOSEMsg)
-	ss.eoseStat.SetEOSE(m.SubscriptionID, msg.Idx)
-	if ss.eoseStat.Ready(m.SubscriptionID) {
+	ss.reqStat.SetEOSE(m.SubscriptionID, msg.Idx)
+	if ss.reqStat.Ready(m.SubscriptionID) {
 		send <- m
-		ss.eoseStat.ClearSubID(m.SubscriptionID)
+		ss.reqStat.ClearSubID(m.SubscriptionID)
 	}
 	return nil
 }
@@ -828,34 +828,34 @@ func (stat *mergeHandlerSessionOKState) ClearEventID(eventID string) {
 	delete(stat.s, eventID)
 }
 
-type mergeHandlerSessionEOSEState struct {
+type mergeHandlerSessionReqState struct {
 	size int
 	// map[subID][chIdx]eose?
 	s map[string][]bool
 }
 
-func newMergeHandlerSessionEOSEState(size int) *mergeHandlerSessionEOSEState {
-	return &mergeHandlerSessionEOSEState{
+func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
+	return &mergeHandlerSessionReqState{
 		size: size,
 		s:    make(map[string][]bool),
 	}
 }
 
-func (stat *mergeHandlerSessionEOSEState) TrySetSubID(subID string) {
+func (stat *mergeHandlerSessionReqState) TrySetSubID(subID string) {
 	if len(stat.s[subID]) > 0 {
 		return
 	}
 	stat.s[subID] = make([]bool, stat.size)
 }
 
-func (stat *mergeHandlerSessionEOSEState) SetEOSE(subID string, chIdx int) {
+func (stat *mergeHandlerSessionReqState) SetEOSE(subID string, chIdx int) {
 	if len(stat.s[subID]) == 0 {
 		return
 	}
 	stat.s[subID][chIdx] = true
 }
 
-func (stat *mergeHandlerSessionEOSEState) Ready(subID string) bool {
+func (stat *mergeHandlerSessionReqState) Ready(subID string) bool {
 	eoses := stat.s[subID]
 	if len(eoses) == 0 {
 		return false
@@ -863,7 +863,7 @@ func (stat *mergeHandlerSessionEOSEState) Ready(subID string) bool {
 	return !slices.Contains(eoses, false)
 }
 
-func (stat *mergeHandlerSessionEOSEState) ClearSubID(subID string) {
+func (stat *mergeHandlerSessionReqState) ClearSubID(subID string) {
 	delete(stat.s, subID)
 }
 
