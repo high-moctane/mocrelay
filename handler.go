@@ -625,7 +625,7 @@ func (ss *mergeHandlerSession) handleRecvReqMsg(
 	ctx context.Context,
 	msg *nostr.ClientReqMsg,
 ) error {
-	ss.reqStat.TrySetSubID(msg.SubscriptionID)
+	ss.reqStat.SetSubID(msg.SubscriptionID)
 	ss.broadcastRecvs(ctx, msg)
 	return nil
 }
@@ -634,7 +634,9 @@ func (ss *mergeHandlerSession) handleRecvCloseMsg(
 	ctx context.Context,
 	msg *nostr.ClientCloseMsg,
 ) error {
-	panic("unimplemneted")
+	ss.reqStat.ClearSubID(msg.SubscriptionID)
+	ss.broadcastRecvs(ctx, msg)
+	return nil
 }
 
 func (ss *mergeHandlerSession) handleRecvAuthMsg(
@@ -705,9 +707,8 @@ func (ss *mergeHandlerSession) handleSendEOSEMsg(
 ) error {
 	m := msg.Msg.(*nostr.ServerEOSEMsg)
 	ss.reqStat.SetEOSE(m.SubscriptionID, msg.Idx)
-	if ss.reqStat.Ready(m.SubscriptionID) {
+	if ss.reqStat.AllEOSE(m.SubscriptionID) {
 		send <- m
-		ss.reqStat.ClearSubID(m.SubscriptionID)
 	}
 	return nil
 }
@@ -717,7 +718,11 @@ func (ss *mergeHandlerSession) handleSendEventMsg(
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
 ) error {
-	panic("unimplemented")
+	m := msg.Msg.(*nostr.ServerEventMsg)
+	if ss.reqStat.IsSendableEventMsg(msg.Idx, m) {
+		send <- m
+	}
+	return nil
 }
 
 func (ss *mergeHandlerSession) handleSendNoticeMsg(
@@ -829,42 +834,83 @@ func (stat *mergeHandlerSessionOKState) ClearEventID(eventID string) {
 }
 
 type mergeHandlerSessionReqState struct {
-	size int
+	size    int
+	allEOSE bool
 	// map[subID][chIdx]eose?
-	s map[string][]bool
+	eose map[string][]bool
+	// map[subID]event
+	lastEvent map[string]*nostr.ServerEventMsg
+	// map[subID]map[eventID]seen
+	seen map[string]map[string]bool
 }
 
 func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
 	return &mergeHandlerSessionReqState{
-		size: size,
-		s:    make(map[string][]bool),
+		size:      size,
+		eose:      make(map[string][]bool),
+		lastEvent: make(map[string]*nostr.ServerEventMsg),
+		seen:      make(map[string]map[string]bool),
 	}
 }
 
-func (stat *mergeHandlerSessionReqState) TrySetSubID(subID string) {
-	if len(stat.s[subID]) > 0 {
-		return
-	}
-	stat.s[subID] = make([]bool, stat.size)
+func (stat *mergeHandlerSessionReqState) SetSubID(subID string) {
+	stat.eose[subID] = make([]bool, stat.size)
 }
 
 func (stat *mergeHandlerSessionReqState) SetEOSE(subID string, chIdx int) {
-	if len(stat.s[subID]) == 0 {
+	if len(stat.eose[subID]) == 0 {
 		return
 	}
-	stat.s[subID][chIdx] = true
+	stat.eose[subID][chIdx] = true
 }
 
-func (stat *mergeHandlerSessionReqState) Ready(subID string) bool {
-	eoses := stat.s[subID]
-	if len(eoses) == 0 {
+func (stat *mergeHandlerSessionReqState) AllEOSE(subID string) bool {
+	if stat.allEOSE {
+		return true
+	}
+	eoses := stat.eose[subID]
+	stat.allEOSE = len(eoses) == 0 || !slices.Contains(eoses, false)
+	return stat.allEOSE
+}
+
+func (stat *mergeHandlerSessionReqState) IsEOSE(subID string, chIdx int) bool {
+	eoses := stat.eose[subID]
+	return len(eoses) == 0 || eoses[chIdx]
+}
+
+func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
+	chIdx int,
+	msg *nostr.ServerEventMsg,
+) bool {
+	if stat.seen[msg.SubscriptionID][msg.Event.ID] {
 		return false
 	}
-	return !slices.Contains(eoses, false)
+	stat.seen[msg.SubscriptionID][msg.Event.ID] = true
+
+	if stat.AllEOSE(msg.SubscriptionID) {
+		return true
+	}
+
+	if stat.IsEOSE(msg.SubscriptionID, chIdx) {
+		return false
+	}
+
+	old := stat.lastEvent[msg.SubscriptionID]
+	if old == nil {
+		stat.lastEvent[msg.SubscriptionID] = msg
+		return true
+	}
+	if old.Event.CreatedAt <= msg.Event.CreatedAt {
+		stat.lastEvent[msg.SubscriptionID] = msg
+		return true
+	}
+	return false
 }
 
 func (stat *mergeHandlerSessionReqState) ClearSubID(subID string) {
-	delete(stat.s, subID)
+	delete(stat.eose, subID)
+	delete(stat.lastEvent, subID)
+	delete(stat.seen, subID)
 }
 
 type EventCreatedAtReqFilterMiddleware func(next Handler) Handler
