@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -462,6 +463,7 @@ type mergeHandlerSession struct {
 	preSendCh chan *mergeHandlerSessionSendMsg
 	okStat    *mergeHandlerSessionOKState
 	reqStat   *mergeHandlerSessionReqState
+	countStat *mergeHandlerSessionCountState
 }
 
 func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
@@ -481,6 +483,7 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 		preSendCh: make(chan *mergeHandlerSessionSendMsg, len(h.hs)),
 		okStat:    newMergeHandlerSessionOKState(size),
 		reqStat:   newMergeHandlerSessionReqState(size),
+		countStat: newMergeHandlerSessionCountState(size),
 	}
 }
 
@@ -650,7 +653,9 @@ func (ss *mergeHandlerSession) handleRecvCountMsg(
 	ctx context.Context,
 	msg *nostr.ClientCountMsg,
 ) error {
-	panic("unimplemneted")
+	ss.countStat.SetSubID(msg.SubscriptionID)
+	ss.broadcastRecvs(ctx, msg)
+	return nil
 }
 
 func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg nostr.ClientMsg) error {
@@ -730,7 +735,8 @@ func (ss *mergeHandlerSession) handleSendNoticeMsg(
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
 ) error {
-	panic("unimplemented")
+	send <- msg.Msg
+	return nil
 }
 
 func (ss *mergeHandlerSession) handleSendOKMsg(
@@ -752,7 +758,8 @@ func (ss *mergeHandlerSession) handleSendAuthMsg(
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
 ) error {
-	panic("unimplemented")
+	send <- msg.Msg
+	return nil
 }
 
 func (ss *mergeHandlerSession) handleSendCountMsg(
@@ -760,7 +767,13 @@ func (ss *mergeHandlerSession) handleSendCountMsg(
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
 ) error {
-	panic("unimplemented")
+	m := msg.Msg.(*nostr.ServerCountMsg)
+	ss.countStat.SetCountMsg(msg.Idx, m)
+	if ss.countStat.Ready(m.SubscriptionID, msg.Idx) {
+		send <- ss.countStat.Msg(m.SubscriptionID)
+		ss.countStat.ClearSubID(m.SubscriptionID)
+	}
+	return nil
 }
 
 type mergeHandlerSessionOKState struct {
@@ -911,6 +924,50 @@ func (stat *mergeHandlerSessionReqState) ClearSubID(subID string) {
 	delete(stat.eose, subID)
 	delete(stat.lastEvent, subID)
 	delete(stat.seen, subID)
+}
+
+type mergeHandlerSessionCountState struct {
+	size int
+	// map[subID][chIDx]msg
+	counts map[string][]*nostr.ServerCountMsg
+}
+
+func newMergeHandlerSessionCountState(size int) *mergeHandlerSessionCountState {
+	return &mergeHandlerSessionCountState{
+		size:   size,
+		counts: make(map[string][]*nostr.ServerCountMsg),
+	}
+}
+
+func (stat *mergeHandlerSessionCountState) SetSubID(subID string) {
+	stat.counts[subID] = make([]*nostr.ServerCountMsg, stat.size)
+}
+
+func (stat *mergeHandlerSessionCountState) SetCountMsg(chIdx int, msg *nostr.ServerCountMsg) {
+	counts := stat.counts[msg.SubscriptionID]
+	if len(counts) == 0 {
+		return
+	}
+	counts[chIdx] = msg
+}
+
+func (stat *mergeHandlerSessionCountState) Ready(subID string, chIdx int) bool {
+	counts := stat.counts[subID]
+	if len(counts) == 0 {
+		return false
+	}
+	return !slices.Contains(counts, nil)
+}
+
+func (stat *mergeHandlerSessionCountState) Msg(subID string) *nostr.ServerCountMsg {
+	return slices.MaxFunc(
+		stat.counts[subID],
+		func(a, b *nostr.ServerCountMsg) int { return cmp.Compare(a.Count, b.Count) },
+	)
+}
+
+func (stat *mergeHandlerSessionCountState) ClearSubID(subID string) {
+	delete(stat.counts, subID)
 }
 
 type EventCreatedAtReqFilterMiddleware func(next Handler) Handler
