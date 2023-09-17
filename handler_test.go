@@ -15,7 +15,7 @@ import (
 )
 
 func helperTestHandler(t *testing.T, h Handler, in []nostr.ClientMsg, out []nostr.ServerMsg) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
@@ -873,6 +873,7 @@ func TestMergeHandler(t *testing.T) {
 		})
 	}
 }
+
 func TestRecvEventUniquefyMiddleware(t *testing.T) {
 	tests := []struct {
 		name  string
