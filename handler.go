@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -458,12 +459,15 @@ type mergeHandlerSession struct {
 	h         *MergeHandler
 	recvs     []chan nostr.ClientMsg
 	sends     []chan nostr.ServerMsg
-	preSendCh chan nostr.ServerMsg
+	preSendCh chan *mergeHandlerSessionSendMsg
+	okStat    *mergeHandlerSessionOKState
 }
 
 func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
-	recvs := make([]chan nostr.ClientMsg, len(h.hs))
-	sends := make([]chan nostr.ServerMsg, len(h.hs))
+	size := len(h.hs)
+
+	recvs := make([]chan nostr.ClientMsg, size)
+	sends := make([]chan nostr.ServerMsg, size)
 	for i := 0; i < len(h.hs); i++ {
 		recvs[i] = make(chan nostr.ClientMsg, 1)
 		sends[i] = make(chan nostr.ServerMsg, 1)
@@ -473,7 +477,8 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 		h:         h,
 		recvs:     recvs,
 		sends:     sends,
-		preSendCh: make(chan nostr.ServerMsg, len(h.hs)),
+		preSendCh: make(chan *mergeHandlerSessionSendMsg, len(h.hs)),
+		okStat:    NewMergeHandlerSessionOKState(size),
 	}
 }
 
@@ -551,7 +556,8 @@ func (ss *mergeHandlerSession) mergeSend(ctx context.Context, sends []chan nostr
 	select {
 	case <-ctx.Done():
 		return
-	case ss.preSendCh <- <-sends[idx]:
+	case msg := <-sends[idx]:
+		ss.preSendCh <- newMergeHandlerSessionSendMsg(idx, msg)
 	}
 }
 
@@ -608,7 +614,9 @@ func (ss *mergeHandlerSession) handleRecvEventMsg(
 	ctx context.Context,
 	msg *nostr.ClientEventMsg,
 ) error {
-	panic("unimplemneted")
+	ss.okStat.TrySetEventID(msg.Event.ID)
+	ss.broadcastRecvs(ctx, msg)
+	return nil
 }
 
 func (ss *mergeHandlerSession) handleRecvReqMsg(
@@ -650,12 +658,24 @@ func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg nostr.Cli
 	return nil
 }
 
+type mergeHandlerSessionSendMsg struct {
+	Idx int
+	Msg nostr.ServerMsg
+}
+
+func newMergeHandlerSessionSendMsg(idx int, msg nostr.ServerMsg) *mergeHandlerSessionSendMsg {
+	return &mergeHandlerSessionSendMsg{
+		Idx: idx,
+		Msg: msg,
+	}
+}
+
 func (ss *mergeHandlerSession) handleSendMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
-	msg nostr.ServerMsg,
+	msg *mergeHandlerSessionSendMsg,
 ) error {
-	switch msg := msg.(type) {
+	switch msg.Msg.(type) {
 	case *nostr.ServerEOSEMsg:
 		return ss.handleSendEOSEMsg(ctx, send, msg)
 	case *nostr.ServerEventMsg:
@@ -669,7 +689,7 @@ func (ss *mergeHandlerSession) handleSendMsg(
 	case *nostr.ServerCountMsg:
 		return ss.handleSendCountMsg(ctx, send, msg)
 	default:
-		send <- msg
+		send <- msg.Msg
 		return nil
 	}
 }
@@ -677,7 +697,7 @@ func (ss *mergeHandlerSession) handleSendMsg(
 func (ss *mergeHandlerSession) handleSendEOSEMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
-	msg *nostr.ServerEOSEMsg,
+	msg *mergeHandlerSessionSendMsg,
 ) error {
 	panic("unimplemented")
 }
@@ -685,7 +705,7 @@ func (ss *mergeHandlerSession) handleSendEOSEMsg(
 func (ss *mergeHandlerSession) handleSendEventMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
-	msg *nostr.ServerEventMsg,
+	msg *mergeHandlerSessionSendMsg,
 ) error {
 	panic("unimplemented")
 }
@@ -693,7 +713,7 @@ func (ss *mergeHandlerSession) handleSendEventMsg(
 func (ss *mergeHandlerSession) handleSendNoticeMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
-	msg *nostr.ServerNoticeMsg,
+	msg *mergeHandlerSessionSendMsg,
 ) error {
 	panic("unimplemented")
 }
@@ -701,15 +721,21 @@ func (ss *mergeHandlerSession) handleSendNoticeMsg(
 func (ss *mergeHandlerSession) handleSendOKMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
-	msg *nostr.ServerOKMsg,
+	msg *mergeHandlerSessionSendMsg,
 ) error {
-	panic("unimplemented")
+	m := msg.Msg.(*nostr.ServerOKMsg)
+	ss.okStat.SetMsg(msg.Idx, m)
+	if ss.okStat.Ready(m.EventID) {
+		send <- ss.okStat.Msg(m.EventID)
+		ss.okStat.ClearEventID(m.EventID)
+	}
+	return nil
 }
 
 func (ss *mergeHandlerSession) handleSendAuthMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
-	msg *nostr.ServerAuthMsg,
+	msg *mergeHandlerSessionSendMsg,
 ) error {
 	panic("unimplemented")
 }
@@ -717,9 +743,79 @@ func (ss *mergeHandlerSession) handleSendAuthMsg(
 func (ss *mergeHandlerSession) handleSendCountMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
-	msg *nostr.ServerCountMsg,
+	msg *mergeHandlerSessionSendMsg,
 ) error {
 	panic("unimplemented")
+}
+
+type mergeHandlerSessionOKState struct {
+	size int
+	// map[eventID][chIdx]msg
+	s map[string][]*nostr.ServerOKMsg
+}
+
+func NewMergeHandlerSessionOKState(size int) *mergeHandlerSessionOKState {
+	return &mergeHandlerSessionOKState{
+		size: size,
+		s:    make(map[string][]*nostr.ServerOKMsg),
+	}
+}
+
+func (stat *mergeHandlerSessionOKState) TrySetEventID(eventID string) {
+	if len(stat.s[eventID]) > 0 {
+		return
+	}
+	stat.s[eventID] = make([]*nostr.ServerOKMsg, stat.size)
+}
+
+func (stat *mergeHandlerSessionOKState) SetMsg(chIdx int, msg *nostr.ServerOKMsg) {
+	msgs := stat.s[msg.EventID]
+	if len(msgs) == 0 {
+		return
+	}
+	msgs[chIdx] = msg
+}
+
+func (stat *mergeHandlerSessionOKState) Ready(eventID string) bool {
+	msgs := stat.s[eventID]
+	if len(msgs) == 0 {
+		return false
+	}
+	return !slices.Contains(msgs, nil)
+}
+
+func (stat *mergeHandlerSessionOKState) Msg(eventID string) *nostr.ServerOKMsg {
+	msgs := stat.s[eventID]
+	if len(msgs) == 0 {
+		panic(fmt.Sprintf("invalid eventID %s", eventID))
+	}
+
+	var oks, ngs []*nostr.ServerOKMsg
+	for _, msg := range msgs {
+		if msg.Accepted {
+			oks = append(oks, msg)
+		} else {
+			ngs = append(ngs, msg)
+		}
+	}
+
+	if len(ngs) > 0 {
+		return joinServerOKMsgs(ngs...)
+	}
+
+	return joinServerOKMsgs(oks...)
+}
+
+func joinServerOKMsgs(msgs ...*nostr.ServerOKMsg) *nostr.ServerOKMsg {
+	b := new(strings.Builder)
+	for _, msg := range msgs {
+		b.WriteString(msg.Message())
+	}
+	return nostr.NewServerOKMsg(msgs[0].EventID, msgs[0].Accepted, "", b.String())
+}
+
+func (stat *mergeHandlerSessionOKState) ClearEventID(eventID string) {
+	delete(stat.s, eventID)
 }
 
 type EventCreatedAtReqFilterMiddleware func(next Handler) Handler

@@ -116,10 +116,10 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 }
 
 type ServerOKMsg struct {
-	EventID       string
-	Accepted      bool
-	Message       string
-	MessagePrefix string
+	EventID   string
+	Accepted  bool
+	Msg       string
+	MsgPrefix string
 }
 
 const (
@@ -134,15 +134,19 @@ const (
 
 func NewServerOKMsg(eventID string, accepted bool, prefix, msg string) *ServerOKMsg {
 	return &ServerOKMsg{
-		EventID:       eventID,
-		Accepted:      accepted,
-		MessagePrefix: prefix,
-		Message:       msg,
+		EventID:   eventID,
+		Accepted:  accepted,
+		MsgPrefix: prefix,
+		Msg:       msg,
 	}
 }
 
 func (*ServerOKMsg) MsgType() ServerMsgType {
 	return ServerMsgTypeOK
+}
+
+func (msg *ServerOKMsg) Message() string {
+	return msg.MsgPrefix + msg.Msg
 }
 
 var ErrMarshalServerOKMsg = errors.New("failed to marshal server ok msg")
@@ -152,7 +156,7 @@ func (msg *ServerOKMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerOKMsg
 	}
 
-	v := [4]interface{}{"OK", msg.EventID, msg.Accepted, msg.MessagePrefix + msg.Message}
+	v := [4]interface{}{"OK", msg.EventID, msg.Accepted, msg.Message()}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerOKMsg)
