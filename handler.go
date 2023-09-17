@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -609,13 +610,11 @@ func (ss *mergeHandlerSession) handleRecvMsg(ctx context.Context, msg nostr.Clie
 		ss.handleRecvReqMsg(ctx, msg)
 	case *nostr.ClientCloseMsg:
 		ss.handleRecvCloseMsg(ctx, msg)
-	case *nostr.ClientAuthMsg:
-		ss.handleRecvAuthMsg(ctx, msg)
 	case *nostr.ClientCountMsg:
 		ss.handleRecvCountMsg(ctx, msg)
-	default:
-		ss.broadcastRecvs(ctx, msg)
 	}
+
+	ss.broadcastRecvs(ctx, msg)
 }
 
 func (ss *mergeHandlerSession) handleRecvEventMsg(
@@ -623,10 +622,9 @@ func (ss *mergeHandlerSession) handleRecvEventMsg(
 	msg *nostr.ClientEventMsg,
 ) {
 	ss.okStatMu.Lock()
-	ss.okStat.TrySetEventID(msg.Event.ID)
-	ss.okStatMu.Unlock()
+	defer ss.okStatMu.Unlock()
 
-	ss.broadcastRecvs(ctx, msg)
+	ss.okStat.TrySetEventID(msg.Event.ID)
 }
 
 func (ss *mergeHandlerSession) handleRecvReqMsg(
@@ -634,10 +632,9 @@ func (ss *mergeHandlerSession) handleRecvReqMsg(
 	msg *nostr.ClientReqMsg,
 ) {
 	ss.reqStatMu.Lock()
-	ss.reqStat.SetSubID(msg.SubscriptionID)
-	ss.reqStatMu.Unlock()
+	defer ss.reqStatMu.Unlock()
 
-	ss.broadcastRecvs(ctx, msg)
+	ss.reqStat.SetSubID(msg.SubscriptionID)
 }
 
 func (ss *mergeHandlerSession) handleRecvCloseMsg(
@@ -645,17 +642,9 @@ func (ss *mergeHandlerSession) handleRecvCloseMsg(
 	msg *nostr.ClientCloseMsg,
 ) {
 	ss.reqStatMu.Lock()
+	defer ss.reqStatMu.Unlock()
+
 	ss.reqStat.ClearSubID(msg.SubscriptionID)
-	ss.reqStatMu.Unlock()
-
-	ss.broadcastRecvs(ctx, msg)
-}
-
-func (ss *mergeHandlerSession) handleRecvAuthMsg(
-	ctx context.Context,
-	msg *nostr.ClientAuthMsg,
-) {
-	ss.broadcastRecvs(ctx, msg)
 }
 
 func (ss *mergeHandlerSession) handleRecvCountMsg(
@@ -663,10 +652,9 @@ func (ss *mergeHandlerSession) handleRecvCountMsg(
 	msg *nostr.ClientCountMsg,
 ) {
 	ss.countStatMu.Lock()
-	ss.countStat.SetSubID(msg.SubscriptionID)
-	ss.countStatMu.Unlock()
+	defer ss.countStatMu.Unlock()
 
-	ss.broadcastRecvs(ctx, msg)
+	ss.countStat.SetSubID(msg.SubscriptionID)
 }
 
 func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg nostr.ClientMsg) {
@@ -709,110 +697,106 @@ func (ss *mergeHandlerSession) handleSendMsg(
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
 ) {
+	var m nostr.ServerMsg
+
 	switch msg.Msg.(type) {
 	case *nostr.ServerEOSEMsg:
-		ss.handleSendEOSEMsg(ctx, send, msg)
+		m = ss.handleSendEOSEMsg(ctx, send, msg)
 	case *nostr.ServerEventMsg:
-		ss.handleSendEventMsg(ctx, send, msg)
-	case *nostr.ServerNoticeMsg:
-		ss.handleSendNoticeMsg(ctx, send, msg)
+		m = ss.handleSendEventMsg(ctx, send, msg)
 	case *nostr.ServerOKMsg:
-		ss.handleSendOKMsg(ctx, send, msg)
-	case *nostr.ServerAuthMsg:
-		ss.handleSendAuthMsg(ctx, send, msg)
+		m = ss.handleSendOKMsg(ctx, send, msg)
 	case *nostr.ServerCountMsg:
-		ss.handleSendCountMsg(ctx, send, msg)
+		m = ss.handleSendCountMsg(ctx, send, msg)
 	default:
-		send <- msg.Msg
+		m = msg.Msg
 	}
+
+	if m == nil || reflect.ValueOf(m).IsNil() {
+		return
+	}
+
+	send <- m
 }
 
 func (ss *mergeHandlerSession) handleSendEOSEMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
-) {
+) *nostr.ServerEOSEMsg {
 	m := msg.Msg.(*nostr.ServerEOSEMsg)
+
 	ss.reqStatMu.Lock()
+	defer ss.reqStatMu.Unlock()
+
 	if ss.reqStat.AllEOSE(m.SubscriptionID) {
-		ss.reqStatMu.Unlock()
-		return
+		return nil
 	}
 	ss.reqStat.SetEOSE(m.SubscriptionID, msg.Idx)
-	if ss.reqStat.AllEOSE(m.SubscriptionID) {
-		ss.reqStatMu.Unlock()
-		send <- m
-	} else {
-		ss.reqStatMu.Unlock()
+	if !ss.reqStat.AllEOSE(m.SubscriptionID) {
+		return nil
 	}
+
+	return m
 }
 
 func (ss *mergeHandlerSession) handleSendEventMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
-) {
+) *nostr.ServerEventMsg {
 	m := msg.Msg.(*nostr.ServerEventMsg)
-	ss.reqStatMu.Lock()
-	if ss.reqStat.IsSendableEventMsg(msg.Idx, m) {
-		ss.reqStatMu.Unlock()
-		send <- m
-	} else {
-		ss.reqStatMu.Unlock()
-	}
-}
 
-func (ss *mergeHandlerSession) handleSendNoticeMsg(
-	ctx context.Context,
-	send chan<- nostr.ServerMsg,
-	msg *mergeHandlerSessionSendMsg,
-) {
-	send <- msg.Msg
+	ss.reqStatMu.Lock()
+	defer ss.reqStatMu.Unlock()
+
+	if !ss.reqStat.IsSendableEventMsg(msg.Idx, m) {
+		return nil
+	}
+
+	return m
 }
 
 func (ss *mergeHandlerSession) handleSendOKMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
-) {
+) *nostr.ServerOKMsg {
 	m := msg.Msg.(*nostr.ServerOKMsg)
 
 	ss.okStatMu.Lock()
-	ss.okStat.SetMsg(msg.Idx, m)
-	if ss.okStat.Ready(m.EventID) {
-		msg := ss.okStat.Msg(m.EventID)
-		ss.okStat.ClearEventID(m.EventID)
-		ss.okStatMu.Unlock()
-		send <- msg
-	} else {
-		ss.okStatMu.Unlock()
-	}
-}
+	defer ss.okStatMu.Unlock()
 
-func (ss *mergeHandlerSession) handleSendAuthMsg(
-	ctx context.Context,
-	send chan<- nostr.ServerMsg,
-	msg *mergeHandlerSessionSendMsg,
-) {
-	send <- msg.Msg
+	ss.okStat.SetMsg(msg.Idx, m)
+	if !ss.okStat.Ready(m.EventID) {
+		return nil
+	}
+
+	ret := ss.okStat.Msg(m.EventID)
+	ss.okStat.ClearEventID(m.EventID)
+
+	return ret
 }
 
 func (ss *mergeHandlerSession) handleSendCountMsg(
 	ctx context.Context,
 	send chan<- nostr.ServerMsg,
 	msg *mergeHandlerSessionSendMsg,
-) {
+) *nostr.ServerCountMsg {
 	m := msg.Msg.(*nostr.ServerCountMsg)
+
 	ss.countStatMu.Lock()
+	defer ss.countStatMu.Unlock()
+
 	ss.countStat.SetCountMsg(msg.Idx, m)
-	if ss.countStat.Ready(m.SubscriptionID, msg.Idx) {
-		msg := ss.countStat.Msg(m.SubscriptionID)
-		ss.countStat.ClearSubID(m.SubscriptionID)
-		ss.countStatMu.Unlock()
-		send <- msg
-	} else {
-		ss.countStatMu.Unlock()
+	if !ss.countStat.Ready(m.SubscriptionID, msg.Idx) {
+		return nil
 	}
+
+	ret := ss.countStat.Msg(m.SubscriptionID)
+	ss.countStat.ClearSubID(m.SubscriptionID)
+
+	return ret
 }
 
 type mergeHandlerSessionOKState struct {
