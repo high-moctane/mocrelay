@@ -76,19 +76,22 @@ func (router *Router) Handle(
 
 	msgCh := utils.NewTryChan[nostr.ServerMsg](router.Option.bufLen())
 
-	errCh := make(chan error, 2)
-
+	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
+		defer wg.Done()
 		defer cancel()
-		errCh <- router.serveRecv(ctx, connID, recv, msgCh)
+		router.serveRecv(ctx, connID, recv, msgCh)
 	}()
 
 	go func() {
+		defer wg.Done()
 		defer cancel()
-		errCh <- router.serveSend(ctx, connID, send, msgCh)
+		router.serveSend(ctx, connID, send, msgCh)
 	}()
+	wg.Wait()
 
-	return errors.Join(<-errCh, <-errCh, ErrRouterStop)
+	return ErrRouterStop
 }
 
 func (router *Router) serveRecv(
@@ -96,15 +99,15 @@ func (router *Router) serveRecv(
 	connID string,
 	recv <-chan nostr.ClientMsg,
 	msgCh utils.TryChan[nostr.ServerMsg],
-) error {
+) {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 
 		case msg, ok := <-recv:
 			if !ok {
-				return ErrRecvClosed
+				return
 			}
 			router.recv(ctx, connID, msg, msgCh)
 		}
@@ -163,11 +166,11 @@ func (router *Router) serveSend(
 	connID string,
 	send chan<- nostr.ServerMsg,
 	msgCh utils.TryChan[nostr.ServerMsg],
-) error {
+) {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 
 		case send <- <-msgCh:
 		}
