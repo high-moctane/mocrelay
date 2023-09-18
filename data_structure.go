@@ -26,6 +26,9 @@ func (rb *ringBuffer[T]) mod(a int) int {
 }
 
 func (rb *ringBuffer[T]) idx(i int) int {
+	if i < 0 || rb.Len() <= i {
+		panic(fmt.Sprintf("index out of range [%d]", i))
+	}
 	return rb.mod(rb.tail - 1 - i)
 }
 
@@ -38,11 +41,19 @@ func (rb *ringBuffer[T]) Len() int {
 }
 
 func (rb *ringBuffer[T]) Enqueue(v T) {
+	if rb.Len() == rb.Cap {
+		panic("enqueue into full ring buffer")
+	}
+
 	rb.s[rb.mod(rb.tail)] = v
 	rb.tail++
 }
 
 func (rb *ringBuffer[T]) Dequeue() T {
+	if rb.Len() == 0 {
+		panic("dequeue from empty ring buffer")
+	}
+
 	var empty T
 	modhead := rb.mod(rb.head)
 	old := rb.s[modhead]
@@ -55,9 +66,4 @@ func (rb *ringBuffer[T]) Swap(i, j int) {
 	ii := rb.idx(i)
 	jj := rb.idx(j)
 	rb.s[ii], rb.s[jj] = rb.s[jj], rb.s[ii]
-}
-
-type priorityQueue[T any] struct {
-	s    []T
-	less func(T, T) bool
 }
