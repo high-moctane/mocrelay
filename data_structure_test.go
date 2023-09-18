@@ -46,3 +46,42 @@ func TestRingBuffer(t *testing.T) {
 		assert.Panics(t, func() { b.Dequeue() })
 	}
 }
+
+func TestRingBuffer_IdxFunc(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []int
+		f    func(v int) bool
+		want int
+	}{
+		{
+			"ok",
+			[]int{1, 2, 3},
+			func(v int) bool { return v < 2 },
+			2,
+		},
+		{
+			"ok: empty",
+			nil,
+			func(v int) bool { return v < 2 },
+			-1,
+		},
+		{
+			"not found",
+			[]int{1, 2, 3},
+			func(v int) bool { return v < 0 },
+			-1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := newRingBuffer[int](3)
+			for _, v := range tt.in {
+				b.Enqueue(v)
+			}
+			got := b.IdxFunc(tt.f)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

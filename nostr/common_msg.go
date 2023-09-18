@@ -13,6 +13,16 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
+type EventType int
+
+const (
+	EventTypeUnknown EventType = iota
+	EventTypeRegular
+	EventTypeReplaceable
+	EventTypeEphemeral
+	EventTypeParamReplaceable
+)
+
 type Event struct {
 	ID        string `json:"id"`
 	Pubkey    string `json:"pubkey"`
@@ -125,6 +135,17 @@ func (ev *Event) MarshalJSON() ([]byte, error) {
 		err = errors.Join(err, ErrMarshalEvent)
 	}
 	return ret, err
+}
+
+func (ev *Event) EventType() EventType {
+	if kind := ev.Kind; kind == 0 || kind == 3 || 10000 <= kind && kind < 20000 {
+		return EventTypeReplaceable
+	} else if 20000 <= kind && kind < 30000 {
+		return EventTypeEphemeral
+	} else if 30000 <= kind && kind < 40000 {
+		return EventTypeParamReplaceable
+	}
+	return EventTypeRegular
 }
 
 var hexRegexp = regexp.MustCompile(`^[0-9a-f]$`)

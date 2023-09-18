@@ -336,16 +336,17 @@ func (*eventCache) eventKeyParameterized(event *nostr.Event) string {
 }
 
 func (c *eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
-	if kind := event.Kind; kind == 0 || kind == 3 || 10000 <= kind && kind < 20000 {
+	switch event.EventType() {
+	case nostr.EventTypeRegular:
+		return c.eventKeyRegular(event), true
+	case nostr.EventTypeReplaceable:
 		return c.eventKeyReplaceable(event), true
-	} else if 20000 <= kind && kind < 30000 {
-		return "", false
-	} else if 30000 <= kind && kind < 40000 {
+	case nostr.EventTypeParamReplaceable:
 		key := c.eventKeyParameterized(event)
 		return key, key != ""
+	default:
+		return "", false
 	}
-
-	return c.eventKeyRegular(event), true
 }
 
 func (c *eventCache) Add(event *nostr.Event) (added bool) {
@@ -359,6 +360,17 @@ func (c *eventCache) Add(event *nostr.Event) (added bool) {
 	if !ok {
 		return
 	}
+	if old, ok := c.keys[key]; ok && old.CreatedAt > event.CreatedAt {
+		return
+	}
+
+	idx := c.rb.IdxFunc(func(v *nostr.Event) bool {
+		return v.CreatedAt < event.CreatedAt
+	})
+	if c.rb.Len() == c.rb.Cap && idx < 0 {
+		return
+	}
+
 	c.ids[event.ID] = event
 	c.keys[key] = event
 

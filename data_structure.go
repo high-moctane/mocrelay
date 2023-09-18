@@ -67,3 +67,12 @@ func (rb *ringBuffer[T]) Swap(i, j int) {
 	jj := rb.idx(j)
 	rb.s[ii], rb.s[jj] = rb.s[jj], rb.s[ii]
 }
+
+func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
+	for i := 0; i < rb.Len(); i++ {
+		if f(rb.At(i)) {
+			return i
+		}
+	}
+	return -1
+}
