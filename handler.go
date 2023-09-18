@@ -200,50 +200,90 @@ func (sub *subscriber) SendIfMatch(event *nostr.Event) {
 }
 
 type subscribers struct {
-	mu sync.RWMutex
-
 	// map[connID]map[subID]*subscriber
-	subs map[string]map[string]*subscriber
+	subs chan map[string]chan map[string]chan *subscriber
 }
 
 func newSubscribers() *subscribers {
+	subs := make(chan map[string]chan map[string]chan *subscriber, 1)
+	subs <- make(map[string]chan map[string]chan *subscriber)
 	return &subscribers{
-		subs: make(map[string]map[string]*subscriber),
+		subs: subs,
 	}
 }
 
 func (subs *subscribers) Subscribe(sub *subscriber) {
-	subs.mu.Lock()
-	defer subs.mu.Unlock()
-
-	if _, ok := subs.subs[sub.ConnID]; !ok {
-		subs.subs[sub.ConnID] = make(map[string]*subscriber)
+	m := <-subs.subs
+	mch, ok := m[sub.ConnID]
+	if !ok {
+		mch = make(chan map[string]chan *subscriber, 1)
+		m[sub.ConnID] = mch
+		subs.subs <- m
+		mch <- make(map[string]chan *subscriber)
+	} else {
+		subs.subs <- m
 	}
-	subs.subs[sub.ConnID][sub.SubscriptionID] = sub
+
+	mm := <-mch
+	mmch, ok := mm[sub.SubscriptionID]
+	mch <- mm
+	if !ok {
+		mmch = make(chan *subscriber, 1)
+		mm[sub.SubscriptionID] = mmch
+	}
+
+	select {
+	case <-mmch:
+	default:
+	}
+
+	mmch <- sub
 }
 
 func (subs *subscribers) Unsubscribe(connID, subID string) {
-	subs.mu.Lock()
-	defer subs.mu.Unlock()
-
-	delete(subs.subs[connID], subID)
+	m := <-subs.subs
+	mch, ok := m[subID]
+	subs.subs <- m
+	if !ok {
+		return
+	}
+	mm := <-mch
+	delete(mm, subID)
+	mch <- mm
 }
 
 func (subs *subscribers) UnsubscribeAll(connID string) {
-	subs.mu.Lock()
-	defer subs.mu.Unlock()
-
-	delete(subs.subs, connID)
+	m := <-subs.subs
+	delete(m, connID)
+	subs.subs <- m
 }
 
 func (subs *subscribers) Publish(event *nostr.Event) {
-	subs.mu.RLock()
-	defer subs.mu.RUnlock()
+	m := <-subs.subs
+	mchs := make([]chan map[string]chan *subscriber, 0, len(m))
+	for _, mch := range m {
+		mchs = append(mchs, mch)
+	}
+	subs.subs <- m
 
-	for _, m := range subs.subs {
-		for _, sub := range m {
-			sub.SendIfMatch(event)
+	mms := make([]map[string]chan *subscriber, 0, len(mchs))
+	for _, mch := range mchs {
+		mm := <-mch
+		mms = append(mms, mm)
+		mch <- mm
+	}
+
+	ss := make([]*subscriber, 0, len(mms))
+	for _, mm := range mms {
+		for _, mmch := range mm {
+			sub := <-mmch
+			ss = append(ss, sub)
+			mmch <- sub
 		}
+	}
+
+	for _, s := range ss {
+		s.SendIfMatch(event)
 	}
 }
 
