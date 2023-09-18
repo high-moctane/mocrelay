@@ -266,24 +266,19 @@ func (subs *subscribers) Publish(event *nostr.Event) {
 	}
 	subs.subs <- m
 
-	mms := make([]map[string]chan *subscriber, 0, len(mchs))
+	var mmchs []chan *subscriber
 	for _, mch := range mchs {
 		mm := <-mch
-		mms = append(mms, mm)
+		for _, mmch := range mm {
+			mmchs = append(mmchs, mmch)
+		}
 		mch <- mm
 	}
 
-	ss := make([]*subscriber, 0, len(mms))
-	for _, mm := range mms {
-		for _, mmch := range mm {
-			sub := <-mmch
-			ss = append(ss, sub)
-			mmch <- sub
-		}
-	}
-
-	for _, s := range ss {
+	for _, mmch := range mmchs {
+		s := <-mmch
 		s.SendIfMatch(event)
+		mmch <- s
 	}
 }
 
