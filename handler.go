@@ -275,7 +275,7 @@ func (h *CacheHandler) Handle(
 			}
 
 		case *nostr.ClientReqMsg:
-			for _, e := range h.c.Find(msg.ReqFilters) {
+			for _, e := range h.c.Find(NewReqFiltersEventMatchers(msg.ReqFilters)) {
 				send <- nostr.NewServerEventMsg(msg.SubscriptionID, e)
 			}
 			send <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
@@ -408,9 +408,8 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 	delete(c.keys, naddr)
 }
 
-func (c *eventCache) Find(filters []*nostr.ReqFilter) []*nostr.Event {
+func (c *eventCache) Find(matcher EventCountMatcher) []*nostr.Event {
 	var ret []*nostr.Event
-	matcher := NewReqFiltersEventMatchers(filters)
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
