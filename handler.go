@@ -226,11 +226,11 @@ func (subs *subscribers) Subscribe(sub *subscriber) {
 
 	mm := <-mch
 	mmch, ok := mm[sub.SubscriptionID]
-	mch <- mm
 	if !ok {
 		mmch = make(chan *subscriber, 1)
 		mm[sub.SubscriptionID] = mmch
 	}
+	mch <- mm
 
 	select {
 	case <-mmch:
