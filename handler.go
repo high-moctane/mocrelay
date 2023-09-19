@@ -45,7 +45,7 @@ type RouterOption struct {
 }
 
 func (opt *RouterOption) bufLen() int {
-	if opt == nil {
+	if opt == nil || opt.BufLen == 0 {
 		return 50
 	}
 	return opt.BufLen
@@ -70,65 +70,62 @@ func (router *Router) Handle(
 	send chan<- nostr.ServerMsg,
 ) error {
 	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 
 	connID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(connID)
 
-	msgCh := utils.NewTryChan[nostr.ServerMsg](router.Option.bufLen())
+	rrecv := recv
+	subCh := utils.NewTryChan[nostr.ServerMsg](router.Option.bufLen())
+	myCh := make(chan nostr.ServerMsg, 1)
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		defer cancel()
-		router.serveRecv(ctx, connID, recv, msgCh)
-	}()
-
-	go func() {
-		defer wg.Done()
-		defer cancel()
-		router.serveSend(ctx, connID, send, msgCh)
-	}()
-	wg.Wait()
-
-	return ErrRouterStop
-}
-
-func (router *Router) serveRecv(
-	ctx context.Context,
-	connID string,
-	recv <-chan nostr.ClientMsg,
-	msgCh utils.TryChan[nostr.ServerMsg],
-) {
+Loop:
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			break Loop
 
-		case msg, ok := <-recv:
+		case msg, ok := <-rrecv:
 			if !ok {
-				return
+				break Loop
 			}
-			router.recv(ctx, connID, msg, msgCh)
+			m := router.recv(ctx, connID, msg, subCh)
+			if m == nil || reflect.ValueOf(m).IsNil() {
+				continue
+			}
+			myCh <- m
+			rrecv = nil
+
+		case msg := <-myCh:
+			send <- msg
+			rrecv = recv
+
+		case msg := <-subCh:
+			send <- msg
 		}
 	}
+
+	return ErrRouterStop
 }
 
 func (router *Router) recv(
 	ctx context.Context,
 	connID string,
 	msg nostr.ClientMsg,
-	msgCh utils.TryChan[nostr.ServerMsg],
-) {
+	subCh utils.TryChan[nostr.ServerMsg],
+) nostr.ServerMsg {
 	switch m := msg.(type) {
 	case *nostr.ClientReqMsg:
-		router.recvClientReqMsg(ctx, connID, m, msgCh)
+		return router.recvClientReqMsg(ctx, connID, m, subCh)
 
 	case *nostr.ClientEventMsg:
-		router.recvClientEventMsg(ctx, connID, m, msgCh)
+		return router.recvClientEventMsg(ctx, connID, m, subCh)
 
 	case *nostr.ClientCloseMsg:
-		router.recvClientCloseMsg(ctx, connID, m)
+		return router.recvClientCloseMsg(ctx, connID, m)
+
+	default:
+		return nil
 	}
 }
 
@@ -136,45 +133,30 @@ func (router *Router) recvClientReqMsg(
 	ctx context.Context,
 	connID string,
 	msg *nostr.ClientReqMsg,
-	msgCh utils.TryChan[nostr.ServerMsg],
-) {
-	sub := newSubscriber(connID, msg, msgCh)
+	subCh utils.TryChan[nostr.ServerMsg],
+) nostr.ServerMsg {
+	sub := newSubscriber(connID, msg, subCh)
 	router.subs.Subscribe(sub)
-	msgCh.TrySend(nostr.NewServerEOSEMsg(msg.SubscriptionID))
+	return nostr.NewServerEOSEMsg(msg.SubscriptionID)
 }
 
 func (router *Router) recvClientEventMsg(
 	ctx context.Context,
 	connID string,
 	msg *nostr.ClientEventMsg,
-	msgCh utils.TryChan[nostr.ServerMsg],
-) {
+	subCh utils.TryChan[nostr.ServerMsg],
+) nostr.ServerMsg {
 	router.subs.Publish(msg.Event)
-	msgCh.TrySend(nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, ""))
+	return nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, "")
 }
 
 func (router *Router) recvClientCloseMsg(
 	ctx context.Context,
 	connID string,
 	msg *nostr.ClientCloseMsg,
-) {
+) nostr.ServerMsg {
 	router.subs.Unsubscribe(connID, msg.SubscriptionID)
-}
-
-func (router *Router) serveSend(
-	ctx context.Context,
-	connID string,
-	send chan<- nostr.ServerMsg,
-	msgCh utils.TryChan[nostr.ServerMsg],
-) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-
-		case send <- <-msgCh:
-		}
-	}
+	return nil
 }
 
 type subscriber struct {
