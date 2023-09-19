@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -265,15 +266,32 @@ func (subs *subscribers) Publish(event *nostr.Event) {
 }
 
 type CacheHandler struct {
-	c *eventCache
+	opEventCh chan *cacheHandlerOpEvent
+	opReqCh   chan *cacheHandlerOpReq
+	cancel    context.CancelFunc
+}
+
+type cacheHandlerOpEvent struct {
+	ev  *nostr.Event
+	ret chan bool
+}
+
+type cacheHandlerOpReq struct {
+	matcher EventCountMatcher
+	ret     chan []*nostr.Event
 }
 
 var ErrCacheHandlerStop = errors.New("cache handler stopped")
 
-func NewCacheHandler(capacity int) *CacheHandler {
-	return &CacheHandler{
-		c: newEventCache(capacity),
+func NewCacheHandler(ctx context.Context, capacity int) *CacheHandler {
+	ctx, cancel := context.WithCancel(ctx)
+	c := &CacheHandler{
+		opEventCh: make(chan *cacheHandlerOpEvent, 1),
+		opReqCh:   make(chan *cacheHandlerOpReq, 1),
+		cancel:    cancel,
 	}
+	c.start(ctx, capacity)
+	return c
 }
 
 func (h *CacheHandler) Handle(
@@ -284,18 +302,24 @@ func (h *CacheHandler) Handle(
 	for msg := range recv {
 		switch msg := msg.(type) {
 		case *nostr.ClientEventMsg:
-			e := msg.Event
-			if e.Kind == 5 {
-				h.kind5(e)
+			ch := make(chan bool)
+			h.opEventCh <- &cacheHandlerOpEvent{
+				ev:  msg.Event,
+				ret: ch,
 			}
-			if h.c.Add(e) {
-				send <- nostr.NewServerOKMsg(e.ID, true, "", "")
+			if <-ch {
+				send <- nostr.NewServerOKMsg(msg.Event.ID, true, "", "")
 			} else {
-				send <- nostr.NewServerOKMsg(e.ID, false, nostr.ServerOKMsgPrefixDuplicate, "already have this event")
+				send <- nostr.NewServerOKMsg(msg.Event.ID, false, nostr.ServerOKMsgPrefixDuplicate, "already have this event")
 			}
 
 		case *nostr.ClientReqMsg:
-			for _, e := range h.c.Find(NewReqFiltersEventMatchers(msg.ReqFilters)) {
+			ch := make(chan []*nostr.Event)
+			h.opReqCh <- &cacheHandlerOpReq{
+				matcher: NewReqFiltersEventMatchers(msg.ReqFilters),
+				ret:     ch,
+			}
+			for _, e := range <-ch {
 				send <- nostr.NewServerEventMsg(msg.SubscriptionID, e)
 			}
 			send <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
@@ -304,22 +328,66 @@ func (h *CacheHandler) Handle(
 	return ErrCacheHandlerStop
 }
 
-func (h *CacheHandler) kind5(event *nostr.Event) {
+func (h *CacheHandler) start(ctx context.Context, capacity int) {
+	c := newEventCache(capacity)
+
+	num := runtime.GOMAXPROCS(0)
+	sema := make(chan struct{}, num)
+
+	for i := 0; i < num; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+
+				case op := <-h.opEventCh:
+					e := op.ev
+
+					for i := 0; i < num; i++ {
+						sema <- struct{}{}
+					}
+
+					if e.Kind == 5 {
+						h.kind5(c, e)
+					}
+					ret := c.Add(e)
+
+					for i := 0; i < num; i++ {
+						<-sema
+					}
+
+					op.ret <- ret
+
+				case op := <-h.opReqCh:
+					sema <- struct{}{}
+					op.ret <- c.Find(op.matcher)
+					<-sema
+				}
+			}
+		}()
+	}
+}
+
+func (h *CacheHandler) Stop() {
+	h.cancel()
+}
+
+func (h *CacheHandler) kind5(c *eventCache, event *nostr.Event) {
 	for _, tag := range event.Tags {
 		if len(tag) < 2 {
 			continue
 		}
 		switch tag[0] {
 		case "e":
-			h.c.DeleteID(tag[1], event.Pubkey)
+			c.DeleteID(tag[1], event.Pubkey)
 		case "a":
-			h.c.DeleteNaddr(tag[1], event.Pubkey)
+			c.DeleteNaddr(tag[1], event.Pubkey)
 		}
 	}
 }
 
 type eventCache struct {
-	mu   sync.RWMutex
 	rb   *ringBuffer[*nostr.Event]
 	ids  map[string]*nostr.Event
 	keys map[string]*nostr.Event
@@ -370,9 +438,6 @@ func (c *eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
 }
 
 func (c *eventCache) Add(event *nostr.Event) (added bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.ids[event.ID] != nil {
 		return
 	}
@@ -414,9 +479,6 @@ func (c *eventCache) Add(event *nostr.Event) (added bool) {
 }
 
 func (c *eventCache) DeleteID(id, pubkey string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	event := c.ids[id]
 	if event == nil || event.Pubkey != pubkey {
 		return
@@ -429,9 +491,6 @@ func (c *eventCache) DeleteID(id, pubkey string) {
 }
 
 func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
-	c.mu.Lock()
-	defer c.mu.RUnlock()
-
 	event := c.keys[naddr]
 	if event == nil || event.Pubkey != pubkey {
 		return
@@ -442,9 +501,6 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 
 func (c *eventCache) Find(matcher EventCountMatcher) []*nostr.Event {
 	var ret []*nostr.Event
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 
 	for i := 0; i < c.rb.Len(); i++ {
 		ev := c.rb.At(i)
