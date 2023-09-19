@@ -361,8 +361,9 @@ func (h *CacheHandler) start(ctx context.Context, capacity int) {
 
 				case op := <-h.opReqCh:
 					sema <- struct{}{}
-					op.ret <- c.Find(op.matcher)
+					ret := c.Find(op.matcher)
 					<-sema
+					op.ret <- ret
 				}
 			}
 		}()
