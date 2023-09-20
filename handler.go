@@ -76,9 +76,7 @@ func (router *Router) Handle(
 	connID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(connID)
 
-	rrecv := recv
 	subCh := utils.NewTryChan[nostr.ServerMsg](router.Option.bufLen())
-	myCh := make(chan nostr.ServerMsg, 1)
 
 Loop:
 	for {
@@ -86,7 +84,7 @@ Loop:
 		case <-ctx.Done():
 			break Loop
 
-		case msg, ok := <-rrecv:
+		case msg, ok := <-recv:
 			if !ok {
 				break Loop
 			}
@@ -94,12 +92,7 @@ Loop:
 			if m == nil || reflect.ValueOf(m).IsNil() {
 				continue
 			}
-			myCh <- m
-			rrecv = nil
-
-		case msg := <-myCh:
-			send <- msg
-			rrecv = recv
+			send <- m
 
 		case msg := <-subCh:
 			send <- msg
