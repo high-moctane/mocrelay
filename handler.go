@@ -15,7 +15,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/high-moctane/mocrelay/nostr"
 	"github.com/high-moctane/mocrelay/utils"
 )
 
@@ -25,15 +24,15 @@ var (
 )
 
 type Handler interface {
-	Handle(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error
+	Handle(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error
 }
 
-type HandlerFunc func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error
+type HandlerFunc func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error
 
 func (f HandlerFunc) Handle(
 	r *http.Request,
-	recv <-chan nostr.ClientMsg,
-	send chan<- nostr.ServerMsg,
+	recv <-chan ClientMsg,
+	send chan<- ServerMsg,
 ) error {
 	return f(r, recv, send)
 }
@@ -67,8 +66,8 @@ func NewRouter(option *RouterOption) *Router {
 
 func (router *Router) Handle(
 	r *http.Request,
-	recv <-chan nostr.ClientMsg,
-	send chan<- nostr.ServerMsg,
+	recv <-chan ClientMsg,
+	send chan<- ServerMsg,
 ) error {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
@@ -76,7 +75,7 @@ func (router *Router) Handle(
 	connID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(connID)
 
-	subCh := utils.NewTryChan[nostr.ServerMsg](router.Option.bufLen())
+	subCh := utils.NewTryChan[ServerMsg](router.Option.bufLen())
 
 Loop:
 	for {
@@ -105,17 +104,17 @@ Loop:
 func (router *Router) recv(
 	ctx context.Context,
 	connID string,
-	msg nostr.ClientMsg,
-	subCh utils.TryChan[nostr.ServerMsg],
-) nostr.ServerMsg {
+	msg ClientMsg,
+	subCh utils.TryChan[ServerMsg],
+) ServerMsg {
 	switch m := msg.(type) {
-	case *nostr.ClientReqMsg:
+	case *ClientReqMsg:
 		return router.recvClientReqMsg(ctx, connID, m, subCh)
 
-	case *nostr.ClientEventMsg:
+	case *ClientEventMsg:
 		return router.recvClientEventMsg(ctx, connID, m, subCh)
 
-	case *nostr.ClientCloseMsg:
+	case *ClientCloseMsg:
 		return router.recvClientCloseMsg(ctx, connID, m)
 
 	default:
@@ -126,29 +125,29 @@ func (router *Router) recv(
 func (router *Router) recvClientReqMsg(
 	ctx context.Context,
 	connID string,
-	msg *nostr.ClientReqMsg,
-	subCh utils.TryChan[nostr.ServerMsg],
-) nostr.ServerMsg {
+	msg *ClientReqMsg,
+	subCh utils.TryChan[ServerMsg],
+) ServerMsg {
 	sub := newSubscriber(connID, msg, subCh)
 	router.subs.Subscribe(sub)
-	return nostr.NewServerEOSEMsg(msg.SubscriptionID)
+	return NewServerEOSEMsg(msg.SubscriptionID)
 }
 
 func (router *Router) recvClientEventMsg(
 	ctx context.Context,
 	connID string,
-	msg *nostr.ClientEventMsg,
-	subCh utils.TryChan[nostr.ServerMsg],
-) nostr.ServerMsg {
+	msg *ClientEventMsg,
+	subCh utils.TryChan[ServerMsg],
+) ServerMsg {
 	router.subs.Publish(msg.Event)
-	return nostr.NewServerOKMsg(msg.Event.ID, true, nostr.ServerOKMsgPrefixNoPrefix, "")
+	return NewServerOKMsg(msg.Event.ID, true, ServerOKMsgPrefixNoPrefix, "")
 }
 
 func (router *Router) recvClientCloseMsg(
 	ctx context.Context,
 	connID string,
-	msg *nostr.ClientCloseMsg,
-) nostr.ServerMsg {
+	msg *ClientCloseMsg,
+) ServerMsg {
 	router.subs.Unsubscribe(connID, msg.SubscriptionID)
 	return nil
 }
@@ -157,10 +156,10 @@ type subscriber struct {
 	ConnID         string
 	SubscriptionID string
 	Matcher        EventMatcher
-	Ch             utils.TryChan[nostr.ServerMsg]
+	Ch             utils.TryChan[ServerMsg]
 }
 
-func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerMsg) *subscriber {
+func newSubscriber(connID string, msg *ClientReqMsg, ch chan ServerMsg) *subscriber {
 	return &subscriber{
 		ConnID:         connID,
 		SubscriptionID: msg.SubscriptionID,
@@ -169,9 +168,9 @@ func newSubscriber(connID string, msg *nostr.ClientReqMsg, ch chan nostr.ServerM
 	}
 }
 
-func (sub *subscriber) SendIfMatch(event *nostr.Event) {
+func (sub *subscriber) SendIfMatch(event *Event) {
 	if sub.Matcher.Match(event) {
-		sub.Ch.TrySend(nostr.NewServerEventMsg(sub.SubscriptionID, event))
+		sub.Ch.TrySend(NewServerEventMsg(sub.SubscriptionID, event))
 	}
 }
 
@@ -234,7 +233,7 @@ func (subs *subscribers) UnsubscribeAll(connID string) {
 	subs.subs <- m
 }
 
-func (subs *subscribers) Publish(event *nostr.Event) {
+func (subs *subscribers) Publish(event *Event) {
 	m := <-subs.subs
 	mchs := make([]chan map[string]chan *subscriber, 0, len(m))
 	for _, mch := range m {
@@ -265,13 +264,13 @@ type CacheHandler struct {
 }
 
 type cacheHandlerOpEvent struct {
-	ev  *nostr.Event
+	ev  *Event
 	ret chan bool
 }
 
 type cacheHandlerOpReq struct {
 	matcher EventCountMatcher
-	ret     chan []*nostr.Event
+	ret     chan []*Event
 }
 
 var ErrCacheHandlerStop = errors.New("cache handler stopped")
@@ -289,33 +288,33 @@ func NewCacheHandler(ctx context.Context, capacity int) *CacheHandler {
 
 func (h *CacheHandler) Handle(
 	r *http.Request,
-	recv <-chan nostr.ClientMsg,
-	send chan<- nostr.ServerMsg,
+	recv <-chan ClientMsg,
+	send chan<- ServerMsg,
 ) error {
 	for msg := range recv {
 		switch msg := msg.(type) {
-		case *nostr.ClientEventMsg:
+		case *ClientEventMsg:
 			ch := make(chan bool)
 			h.opEventCh <- &cacheHandlerOpEvent{
 				ev:  msg.Event,
 				ret: ch,
 			}
 			if <-ch {
-				send <- nostr.NewServerOKMsg(msg.Event.ID, true, "", "")
+				send <- NewServerOKMsg(msg.Event.ID, true, "", "")
 			} else {
-				send <- nostr.NewServerOKMsg(msg.Event.ID, false, nostr.ServerOKMsgPrefixDuplicate, "already have this event")
+				send <- NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
 			}
 
-		case *nostr.ClientReqMsg:
-			ch := make(chan []*nostr.Event)
+		case *ClientReqMsg:
+			ch := make(chan []*Event)
 			h.opReqCh <- &cacheHandlerOpReq{
 				matcher: NewReqFiltersEventMatchers(msg.ReqFilters),
 				ret:     ch,
 			}
 			for _, e := range <-ch {
-				send <- nostr.NewServerEventMsg(msg.SubscriptionID, e)
+				send <- NewServerEventMsg(msg.SubscriptionID, e)
 			}
-			send <- nostr.NewServerEOSEMsg(msg.SubscriptionID)
+			send <- NewServerEOSEMsg(msg.SubscriptionID)
 		}
 	}
 	return ErrCacheHandlerStop
@@ -367,7 +366,7 @@ func (h *CacheHandler) Stop() {
 	h.cancel()
 }
 
-func (h *CacheHandler) kind5(c *eventCache, event *nostr.Event) {
+func (h *CacheHandler) kind5(c *eventCache, event *Event) {
 	for _, tag := range event.Tags {
 		if len(tag) < 2 {
 			continue
@@ -382,27 +381,27 @@ func (h *CacheHandler) kind5(c *eventCache, event *nostr.Event) {
 }
 
 type eventCache struct {
-	rb   *ringBuffer[*nostr.Event]
-	ids  map[string]*nostr.Event
-	keys map[string]*nostr.Event
+	rb   *ringBuffer[*Event]
+	ids  map[string]*Event
+	keys map[string]*Event
 }
 
 func newEventCache(capacity int) *eventCache {
 	return &eventCache{
-		rb:   newRingBuffer[*nostr.Event](capacity),
-		ids:  make(map[string]*nostr.Event, capacity),
-		keys: make(map[string]*nostr.Event, capacity),
+		rb:   newRingBuffer[*Event](capacity),
+		ids:  make(map[string]*Event, capacity),
+		keys: make(map[string]*Event, capacity),
 	}
 }
 
-func (*eventCache) eventKeyRegular(event *nostr.Event) string { return event.ID }
+func (*eventCache) eventKeyRegular(event *Event) string { return event.ID }
 
-func (*eventCache) eventKeyReplaceable(event *nostr.Event) string {
+func (*eventCache) eventKeyReplaceable(event *Event) string {
 	return fmt.Sprintf("%s:%d", event.Pubkey, event.Kind)
 }
 
-func (*eventCache) eventKeyParameterized(event *nostr.Event) string {
-	idx := slices.IndexFunc(event.Tags, func(t nostr.Tag) bool {
+func (*eventCache) eventKeyParameterized(event *Event) string {
+	idx := slices.IndexFunc(event.Tags, func(t Tag) bool {
 		return len(t) >= 1 && t[0] == "d"
 	})
 	if idx < 0 {
@@ -417,13 +416,13 @@ func (*eventCache) eventKeyParameterized(event *nostr.Event) string {
 	return fmt.Sprintf("%s:%d:%s", event.Pubkey, event.Kind, d)
 }
 
-func (c *eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
+func (c *eventCache) eventKey(event *Event) (key string, ok bool) {
 	switch event.EventType() {
-	case nostr.EventTypeRegular:
+	case EventTypeRegular:
 		return c.eventKeyRegular(event), true
-	case nostr.EventTypeReplaceable:
+	case EventTypeReplaceable:
 		return c.eventKeyReplaceable(event), true
-	case nostr.EventTypeParamReplaceable:
+	case EventTypeParamReplaceable:
 		key := c.eventKeyParameterized(event)
 		return key, key != ""
 	default:
@@ -431,7 +430,7 @@ func (c *eventCache) eventKey(event *nostr.Event) (key string, ok bool) {
 	}
 }
 
-func (c *eventCache) Add(event *nostr.Event) (added bool) {
+func (c *eventCache) Add(event *Event) (added bool) {
 	if c.ids[event.ID] != nil {
 		return
 	}
@@ -443,7 +442,7 @@ func (c *eventCache) Add(event *nostr.Event) (added bool) {
 		return
 	}
 
-	idx := c.rb.IdxFunc(func(v *nostr.Event) bool {
+	idx := c.rb.IdxFunc(func(v *Event) bool {
 		return v.CreatedAt < event.CreatedAt
 	})
 	if c.rb.Len() == c.rb.Cap && idx < 0 {
@@ -493,8 +492,8 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 	delete(c.keys, naddr)
 }
 
-func (c *eventCache) Find(matcher EventCountMatcher) []*nostr.Event {
-	var ret []*nostr.Event
+func (c *eventCache) Find(matcher EventCountMatcher) []*Event {
+	var ret []*Event
 
 	for i := 0; i < c.rb.Len(); i++ {
 		ev := c.rb.At(i)
@@ -532,16 +531,16 @@ func NewMergeHandler(handlers ...Handler) Handler {
 
 func (h *MergeHandler) Handle(
 	r *http.Request,
-	recv <-chan nostr.ClientMsg,
-	send chan<- nostr.ServerMsg,
+	recv <-chan ClientMsg,
+	send chan<- ServerMsg,
 ) error {
 	return newMergeHandlerSession(h).Handle(r, recv, send)
 }
 
 type mergeHandlerSession struct {
 	h         *MergeHandler
-	recvs     []chan nostr.ClientMsg
-	sends     []chan nostr.ServerMsg
+	recvs     []chan ClientMsg
+	sends     []chan ServerMsg
 	preSendCh chan *mergeHandlerSessionSendMsg
 
 	okStat    *mergeHandlerSessionOKState
@@ -552,11 +551,11 @@ type mergeHandlerSession struct {
 func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 	size := len(h.hs)
 
-	recvs := make([]chan nostr.ClientMsg, size)
-	sends := make([]chan nostr.ServerMsg, size)
+	recvs := make([]chan ClientMsg, size)
+	sends := make([]chan ServerMsg, size)
 	for i := 0; i < len(h.hs); i++ {
-		recvs[i] = make(chan nostr.ClientMsg, 1)
-		sends[i] = make(chan nostr.ServerMsg, 1)
+		recvs[i] = make(chan ClientMsg, 1)
+		sends[i] = make(chan ServerMsg, 1)
 	}
 
 	return &mergeHandlerSession{
@@ -572,8 +571,8 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 
 func (ss *mergeHandlerSession) Handle(
 	r *http.Request,
-	recv <-chan nostr.ClientMsg,
-	send chan<- nostr.ServerMsg,
+	recv <-chan ClientMsg,
+	send chan<- ServerMsg,
 ) error {
 	ctx, cancel := context.WithCancel(r.Context())
 	r = r.WithContext(ctx)
@@ -619,7 +618,7 @@ func (ss *mergeHandlerSession) mergeSends(ctx context.Context) {
 	ss.mergeSend(ctx, ss.sends)
 }
 
-func (ss *mergeHandlerSession) mergeSend(ctx context.Context, sends []chan nostr.ServerMsg) {
+func (ss *mergeHandlerSession) mergeSend(ctx context.Context, sends []chan ServerMsg) {
 	if len(sends) == 0 {
 		return
 	}
@@ -646,13 +645,13 @@ func (ss *mergeHandlerSession) closeRecvs() {
 
 func (ss *mergeHandlerSession) handleRecvSend(
 	ctx context.Context,
-	recv <-chan nostr.ClientMsg,
-	send chan<- nostr.ServerMsg,
+	recv <-chan ClientMsg,
+	send chan<- ServerMsg,
 ) {
 	recvCh := recv
 	sendCh := ss.preSendCh
-	recvBuf := make(chan nostr.ClientMsg, 1)
-	sendBuf := make(chan nostr.ServerMsg, 1)
+	recvBuf := make(chan ClientMsg, 1)
+	sendBuf := make(chan ServerMsg, 1)
 
 	for {
 		select {
@@ -694,16 +693,16 @@ func (ss *mergeHandlerSession) handleRecvSend(
 
 func (ss *mergeHandlerSession) handleRecvMsg(
 	ctx context.Context,
-	msg nostr.ClientMsg,
-) nostr.ClientMsg {
+	msg ClientMsg,
+) ClientMsg {
 	switch msg := msg.(type) {
-	case *nostr.ClientEventMsg:
+	case *ClientEventMsg:
 		return ss.handleRecvEventMsg(ctx, msg)
-	case *nostr.ClientReqMsg:
+	case *ClientReqMsg:
 		return ss.handleRecvReqMsg(ctx, msg)
-	case *nostr.ClientCloseMsg:
+	case *ClientCloseMsg:
 		return ss.handleRecvCloseMsg(ctx, msg)
-	case *nostr.ClientCountMsg:
+	case *ClientCountMsg:
 		return ss.handleRecvCountMsg(ctx, msg)
 	default:
 		return msg
@@ -712,37 +711,37 @@ func (ss *mergeHandlerSession) handleRecvMsg(
 
 func (ss *mergeHandlerSession) handleRecvEventMsg(
 	ctx context.Context,
-	msg *nostr.ClientEventMsg,
-) nostr.ClientMsg {
+	msg *ClientEventMsg,
+) ClientMsg {
 	ss.okStat.TrySetEventID(msg.Event.ID)
 	return msg
 }
 
 func (ss *mergeHandlerSession) handleRecvReqMsg(
 	ctx context.Context,
-	msg *nostr.ClientReqMsg,
-) nostr.ClientMsg {
+	msg *ClientReqMsg,
+) ClientMsg {
 	ss.reqStat.SetSubID(msg.SubscriptionID)
 	return msg
 }
 
 func (ss *mergeHandlerSession) handleRecvCloseMsg(
 	ctx context.Context,
-	msg *nostr.ClientCloseMsg,
-) nostr.ClientMsg {
+	msg *ClientCloseMsg,
+) ClientMsg {
 	ss.reqStat.ClearSubID(msg.SubscriptionID)
 	return msg
 }
 
 func (ss *mergeHandlerSession) handleRecvCountMsg(
 	ctx context.Context,
-	msg *nostr.ClientCountMsg,
-) nostr.ClientMsg {
+	msg *ClientCountMsg,
+) ClientMsg {
 	ss.countStat.SetSubID(msg.SubscriptionID)
 	return msg
 }
 
-func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg nostr.ClientMsg) {
+func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg ClientMsg) {
 	for _, r := range ss.recvs {
 		select {
 		case <-ctx.Done():
@@ -755,10 +754,10 @@ func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg nostr.Cli
 
 type mergeHandlerSessionSendMsg struct {
 	Idx int
-	Msg nostr.ServerMsg
+	Msg ServerMsg
 }
 
-func newMergeHandlerSessionSendMsg(idx int, msg nostr.ServerMsg) *mergeHandlerSessionSendMsg {
+func newMergeHandlerSessionSendMsg(idx int, msg ServerMsg) *mergeHandlerSessionSendMsg {
 	return &mergeHandlerSessionSendMsg{
 		Idx: idx,
 		Msg: msg,
@@ -768,15 +767,15 @@ func newMergeHandlerSessionSendMsg(idx int, msg nostr.ServerMsg) *mergeHandlerSe
 func (ss *mergeHandlerSession) handleSendMsg(
 	ctx context.Context,
 	msg *mergeHandlerSessionSendMsg,
-) nostr.ServerMsg {
+) ServerMsg {
 	switch msg.Msg.(type) {
-	case *nostr.ServerEOSEMsg:
+	case *ServerEOSEMsg:
 		return ss.handleSendEOSEMsg(ctx, msg)
-	case *nostr.ServerEventMsg:
+	case *ServerEventMsg:
 		return ss.handleSendEventMsg(ctx, msg)
-	case *nostr.ServerOKMsg:
+	case *ServerOKMsg:
 		return ss.handleSendOKMsg(ctx, msg)
-	case *nostr.ServerCountMsg:
+	case *ServerCountMsg:
 		return ss.handleSendCountMsg(ctx, msg)
 	default:
 		return msg.Msg
@@ -786,8 +785,8 @@ func (ss *mergeHandlerSession) handleSendMsg(
 func (ss *mergeHandlerSession) handleSendEOSEMsg(
 	ctx context.Context,
 	msg *mergeHandlerSessionSendMsg,
-) *nostr.ServerEOSEMsg {
-	m := msg.Msg.(*nostr.ServerEOSEMsg)
+) *ServerEOSEMsg {
+	m := msg.Msg.(*ServerEOSEMsg)
 
 	if ss.reqStat.AllEOSE(m.SubscriptionID) {
 		return nil
@@ -803,8 +802,8 @@ func (ss *mergeHandlerSession) handleSendEOSEMsg(
 func (ss *mergeHandlerSession) handleSendEventMsg(
 	ctx context.Context,
 	msg *mergeHandlerSessionSendMsg,
-) *nostr.ServerEventMsg {
-	m := msg.Msg.(*nostr.ServerEventMsg)
+) *ServerEventMsg {
+	m := msg.Msg.(*ServerEventMsg)
 
 	if !ss.reqStat.IsSendableEventMsg(msg.Idx, m) {
 		return nil
@@ -816,8 +815,8 @@ func (ss *mergeHandlerSession) handleSendEventMsg(
 func (ss *mergeHandlerSession) handleSendOKMsg(
 	ctx context.Context,
 	msg *mergeHandlerSessionSendMsg,
-) *nostr.ServerOKMsg {
-	m := msg.Msg.(*nostr.ServerOKMsg)
+) *ServerOKMsg {
+	m := msg.Msg.(*ServerOKMsg)
 
 	ss.okStat.SetMsg(msg.Idx, m)
 	if !ss.okStat.Ready(m.EventID) {
@@ -833,8 +832,8 @@ func (ss *mergeHandlerSession) handleSendOKMsg(
 func (ss *mergeHandlerSession) handleSendCountMsg(
 	ctx context.Context,
 	msg *mergeHandlerSessionSendMsg,
-) *nostr.ServerCountMsg {
-	m := msg.Msg.(*nostr.ServerCountMsg)
+) *ServerCountMsg {
+	m := msg.Msg.(*ServerCountMsg)
 
 	ss.countStat.SetCountMsg(msg.Idx, m)
 	if !ss.countStat.Ready(m.SubscriptionID, msg.Idx) {
@@ -850,13 +849,13 @@ func (ss *mergeHandlerSession) handleSendCountMsg(
 type mergeHandlerSessionOKState struct {
 	size int
 	// map[eventID][chIdx]msg
-	s map[string][]*nostr.ServerOKMsg
+	s map[string][]*ServerOKMsg
 }
 
 func newMergeHandlerSessionOKState(size int) *mergeHandlerSessionOKState {
 	return &mergeHandlerSessionOKState{
 		size: size,
-		s:    make(map[string][]*nostr.ServerOKMsg),
+		s:    make(map[string][]*ServerOKMsg),
 	}
 }
 
@@ -864,10 +863,10 @@ func (stat *mergeHandlerSessionOKState) TrySetEventID(eventID string) {
 	if len(stat.s[eventID]) > 0 {
 		return
 	}
-	stat.s[eventID] = make([]*nostr.ServerOKMsg, stat.size)
+	stat.s[eventID] = make([]*ServerOKMsg, stat.size)
 }
 
-func (stat *mergeHandlerSessionOKState) SetMsg(chIdx int, msg *nostr.ServerOKMsg) {
+func (stat *mergeHandlerSessionOKState) SetMsg(chIdx int, msg *ServerOKMsg) {
 	msgs := stat.s[msg.EventID]
 	if len(msgs) == 0 {
 		return
@@ -883,13 +882,13 @@ func (stat *mergeHandlerSessionOKState) Ready(eventID string) bool {
 	return !slices.Contains(msgs, nil)
 }
 
-func (stat *mergeHandlerSessionOKState) Msg(eventID string) *nostr.ServerOKMsg {
+func (stat *mergeHandlerSessionOKState) Msg(eventID string) *ServerOKMsg {
 	msgs := stat.s[eventID]
 	if len(msgs) == 0 {
 		panic(fmt.Sprintf("invalid eventID %s", eventID))
 	}
 
-	var oks, ngs []*nostr.ServerOKMsg
+	var oks, ngs []*ServerOKMsg
 	for _, msg := range msgs {
 		if msg.Accepted {
 			oks = append(oks, msg)
@@ -905,12 +904,12 @@ func (stat *mergeHandlerSessionOKState) Msg(eventID string) *nostr.ServerOKMsg {
 	return joinServerOKMsgs(oks...)
 }
 
-func joinServerOKMsgs(msgs ...*nostr.ServerOKMsg) *nostr.ServerOKMsg {
+func joinServerOKMsgs(msgs ...*ServerOKMsg) *ServerOKMsg {
 	b := new(strings.Builder)
 	for _, msg := range msgs {
 		b.WriteString(msg.Message())
 	}
-	return nostr.NewServerOKMsg(msgs[0].EventID, msgs[0].Accepted, "", b.String())
+	return NewServerOKMsg(msgs[0].EventID, msgs[0].Accepted, "", b.String())
 }
 
 func (stat *mergeHandlerSessionOKState) ClearEventID(eventID string) {
@@ -922,7 +921,7 @@ type mergeHandlerSessionReqState struct {
 	// map[subID][chIdx]eose?
 	eose map[string][]bool
 	// map[subID]event
-	lastEvent map[string]*nostr.ServerEventMsg
+	lastEvent map[string]*ServerEventMsg
 	// map[subID]map[eventID]seen
 	seen map[string]map[string]bool
 }
@@ -931,7 +930,7 @@ func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
 	return &mergeHandlerSessionReqState{
 		size:      size,
 		eose:      make(map[string][]bool),
-		lastEvent: make(map[string]*nostr.ServerEventMsg),
+		lastEvent: make(map[string]*ServerEventMsg),
 		seen:      make(map[string]map[string]bool),
 	}
 }
@@ -960,7 +959,7 @@ func (stat *mergeHandlerSessionReqState) IsEOSE(subID string, chIdx int) bool {
 
 func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
 	chIdx int,
-	msg *nostr.ServerEventMsg,
+	msg *ServerEventMsg,
 ) bool {
 	if stat.seen[msg.SubscriptionID][msg.Event.ID] {
 		return false
@@ -996,21 +995,21 @@ func (stat *mergeHandlerSessionReqState) ClearSubID(subID string) {
 type mergeHandlerSessionCountState struct {
 	size int
 	// map[subID][chIDx]msg
-	counts map[string][]*nostr.ServerCountMsg
+	counts map[string][]*ServerCountMsg
 }
 
 func newMergeHandlerSessionCountState(size int) *mergeHandlerSessionCountState {
 	return &mergeHandlerSessionCountState{
 		size:   size,
-		counts: make(map[string][]*nostr.ServerCountMsg),
+		counts: make(map[string][]*ServerCountMsg),
 	}
 }
 
 func (stat *mergeHandlerSessionCountState) SetSubID(subID string) {
-	stat.counts[subID] = make([]*nostr.ServerCountMsg, stat.size)
+	stat.counts[subID] = make([]*ServerCountMsg, stat.size)
 }
 
-func (stat *mergeHandlerSessionCountState) SetCountMsg(chIdx int, msg *nostr.ServerCountMsg) {
+func (stat *mergeHandlerSessionCountState) SetCountMsg(chIdx int, msg *ServerCountMsg) {
 	counts := stat.counts[msg.SubscriptionID]
 	if len(counts) == 0 {
 		return
@@ -1026,10 +1025,10 @@ func (stat *mergeHandlerSessionCountState) Ready(subID string, chIdx int) bool {
 	return !slices.Contains(counts, nil)
 }
 
-func (stat *mergeHandlerSessionCountState) Msg(subID string) *nostr.ServerCountMsg {
+func (stat *mergeHandlerSessionCountState) Msg(subID string) *ServerCountMsg {
 	return slices.MaxFunc(
 		stat.counts[subID],
-		func(a, b *nostr.ServerCountMsg) int { return cmp.Compare(a.Count, b.Count) },
+		func(a, b *ServerCountMsg) int { return cmp.Compare(a.Count, b.Count) },
 	)
 }
 
@@ -1044,10 +1043,10 @@ func NewEventCreatedAtReqFilterMiddleware(
 ) EventCreatedAtReqFilterMiddleware {
 	return func(next Handler) Handler {
 		return HandlerFunc(
-			func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
 				ctx := r.Context()
 
-				ch := make(chan nostr.ClientMsg, 1)
+				ch := make(chan ClientMsg, 1)
 
 				go func() {
 					defer close(ch)
@@ -1061,7 +1060,7 @@ func NewEventCreatedAtReqFilterMiddleware(
 							if !ok {
 								return
 							}
-							if m, ok := msg.(*nostr.ClientEventMsg); ok {
+							if m, ok := msg.(*ClientEventMsg); ok {
 								t := m.Event.CreatedAtTime()
 								now := time.Now()
 								if t.Sub(now) < from || to < t.Sub(now) {
@@ -1093,10 +1092,10 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 
 	return func(handler Handler) Handler {
 		return HandlerFunc(
-			func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
 				ctx := r.Context()
 
-				ch := make(chan nostr.ClientMsg, 1)
+				ch := make(chan ClientMsg, 1)
 
 				go func() {
 					defer close(ch)
@@ -1110,7 +1109,7 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 							if !ok {
 								return
 							}
-							if m, ok := msg.(*nostr.ClientEventMsg); ok {
+							if m, ok := msg.(*ClientEventMsg); ok {
 								if seen[m.Event.ID] {
 									continue
 								}
@@ -1153,10 +1152,10 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 
 	return func(handler Handler) Handler {
 		return HandlerFunc(
-			func(r *http.Request, recv <-chan nostr.ClientMsg, send chan<- nostr.ServerMsg) error {
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
 				ctx := r.Context()
 
-				ch := make(chan nostr.ServerMsg, 1)
+				ch := make(chan ServerMsg, 1)
 				defer close(ch)
 
 				go func() {
@@ -1169,7 +1168,7 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 							if !ok {
 								return
 							}
-							if m, ok := msg.(*nostr.ServerEventMsg); ok {
+							if m, ok := msg.(*ServerEventMsg); ok {
 								k := key(m.SubscriptionID, m.Event.ID)
 
 								if seen[k] {

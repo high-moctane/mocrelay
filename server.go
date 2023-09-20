@@ -12,8 +12,6 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
-
-	"github.com/high-moctane/mocrelay/nostr"
 )
 
 var (
@@ -40,8 +38,8 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	errs := make(chan error, 2)
-	recv := make(chan nostr.ClientMsg, 1)
-	send := make(chan nostr.ServerMsg, 1)
+	recv := make(chan ClientMsg, 1)
+	send := make(chan ServerMsg, 1)
 
 	go func() {
 		defer close(recv)
@@ -67,7 +65,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (relay *Relay) serveRead(
 	ctx context.Context,
 	conn net.Conn,
-	recv chan<- nostr.ClientMsg,
+	recv chan<- ClientMsg,
 ) error {
 	// TODO(high-moctane) rate-limit
 
@@ -77,7 +75,7 @@ func (relay *Relay) serveRead(
 			return fmt.Errorf("failed to read websocket: %w", err)
 		}
 
-		msg, err := nostr.ParseClientMsg(payload)
+		msg, err := ParseClientMsg(payload)
 		if err != nil {
 			return fmt.Errorf("failed to parse client msg: %w", err)
 		}
@@ -89,7 +87,7 @@ func (relay *Relay) serveRead(
 func (relay *Relay) serveWrite(
 	ctx context.Context,
 	conn net.Conn,
-	send <-chan nostr.ServerMsg,
+	send <-chan ServerMsg,
 ) error {
 	// TODO(high-moctane) circuit braker
 
