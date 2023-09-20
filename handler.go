@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/high-moctane/mocrelay/utils"
 )
 
 var (
@@ -75,7 +73,7 @@ func (router *Router) Handle(
 	connID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(connID)
 
-	subCh := utils.NewTryChan[ServerMsg](router.Option.bufLen())
+	subCh := NewTryChan[ServerMsg](router.Option.bufLen())
 
 Loop:
 	for {
@@ -105,7 +103,7 @@ func (router *Router) recv(
 	ctx context.Context,
 	connID string,
 	msg ClientMsg,
-	subCh utils.TryChan[ServerMsg],
+	subCh TryChan[ServerMsg],
 ) ServerMsg {
 	switch m := msg.(type) {
 	case *ClientReqMsg:
@@ -126,7 +124,7 @@ func (router *Router) recvClientReqMsg(
 	ctx context.Context,
 	connID string,
 	msg *ClientReqMsg,
-	subCh utils.TryChan[ServerMsg],
+	subCh TryChan[ServerMsg],
 ) ServerMsg {
 	sub := newSubscriber(connID, msg, subCh)
 	router.subs.Subscribe(sub)
@@ -137,7 +135,7 @@ func (router *Router) recvClientEventMsg(
 	ctx context.Context,
 	connID string,
 	msg *ClientEventMsg,
-	subCh utils.TryChan[ServerMsg],
+	subCh TryChan[ServerMsg],
 ) ServerMsg {
 	router.subs.Publish(msg.Event)
 	return NewServerOKMsg(msg.Event.ID, true, ServerOKMsgPrefixNoPrefix, "")
@@ -156,7 +154,7 @@ type subscriber struct {
 	ConnID         string
 	SubscriptionID string
 	Matcher        EventMatcher
-	Ch             utils.TryChan[ServerMsg]
+	Ch             TryChan[ServerMsg]
 }
 
 func newSubscriber(connID string, msg *ClientReqMsg, ch chan ServerMsg) *subscriber {

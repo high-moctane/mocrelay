@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/high-moctane/mocrelay/utils"
 )
 
 func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg) {
@@ -191,7 +189,7 @@ func TestRouter_Handle(t *testing.T) {
 				},
 				&ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					ReqFilters:     []*ReqFilter{{IDs: utils.Ptr([]string{"49"})}},
+					ReqFilters:     []*ReqFilter{{IDs: toPtr([]string{"49"})}},
 				},
 				&ClientEventMsg{
 					Event: &Event{
@@ -1166,7 +1164,7 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 				},
 				&ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					ReqFilters:     []*ReqFilter{{IDs: utils.Ptr([]string{"49"})}},
+					ReqFilters:     []*ReqFilter{{IDs: toPtr([]string{"49"})}},
 				},
 				&ClientEventMsg{
 					Event: &Event{
@@ -1524,7 +1522,7 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 				},
 				&ClientReqMsg{
 					SubscriptionID: "sub_id_with_filter",
-					ReqFilters:     []*ReqFilter{{IDs: utils.Ptr([]string{"49"})}},
+					ReqFilters:     []*ReqFilter{{IDs: toPtr([]string{"49"})}},
 				},
 				&ClientEventMsg{
 					Event: &Event{

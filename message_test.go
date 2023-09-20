@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/high-moctane/mocrelay/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -387,26 +386,26 @@ func TestParseClientReqMsg(t *testing.T) {
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
 				ReqFilters: []*ReqFilter{
 					{
-						IDs:     utils.Ptr([]string{"powa11", "powa12"}),
-						Authors: utils.Ptr([]string{"meu11", "meu12"}),
-						Kinds:   utils.Ptr([]int64{1, 3}),
-						Tags: utils.Ptr(map[string][]string{
+						IDs:     toPtr([]string{"powa11", "powa12"}),
+						Authors: toPtr([]string{"meu11", "meu12"}),
+						Kinds:   toPtr([]int64{1, 3}),
+						Tags: toPtr(map[string][]string{
 							"#e": {"moyasu11", "moyasu12"},
 						}),
-						Since: utils.Ptr(int64(16)),
-						Until: utils.Ptr(int64(184838)),
-						Limit: utils.Ptr(int64(143)),
+						Since: toPtr(int64(16)),
+						Until: toPtr(int64(184838)),
+						Limit: toPtr(int64(143)),
 					},
 					{
-						IDs:     utils.Ptr([]string{"powa21", "powa22"}),
-						Authors: utils.Ptr([]string{"meu21", "meu22"}),
-						Kinds:   utils.Ptr([]int64{11, 33}),
-						Tags: utils.Ptr(map[string][]string{
+						IDs:     toPtr([]string{"powa21", "powa22"}),
+						Authors: toPtr([]string{"meu21", "meu22"}),
+						Kinds:   toPtr([]int64{11, 33}),
+						Tags: toPtr(map[string][]string{
 							"#e": {"moyasu21", "moyasu22"},
 						}),
-						Since: utils.Ptr(int64(17)),
-						Until: utils.Ptr(int64(184839)),
-						Limit: utils.Ptr(int64(144)),
+						Since: toPtr(int64(17)),
+						Until: toPtr(int64(184839)),
+						Limit: toPtr(int64(144)),
 					},
 				},
 				Err: nil,
@@ -585,26 +584,26 @@ func TestParseClientCountMsg(t *testing.T) {
 				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
 				ReqFilters: []*ReqFilter{
 					{
-						IDs:     utils.Ptr([]string{"powa11", "powa12"}),
-						Authors: utils.Ptr([]string{"meu11", "meu12"}),
-						Kinds:   utils.Ptr([]int64{1, 3}),
-						Tags: utils.Ptr(map[string][]string{
+						IDs:     toPtr([]string{"powa11", "powa12"}),
+						Authors: toPtr([]string{"meu11", "meu12"}),
+						Kinds:   toPtr([]int64{1, 3}),
+						Tags: toPtr(map[string][]string{
 							"#e": {"moyasu11", "moyasu12"},
 						}),
-						Since: utils.Ptr(int64(16)),
-						Until: utils.Ptr(int64(184838)),
-						Limit: utils.Ptr(int64(143)),
+						Since: toPtr(int64(16)),
+						Until: toPtr(int64(184838)),
+						Limit: toPtr(int64(143)),
 					},
 					{
-						IDs:     utils.Ptr([]string{"powa21", "powa22"}),
-						Authors: utils.Ptr([]string{"meu21", "meu22"}),
-						Kinds:   utils.Ptr([]int64{11, 33}),
-						Tags: utils.Ptr(map[string][]string{
+						IDs:     toPtr([]string{"powa21", "powa22"}),
+						Authors: toPtr([]string{"meu21", "meu22"}),
+						Kinds:   toPtr([]int64{11, 33}),
+						Tags: toPtr(map[string][]string{
 							"#e": {"moyasu21", "moyasu22"},
 						}),
-						Since: utils.Ptr(int64(17)),
-						Until: utils.Ptr(int64(184839)),
-						Limit: utils.Ptr(int64(144)),
+						Since: toPtr(int64(17)),
+						Until: toPtr(int64(184839)),
+						Limit: toPtr(int64(144)),
 					},
 				},
 				Err: nil,
@@ -684,15 +683,15 @@ func TestParseReqFilter(t *testing.T) {
 			),
 			Expect: Expect{
 				ReqFilter: ReqFilter{
-					IDs:     utils.Ptr([]string{"powa"}),
-					Authors: utils.Ptr([]string{"meu"}),
-					Kinds:   utils.Ptr([]int64{1, 3}),
-					Tags: utils.Ptr(map[string][]string{
+					IDs:     toPtr([]string{"powa"}),
+					Authors: toPtr([]string{"meu"}),
+					Kinds:   toPtr([]int64{1, 3}),
+					Tags: toPtr(map[string][]string{
 						"#e": {"moyasu"},
 					}),
-					Since: utils.Ptr(int64(16)),
-					Until: utils.Ptr(int64(184838)),
-					Limit: utils.Ptr(int64(143)),
+					Since: toPtr(int64(16)),
+					Until: toPtr(int64(184838)),
+					Limit: toPtr(int64(143)),
 				},
 				Err: nil,
 			},
@@ -704,14 +703,14 @@ func TestParseReqFilter(t *testing.T) {
 			),
 			Expect: Expect{
 				ReqFilter: ReqFilter{
-					IDs:   utils.Ptr([]string{"powa"}),
-					Kinds: utils.Ptr([]int64{1, 3}),
-					Tags: utils.Ptr(map[string][]string{
+					IDs:   toPtr([]string{"powa"}),
+					Kinds: toPtr([]int64{1, 3}),
+					Tags: toPtr(map[string][]string{
 						"#e": {"moyasu"},
 					}),
-					Since: utils.Ptr(int64(16)),
-					Until: utils.Ptr(int64(184838)),
-					Limit: utils.Ptr(int64(143)),
+					Since: toPtr(int64(16)),
+					Until: toPtr(int64(184838)),
+					Limit: toPtr(int64(143)),
 				},
 				Err: nil,
 			},
@@ -1065,7 +1064,7 @@ func TestServerCountMsg_MarshalJSON(t *testing.T) {
 			Input: &ServerCountMsg{
 				SubscriptionID: "sub_id",
 				Count:          192,
-				Approximate:    utils.Ptr(false),
+				Approximate:    toPtr(false),
 			},
 			Expect: Expect{
 				Json: []byte(`["COUNT","sub_id",{"count":192,"approximate":false}]`),
@@ -1152,7 +1151,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 	var count ServerMsg = &ServerCountMsg{
 		SubscriptionID: "sub_id",
 		Count:          192,
-		Approximate:    utils.Ptr(false),
+		Approximate:    toPtr(false),
 	}
 
 	b.ResetTimer()
@@ -1263,7 +1262,7 @@ func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
 	var count ServerMsg = &ServerCountMsg{
 		SubscriptionID: "sub_id",
 		Count:          192,
-		Approximate:    utils.Ptr(false),
+		Approximate:    toPtr(false),
 	}
 
 	b.ResetTimer()
