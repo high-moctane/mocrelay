@@ -188,26 +188,24 @@ func newSubscribers() *subscribers {
 func (subs *subscribers) Subscribe(sub *subscriber) {
 	m := <-subs.subs
 	mch, ok := m[sub.ConnID]
-	if !ok {
+	if ok {
+		subs.subs <- m
+	} else {
 		mch = make(chan map[string]chan *subscriber, 1)
 		m[sub.ConnID] = mch
 		subs.subs <- m
 		mch <- make(map[string]chan *subscriber)
-	} else {
-		subs.subs <- m
 	}
 
 	mm := <-mch
 	mmch, ok := mm[sub.SubscriptionID]
-	if !ok {
+	if ok {
+		mch <- mm
+		<-mmch
+	} else {
 		mmch = make(chan *subscriber, 1)
 		mm[sub.SubscriptionID] = mmch
-	}
-	mch <- mm
-
-	select {
-	case <-mmch:
-	default:
+		mch <- mm
 	}
 
 	mmch <- sub
