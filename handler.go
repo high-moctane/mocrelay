@@ -1083,7 +1083,7 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 		)
 	}
 
-	var ids []string
+	ids := newRingBuffer[string](buflen)
 	seen := make(map[string]bool)
 
 	return func(handler Handler) Handler {
@@ -1110,16 +1110,13 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 									continue
 								}
 
-								if len(ids) >= buflen {
-									if len(ids) > 0 {
-										old := ids[0]
-										delete(seen, old)
-										ids = ids[1:]
-									}
-								} else {
-									ids = append(ids, m.Event.ID)
-									seen[m.Event.ID] = true
+								if ids.Len() == ids.Cap {
+									old := ids.Dequeue()
+									delete(seen, old)
 								}
+
+								ids.Enqueue(m.Event.ID)
+								seen[m.Event.ID] = true
 							}
 							ch <- msg
 						}
@@ -1141,7 +1138,7 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 		)
 	}
 
-	var keys []string
+	keys := newRingBuffer[string](buflen)
 	seen := make(map[string]bool)
 
 	key := func(subID, eventID string) string { return subID + ":" + eventID }
@@ -1171,16 +1168,12 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 									continue
 								}
 
-								if len(keys) >= buflen {
-									if len(keys) > 0 {
-										old := keys[0]
-										delete(seen, old)
-										keys = keys[1:]
-									}
-								} else {
-									keys = append(keys, k)
-									seen[k] = true
+								if keys.Len() == keys.Cap {
+									old := keys.Dequeue()
+									delete(seen, old)
 								}
+								keys.Enqueue(k)
+								seen[k] = true
 							}
 							send <- msg
 						}
