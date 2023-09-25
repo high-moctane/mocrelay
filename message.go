@@ -16,19 +16,8 @@ import (
 
 var ErrInvalidClientMsg = errors.New("invalid client message")
 
-type ClientMsgType int
-
-const (
-	ClientMsgTypeUnknown ClientMsgType = iota
-	ClientMsgTypeEvent
-	ClientMsgTypeReq
-	ClientMsgTypeClose
-	ClientMsgTypeAuth
-	ClientMsgTypeCount
-)
-
 type ClientMsg interface {
-	MsgType() ClientMsgType
+	ClientMsg()
 }
 
 var clientMsgRegexp = regexp.MustCompile(`^\[\s*"(\w*)"`)
@@ -114,9 +103,7 @@ func ParseClientUnknownMsg(b []byte) (msg *ClientUnknownMsg, err error) {
 	return
 }
 
-func (msg *ClientUnknownMsg) MsgType() ClientMsgType {
-	return ClientMsgTypeUnknown
-}
+func (*ClientUnknownMsg) ClientMsg() {}
 
 var _ ClientMsg = (*ClientEventMsg)(nil)
 
@@ -153,9 +140,7 @@ func ParseClientEventMsg(b []byte) (msg *ClientEventMsg, err error) {
 	return
 }
 
-func (*ClientEventMsg) MsgType() ClientMsgType {
-	return ClientMsgTypeEvent
-}
+func (*ClientEventMsg) ClientMsg() {}
 
 var _ ClientMsg = (*ClientReqMsg)(nil)
 
@@ -206,9 +191,7 @@ func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
 	return
 }
 
-func (*ClientReqMsg) MsgType() ClientMsgType {
-	return ClientMsgTypeReq
-}
+func (*ClientReqMsg) ClientMsg() {}
 
 var _ ClientMsg = (*ClientCloseMsg)(nil)
 
@@ -240,9 +223,7 @@ func ParseClientCloseMsg(b []byte) (msg *ClientCloseMsg, err error) {
 	return
 }
 
-func (*ClientCloseMsg) MsgType() ClientMsgType {
-	return ClientMsgTypeClose
-}
+func (*ClientCloseMsg) ClientMsg() {}
 
 var _ ClientMsg = (*ClientAuthMsg)(nil)
 
@@ -275,9 +256,7 @@ func ParseClientAuthMsg(b []byte) (msg *ClientAuthMsg, err error) {
 	return
 }
 
-func (*ClientAuthMsg) MsgType() ClientMsgType {
-	return ClientMsgTypeAuth
-}
+func (*ClientAuthMsg) ClientMsg() {}
 
 var _ ClientMsg = (*ClientCountMsg)(nil)
 
@@ -323,9 +302,7 @@ func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
 	return
 }
 
-func (*ClientCountMsg) MsgType() ClientMsgType {
-	return ClientMsgTypeCount
-}
+func (*ClientCountMsg) ClientMsg() {}
 
 type ReqFilter struct {
 	IDs     *[]string
@@ -424,20 +401,8 @@ func ParseReqFilter(b []byte) (fil *ReqFilter, err error) {
 	return
 }
 
-type ServerMsgType int
-
-const (
-	ServerMsgTypeUnknown ServerMsgType = iota
-	ServerMsgTypeEOSE
-	ServerMsgTypeEvent
-	ServerMsgTypeNotice
-	ServerMsgTypeOK
-	ServerMsgTypeAuth
-	ServerMsgTypeCount
-)
-
 type ServerMsg interface {
-	MsgType() ServerMsgType
+	ServerMsg()
 	MarshalJSON() ([]byte, error)
 }
 
@@ -451,9 +416,7 @@ func NewServerEOSEMsg(subID string) *ServerEOSEMsg {
 	}
 }
 
-func (*ServerEOSEMsg) MsgType() ServerMsgType {
-	return ServerMsgTypeEOSE
-}
+func (*ServerEOSEMsg) ServerMsg() {}
 
 var ErrMarshalServerEOSEMsg = errors.New("failed to marshal server eose msg")
 
@@ -484,9 +447,7 @@ func NewServerEventMsg(subID string, event *Event) *ServerEventMsg {
 	return ret
 }
 
-func (*ServerEventMsg) MsgType() ServerMsgType {
-	return ServerMsgTypeEvent
-}
+func (*ServerEventMsg) ServerMsg() {}
 
 var ErrMarshalServerEventMsg = errors.New("failed to marshal server event msg")
 
@@ -514,9 +475,7 @@ func NewServerNoticeMsg(message string) *ServerNoticeMsg {
 	}
 }
 
-func (*ServerNoticeMsg) MsgType() ServerMsgType {
-	return ServerMsgTypeNotice
-}
+func (*ServerNoticeMsg) ServerMsg() {}
 
 var ErrMarshalServerNoticeMsg = errors.New("failed to marshal server notice msg")
 
@@ -560,9 +519,7 @@ func NewServerOKMsg(eventID string, accepted bool, prefix, msg string) *ServerOK
 	}
 }
 
-func (*ServerOKMsg) MsgType() ServerMsgType {
-	return ServerMsgTypeOK
-}
+func (*ServerOKMsg) ServerMsg() {}
 
 func (msg *ServerOKMsg) Message() string {
 	return msg.MsgPrefix + msg.Msg
@@ -598,9 +555,7 @@ func NewServerAuthMsg(event *Event) (*ServerAuthMsg, error) {
 	return &ServerAuthMsg{Event: event}, nil
 }
 
-func (*ServerAuthMsg) MsgType() ServerMsgType {
-	return ServerMsgTypeAuth
-}
+func (*ServerAuthMsg) ServerMsg() {}
 
 var ErrMarshalServerAuthMsg = errors.New("failed to marshal server auth msg")
 
@@ -632,9 +587,7 @@ func NewServerCountMsg(subID string, count uint64, approx *bool) *ServerCountMsg
 	}
 }
 
-func (*ServerCountMsg) MsgType() ServerMsgType {
-	return ServerMsgTypeCount
-}
+func (*ServerCountMsg) ServerMsg() {}
 
 var ErrMarshalServerCountMsg = errors.New("failed to marshal server count msg")
 

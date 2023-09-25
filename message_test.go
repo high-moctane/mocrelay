@@ -9,7 +9,7 @@ import (
 
 func TestParseClientMsg(t *testing.T) {
 	type Expect struct {
-		MsgType ClientMsgType
+		MsgType ClientMsg
 		Err     error
 	}
 
@@ -22,7 +22,7 @@ func TestParseClientMsg(t *testing.T) {
 			Name:  "ng: invalid utf8",
 			Input: []byte{'[', '"', 0xf0, 0x28, 0x8c, 0xbc, '"', ']'},
 			Expect: Expect{
-				MsgType: ClientMsgTypeUnknown,
+				MsgType: new(ClientUnknownMsg),
 				Err:     ErrInvalidClientMsg,
 			},
 		},
@@ -30,7 +30,7 @@ func TestParseClientMsg(t *testing.T) {
 			Name:  "ng: empty string",
 			Input: []byte(""),
 			Expect: Expect{
-				MsgType: ClientMsgTypeUnknown,
+				MsgType: new(ClientUnknownMsg),
 				Err:     ErrInvalidClientMsg,
 			},
 		},
@@ -38,7 +38,7 @@ func TestParseClientMsg(t *testing.T) {
 			Name:  "ok: unknown client message",
 			Input: []byte(`["POWA","value"]`),
 			Expect: Expect{
-				MsgType: ClientMsgTypeUnknown,
+				MsgType: new(ClientUnknownMsg),
 				Err:     nil,
 			},
 		},
@@ -46,7 +46,7 @@ func TestParseClientMsg(t *testing.T) {
 			Name:  "ok: client close message",
 			Input: []byte(`["CLOSE","sub_id"]`),
 			Expect: Expect{
-				MsgType: ClientMsgTypeClose,
+				MsgType: new(ClientCloseMsg),
 				Err:     nil,
 			},
 		},
@@ -54,7 +54,7 @@ func TestParseClientMsg(t *testing.T) {
 			Name:  "ok: client close message with some spaces",
 			Input: []byte(`[` + "\n" + `  "CLOSE",` + "\n" + `  "sub_id"` + "\n" + `]`),
 			Expect: Expect{
-				MsgType: ClientMsgTypeClose,
+				MsgType: new(ClientCloseMsg),
 				Err:     nil,
 			},
 		},
@@ -82,7 +82,7 @@ func TestParseClientMsg(t *testing.T) {
 				`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
 				`}]`),
 			Expect: Expect{
-				MsgType: ClientMsgTypeEvent,
+				MsgType: new(ClientEventMsg),
 				Err:     nil,
 			},
 		},
@@ -92,7 +92,7 @@ func TestParseClientMsg(t *testing.T) {
 				`["REQ","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4",{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}]`,
 			),
 			Expect: Expect{
-				MsgType: ClientMsgTypeReq,
+				MsgType: new(ClientReqMsg),
 				Err:     nil,
 			},
 		},
@@ -100,7 +100,7 @@ func TestParseClientMsg(t *testing.T) {
 			Name:  "ok: client auth message",
 			Input: []byte(`["AUTH","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4"]`),
 			Expect: Expect{
-				MsgType: ClientMsgTypeAuth,
+				MsgType: new(ClientAuthMsg),
 				Err:     nil,
 			},
 		},
@@ -110,7 +110,7 @@ func TestParseClientMsg(t *testing.T) {
 				`["COUNT","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4",{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}]`,
 			),
 			Expect: Expect{
-				MsgType: ClientMsgTypeCount,
+				MsgType: new(ClientCountMsg),
 				Err:     nil,
 			},
 		},
@@ -127,7 +127,7 @@ func TestParseClientMsg(t *testing.T) {
 				t.Errorf("expected non-nil msg but got nil")
 				return
 			}
-			assert.Equal(t, tt.Expect.MsgType, msg.MsgType())
+			assert.IsType(t, tt.Expect.MsgType, msg)
 		})
 	}
 }
