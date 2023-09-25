@@ -75,6 +75,7 @@ func (router *Router) Handle(
 
 	subCh := NewTryChan[ServerMsg](router.Option.bufLen())
 
+	sendCh := make(chan ServerMsg, 1)
 Loop:
 	for {
 		select {
@@ -89,10 +90,17 @@ Loop:
 			if m == nil || reflect.ValueOf(m).IsNil() {
 				continue
 			}
-			send <- m
+			sendCh <- m
 
 		case msg := <-subCh:
-			send <- msg
+			sendCh <- msg
+		}
+
+		select {
+		case <-ctx.Done():
+			break Loop
+
+		case send <- <-sendCh:
 		}
 	}
 
