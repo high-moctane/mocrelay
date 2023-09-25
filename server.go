@@ -53,12 +53,12 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errs <- fmt.Errorf("serveWrite terminated: %w", err)
 	}()
 
-	go func() {
-		err := relay.Handler.Handle(r, recv, send)
-		errs <- fmt.Errorf("handle terminated: %w", err)
-	}()
+	err = relay.Handler.Handle(r, recv, send)
 
-	err = errors.Join(<-errs, <-errs, <-errs, ErrRelayStop)
+	cancel()
+	err = fmt.Errorf("handler terminated: %w", err)
+	err = errors.Join(err, <-errs, <-errs, ErrRelayStop)
+
 	log.Println(err)
 }
 
