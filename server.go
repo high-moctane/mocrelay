@@ -48,7 +48,6 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	go func() {
-		defer close(send)
 		err := relay.serveWrite(ctx, conn, send)
 		errs <- fmt.Errorf("serveWrite terminated: %w", err)
 	}()
@@ -104,10 +103,7 @@ func (relay *Relay) serveWrite(
 				return fmt.Errorf("failed to send ping: %w", err)
 			}
 
-		case msg, ok := <-send:
-			if !ok {
-				return ErrSendClosed
-			}
+		case msg := <-send:
 			jsonMsg, err := json.Marshal(msg)
 			if err != nil {
 				return fmt.Errorf("failed to marshal server msg: %w", err)

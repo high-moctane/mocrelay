@@ -16,11 +16,6 @@ import (
 	"github.com/google/uuid"
 )
 
-var (
-	ErrRecvClosed = errors.New("recv client msg channel has been closed")
-	ErrSendClosed = errors.New("send server msg channel has been closed")
-)
-
 type Handler interface {
 	Handle(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error
 }
