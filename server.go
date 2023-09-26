@@ -12,6 +12,7 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
+	"github.com/google/uuid"
 )
 
 var (
@@ -28,6 +29,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	ctx = ctxWithSessionID(ctx)
 	r = r.WithContext(ctx)
 
 	conn, _, _, err := ws.UpgradeHTTP(r, w)
@@ -114,4 +116,14 @@ func (relay *Relay) serveWrite(
 			}
 		}
 	}
+}
+
+type sessionIDKey struct{}
+
+func ctxWithSessionID(ctx context.Context) context.Context {
+	return context.WithValue(ctx, sessionIDKey{}, uuid.NewString())
+}
+
+func GetSessionID(ctx context.Context) string {
+	return ctx.Value(sessionIDKey{}).(string)
 }
