@@ -118,12 +118,18 @@ func (relay *Relay) serveWrite(
 	}
 }
 
-type sessionIDKey struct{}
+type sessionIDKeyType struct{}
+
+var sessionIDKey = sessionIDKeyType{}
 
 func ctxWithSessionID(ctx context.Context) context.Context {
-	return context.WithValue(ctx, sessionIDKey{}, uuid.NewString())
+	return context.WithValue(ctx, sessionIDKey, uuid.NewString())
 }
 
 func GetSessionID(ctx context.Context) string {
-	return ctx.Value(sessionIDKey{}).(string)
+	id, ok := ctx.Value(sessionIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return id
 }

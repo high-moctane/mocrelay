@@ -10,6 +10,7 @@ import (
 
 func TestGetSessionID(t *testing.T) {
 	ctx := context.Background()
+	assert.Equal(t, "", GetSessionID(ctx))
 	ctx = ctxWithSessionID(ctx)
 	_, err := uuid.Parse(GetSessionID(ctx))
 	assert.Nil(t, err)
