@@ -7,6 +7,7 @@ require (
 	github.com/gobwas/ws v1.3.0
 	github.com/google/uuid v1.3.1
 	github.com/stretchr/testify v1.8.4
+	github.com/tomasen/realip v0.0.0-20180522021738-f0c99a92ddce
 )
 
 require (

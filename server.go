@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/google/uuid"
+	"github.com/tomasen/realip"
 )
 
 var (
@@ -21,20 +22,22 @@ var (
 
 type Relay struct {
 	Handler Handler
+	Logger  *slog.Logger
 }
 
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// TODO(high-moctane) Use slog
-
 	ctx := r.Context()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	ctx = ctxWithRealIP(ctx, r)
 	ctx = ctxWithSessionID(ctx)
 	r = r.WithContext(ctx)
 
+	relay.logInfo(ctx, "mocrelay session start")
+
 	conn, _, _, err := ws.UpgradeHTTP(r, w)
 	if err != nil {
-		log.Println(err)
+		relay.logInfo(ctx, "failed to upgrade http", "err", err)
 		return
 	}
 	defer conn.Close()
@@ -60,7 +63,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err = fmt.Errorf("handler terminated: %w", err)
 	err = errors.Join(err, <-errs, <-errs, ErrRelayStop)
 
-	log.Println(err)
+	relay.logInfo(ctx, "mocrelay session end", "err", err)
 }
 
 func (relay *Relay) serveRead(
@@ -118,6 +121,31 @@ func (relay *Relay) serveWrite(
 	}
 }
 
+func (relay *Relay) logger(ctx context.Context) *slog.Logger {
+	if relay.Logger == nil {
+		return nil
+	}
+	id := GetSessionID(ctx)
+	ip := GetRealIP(ctx)
+	return relay.Logger.WithGroup("mocrelay").With(slog.String("id", id), slog.String("ip", ip))
+}
+
+func (relay *Relay) logInfo(ctx context.Context, msg string, args ...any) {
+	logger := relay.logger(ctx)
+	if logger == nil {
+		return
+	}
+	logger.InfoContext(ctx, msg, args...)
+}
+
+func (relay *Relay) logDebug(ctx context.Context, msg string, args ...any) {
+	logger := relay.logger(ctx)
+	if logger == nil {
+		return
+	}
+	logger.DebugContext(ctx, msg, args...)
+}
+
 type sessionIDKeyType struct{}
 
 var sessionIDKey = sessionIDKeyType{}
@@ -132,4 +160,20 @@ func GetSessionID(ctx context.Context) string {
 		return ""
 	}
 	return id
+}
+
+type realIPKeyType struct{}
+
+var realIPKey = realIPKeyType{}
+
+func ctxWithRealIP(ctx context.Context, r *http.Request) context.Context {
+	return context.WithValue(ctx, realIPKey, realip.FromRequest(r))
+}
+
+func GetRealIP(ctx context.Context) string {
+	ip, ok := ctx.Value(realIPKey).(string)
+	if !ok {
+		return ""
+	}
+	return ip
 }
