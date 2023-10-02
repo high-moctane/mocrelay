@@ -28,7 +28,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = ctxWithRealIP(ctx, r)
-	ctx = ctxWithSessionID(ctx)
+	ctx = ctxWithRequestID(ctx)
 	r = r.WithContext(ctx)
 
 	relay.logInfo(ctx, "mocrelay session start")
@@ -123,7 +123,7 @@ func (relay *Relay) logger(ctx context.Context) *slog.Logger {
 	if relay.Logger == nil {
 		return nil
 	}
-	id := GetSessionID(ctx)
+	id := GetRequestID(ctx)
 	ip := GetRealIP(ctx)
 	return relay.Logger.WithGroup("mocrelay").With(slog.String("id", id), slog.String("ip", ip))
 }

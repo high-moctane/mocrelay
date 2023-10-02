@@ -10,8 +10,8 @@ func mocrelaySlog(ctx context.Context, logger *slog.Logger) *slog.Logger {
 		return nil
 	}
 
-	id := GetSessionID(ctx)
+	id := GetRequestID(ctx)
 	ip := GetRealIP(ctx)
 
-	return logger.WithGroup("mocrelay").With(slog.String("sessionID", id), slog.String("ip", ip))
+	return logger.WithGroup("mocrelay").With(slog.String("RequestID", id), slog.String("ip", ip))
 }

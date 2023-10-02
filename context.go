@@ -8,16 +8,16 @@ import (
 	"github.com/tomasen/realip"
 )
 
-type sessionIDKeyType struct{}
+type requestIDKeyType struct{}
 
-var sessionIDKey = sessionIDKeyType{}
+var requestIDKey = requestIDKeyType{}
 
-func ctxWithSessionID(ctx context.Context) context.Context {
-	return context.WithValue(ctx, sessionIDKey, uuid.NewString())
+func ctxWithRequestID(ctx context.Context) context.Context {
+	return context.WithValue(ctx, requestIDKey, uuid.NewString())
 }
 
-func GetSessionID(ctx context.Context) string {
-	id, ok := ctx.Value(sessionIDKey).(string)
+func GetRequestID(ctx context.Context) string {
+	id, ok := ctx.Value(requestIDKey).(string)
 	if !ok {
 		return ""
 	}

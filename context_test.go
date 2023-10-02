@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetSessionID(t *testing.T) {
+func TestGetRequestID(t *testing.T) {
 	ctx := context.Background()
-	assert.Equal(t, "", GetSessionID(ctx))
-	ctx = ctxWithSessionID(ctx)
-	_, err := uuid.Parse(GetSessionID(ctx))
+	assert.Equal(t, "", GetRequestID(ctx))
+	ctx = ctxWithRequestID(ctx)
+	_, err := uuid.Parse(GetRequestID(ctx))
 	assert.Nil(t, err)
 }
