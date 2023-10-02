@@ -19,8 +19,10 @@ var (
 )
 
 type Relay struct {
-	Handler Handler
-	Logger  *slog.Logger
+	Handler        Handler
+	Logger         *slog.Logger
+	RateLimitRate  time.Duration
+	RateLimitBurst int
 }
 
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +48,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		defer close(recv)
-		err := relay.serveRead(ctx, conn, recv)
+		err := relay.serveRead(ctx, conn, recv, send)
 		errs <- fmt.Errorf("serveRead terminated: %w", err)
 	}()
 
@@ -68,8 +70,10 @@ func (relay *Relay) serveRead(
 	ctx context.Context,
 	conn net.Conn,
 	recv chan<- ClientMsg,
+	send chan ServerMsg,
 ) error {
-	// TODO(high-moctane) rate-limit
+	l := newRateLimiter(relay.RateLimitRate, relay.RateLimitBurst)
+	defer l.Stop()
 
 	for {
 		payload, err := wsutil.ReadClientText(conn)
@@ -82,7 +86,19 @@ func (relay *Relay) serveRead(
 			return fmt.Errorf("failed to parse client msg: %w", err)
 		}
 
-		recv <- msg
+		select {
+		case <-l.C:
+			recv <- msg
+
+		default:
+			if msg, ok := msg.(*ClientEventMsg); ok {
+				send <- NewServerOKMsg(msg.Event.ID, false, ServerOkMsgPrefixRateLimited, "slow down")
+				<-l.C
+			} else {
+				<-l.C
+				recv <- msg
+			}
+		}
 	}
 }
 
