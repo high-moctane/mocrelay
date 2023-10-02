@@ -21,9 +21,15 @@ var (
 type Relay struct {
 	Handler            Handler
 	Logger             *slog.Logger
+	RecvLogger         *slog.Logger
+	SendLogger         *slog.Logger
 	RecvRateLimitRate  time.Duration
 	RecvRateLimitBurst int
 	SendRateLimitRate  time.Duration
+
+	logger     *slog.Logger
+	recvLogger *slog.Logger
+	sendLogger *slog.Logger
 }
 
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -34,11 +40,13 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx = ctxWithRequestID(ctx)
 	r = r.WithContext(ctx)
 
-	relay.logInfo(ctx, "mocrelay session start")
+	relay.prepareLoggers()
+
+	relay.logInfo(ctx, relay.logger, "mocrelay session start")
 
 	conn, _, _, err := ws.UpgradeHTTP(r, w)
 	if err != nil {
-		relay.logInfo(ctx, "failed to upgrade http", "err", err)
+		relay.logInfo(ctx, relay.logger, "failed to upgrade http", "err", err)
 		return
 	}
 	defer conn.Close()
@@ -64,7 +72,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err = fmt.Errorf("handler terminated: %w", err)
 	err = errors.Join(err, <-errs, <-errs, ErrRelayStop)
 
-	relay.logInfo(ctx, "mocrelay session end", "err", err)
+	relay.logInfo(ctx, relay.logger, "mocrelay session end", "err", err)
 }
 
 func (relay *Relay) serveRead(
@@ -84,8 +92,17 @@ func (relay *Relay) serveRead(
 
 		msg, err := ParseClientMsg(payload)
 		if err != nil {
-			return fmt.Errorf("failed to parse client msg: %w", err)
+			relay.logInfo(ctx, relay.recvLogger, "failed to parse client msg", "error", err)
+			continue
 		}
+
+		relay.logInfo(
+			ctx,
+			relay.recvLogger,
+			"recv client msg",
+			"clientMsg",
+			json.RawMessage(payload),
+		)
 
 		select {
 		case <-l.C:
@@ -135,29 +152,38 @@ func (relay *Relay) serveWrite(
 			if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
 				return fmt.Errorf("failed to write websocket: %w", err)
 			}
+
+			relay.logInfo(
+				ctx,
+				relay.sendLogger,
+				"sent server msg",
+				"serverMsg",
+				json.RawMessage(jsonMsg),
+			)
 		}
 	}
 }
 
-func (relay *Relay) logger(ctx context.Context) *slog.Logger {
-	if relay.Logger == nil {
-		return nil
+func (relay *Relay) prepareLoggers() {
+	if relay.Logger != nil {
+		relay.logger = slog.New(WithSlogMocrelayHandler(relay.Logger.Handler()))
 	}
-	id := GetRequestID(ctx)
-	ip := GetRealIP(ctx)
-	return relay.Logger.WithGroup("mocrelay").With(slog.String("id", id), slog.String("ip", ip))
+	if relay.RecvLogger != nil {
+		relay.recvLogger = slog.New(WithSlogMocrelayHandler(relay.RecvLogger.Handler()))
+	}
+	if relay.SendLogger != nil {
+		relay.sendLogger = slog.New(WithSlogMocrelayHandler(relay.SendLogger.Handler()))
+	}
 }
 
-func (relay *Relay) logInfo(ctx context.Context, msg string, args ...any) {
-	logger := relay.logger(ctx)
+func (relay *Relay) logInfo(ctx context.Context, logger *slog.Logger, msg string, args ...any) {
 	if logger == nil {
 		return
 	}
 	logger.InfoContext(ctx, msg, args...)
 }
 
-func (relay *Relay) logDebug(ctx context.Context, msg string, args ...any) {
-	logger := relay.logger(ctx)
+func (relay *Relay) logDebug(ctx context.Context, logger *slog.Logger, msg string, args ...any) {
 	if logger == nil {
 		return
 	}
