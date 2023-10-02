@@ -19,10 +19,11 @@ var (
 )
 
 type Relay struct {
-	Handler        Handler
-	Logger         *slog.Logger
-	RateLimitRate  time.Duration
-	RateLimitBurst int
+	Handler            Handler
+	Logger             *slog.Logger
+	RecvRateLimitRate  time.Duration
+	RecvRateLimitBurst int
+	SendRateLimitRate  time.Duration
 }
 
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +73,7 @@ func (relay *Relay) serveRead(
 	recv chan<- ClientMsg,
 	send chan ServerMsg,
 ) error {
-	l := newRateLimiter(relay.RateLimitRate, relay.RateLimitBurst)
+	l := newRateLimiter(relay.RecvRateLimitRate, relay.RecvRateLimitBurst)
 	defer l.Stop()
 
 	for {
@@ -107,7 +108,8 @@ func (relay *Relay) serveWrite(
 	conn net.Conn,
 	send <-chan ServerMsg,
 ) error {
-	// TODO(high-moctane) circuit braker
+	l := newRateLimiter(relay.SendRateLimitRate, 0)
+	defer l.cancel()
 
 	pingTicker := time.NewTicker(10 * time.Second)
 	defer pingTicker.Stop()
@@ -123,6 +125,8 @@ func (relay *Relay) serveWrite(
 			}
 
 		case msg := <-send:
+			<-l.C
+
 			jsonMsg, err := json.Marshal(msg)
 			if err != nil {
 				return fmt.Errorf("failed to marshal server msg: %w", err)
