@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -665,12 +664,9 @@ func (ss *mergeHandlerSession) handleRecvSend(
 
 		case msg := <-sendCh:
 			m := ss.handleSendMsg(ctx, msg)
-			if m == nil || reflect.ValueOf(m).IsNil() {
-				continue
+			if sendCtxIfNonZero(ctx, sendBuf, m) {
+				sendCh = nil
 			}
-			// TODO(high-moctane) bug?
-			sendCtxIfNonZero(ctx, sendBuf, msg.Msg)
-			sendCh = nil
 
 		case msg := <-sendBuf:
 			sendCtx(ctx, send, msg)
