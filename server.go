@@ -124,15 +124,26 @@ func (relay *Relay) serveRead(
 
 		select {
 		case <-l.C:
-			recv <- msg
+			sendCtx(ctx, recv, msg)
 
 		default:
-			if msg, ok := msg.(*ClientEventMsg); ok {
-				send <- NewServerOKMsg(msg.Event.ID, false, ServerOkMsgPrefixRateLimited, "slow down")
+			if m, ok := msg.(*ClientEventMsg); ok {
+				sendCtx(
+					ctx,
+					send,
+					ServerMsg(
+						NewServerOKMsg(
+							m.Event.ID,
+							false,
+							ServerOkMsgPrefixRateLimited,
+							"slow down",
+						),
+					),
+				)
 				<-l.C
 			} else {
 				<-l.C
-				recv <- msg
+				sendCtx(ctx, recv, msg)
 			}
 		}
 	}

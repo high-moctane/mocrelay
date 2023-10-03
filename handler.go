@@ -70,7 +70,6 @@ func (router *Router) Handle(
 
 	subCh := make(chan ServerMsg, router.Option.bufLen())
 
-	sendCh := make(chan ServerMsg, 1)
 Loop:
 	for {
 		select {
@@ -82,20 +81,10 @@ Loop:
 				break Loop
 			}
 			m := router.recv(ctx, connID, msg, subCh)
-			if m == nil || reflect.ValueOf(m).IsNil() {
-				continue
-			}
-			sendCh <- m
+			sendCtxIfNonZero(ctx, send, m)
 
 		case msg := <-subCh:
-			sendCh <- msg
-		}
-
-		select {
-		case <-ctx.Done():
-			break Loop
-
-		case send <- <-sendCh:
+			sendCtx(ctx, send, msg)
 		}
 	}
 
@@ -290,6 +279,8 @@ func (h *CacheHandler) Handle(
 	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
 ) error {
+	ctx := r.Context()
+
 	for msg := range recv {
 		switch msg := msg.(type) {
 		case *ClientEventMsg:
@@ -299,9 +290,9 @@ func (h *CacheHandler) Handle(
 				ret: ch,
 			}
 			if <-ch {
-				send <- NewServerOKMsg(msg.Event.ID, true, "", "")
+				sendCtx(ctx, send, ServerMsg(NewServerOKMsg(msg.Event.ID, true, "", "")))
 			} else {
-				send <- NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
+				sendCtx(ctx, send, ServerMsg(NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")))
 			}
 
 		case *ClientReqMsg:
@@ -311,9 +302,9 @@ func (h *CacheHandler) Handle(
 				ret:     ch,
 			}
 			for _, e := range <-ch {
-				send <- NewServerEventMsg(msg.SubscriptionID, e)
+				sendCtx(ctx, send, ServerMsg(NewServerEventMsg(msg.SubscriptionID, e)))
 			}
-			send <- NewServerEOSEMsg(msg.SubscriptionID)
+			sendCtx(ctx, send, ServerMsg(NewServerEOSEMsg(msg.SubscriptionID)))
 		}
 	}
 	return ErrCacheHandlerStop
@@ -631,7 +622,7 @@ func (ss *mergeHandlerSession) mergeSend(ctx context.Context, sends []chan Serve
 		case <-ctx.Done():
 			return
 		case msg := <-sends[idx]:
-			ss.preSendCh <- newMergeHandlerSessionSendMsg(idx, msg)
+			sendCtx(ctx, ss.preSendCh, newMergeHandlerSessionSendMsg(idx, msg))
 		}
 	}
 }
@@ -662,10 +653,7 @@ func (ss *mergeHandlerSession) handleRecvSend(
 				return
 			}
 			msg = ss.handleRecvMsg(ctx, msg)
-			if msg == nil || reflect.ValueOf(msg).IsNil() {
-				continue
-			}
-			recvBuf <- msg
+			sendCtxIfNonZero(ctx, recvBuf, msg)
 			recvCh = nil
 
 		case msg, ok := <-recvBuf:
@@ -680,11 +668,12 @@ func (ss *mergeHandlerSession) handleRecvSend(
 			if m == nil || reflect.ValueOf(m).IsNil() {
 				continue
 			}
-			sendBuf <- msg.Msg
+			// TODO(high-moctane) bug?
+			sendCtxIfNonZero(ctx, sendBuf, msg.Msg)
 			sendCh = nil
 
 		case msg := <-sendBuf:
-			send <- msg
+			sendCtx(ctx, send, msg)
 			sendCh = ss.preSendCh
 		}
 	}
@@ -742,11 +731,8 @@ func (ss *mergeHandlerSession) handleRecvCountMsg(
 
 func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg ClientMsg) {
 	for _, r := range ss.recvs {
-		select {
-		case <-ctx.Done():
+		if !sendCtx(ctx, r, msg) {
 			return
-
-		case r <- msg:
 		}
 	}
 }
@@ -1066,7 +1052,7 @@ func NewEventCreatedAtReqFilterMiddleware(
 									continue
 								}
 							}
-							ch <- msg
+							sendCtx(ctx, ch, msg)
 						}
 					}
 				}()
@@ -1121,7 +1107,7 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 								ids.Enqueue(m.Event.ID)
 								seen[m.Event.ID] = true
 							}
-							ch <- msg
+							sendCtx(ctx, ch, msg)
 						}
 					}
 				}()
@@ -1178,7 +1164,7 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 								keys.Enqueue(k)
 								seen[k] = true
 							}
-							send <- msg
+							sendCtx(ctx, send, msg)
 						}
 					}
 				}()
