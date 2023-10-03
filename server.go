@@ -19,17 +19,37 @@ var (
 )
 
 type Relay struct {
-	Handler            Handler
+	Handler Handler
+
+	opt *RelayOption
+
+	logger             *slog.Logger
+	recvLogger         *slog.Logger
+	sendLogger         *slog.Logger
+	recvRateLimitRate  time.Duration
+	recvRateLimitBurst int
+	sendRateLimitRate  time.Duration
+}
+
+type RelayOption struct {
 	Logger             *slog.Logger
 	RecvLogger         *slog.Logger
 	SendLogger         *slog.Logger
 	RecvRateLimitRate  time.Duration
 	RecvRateLimitBurst int
 	SendRateLimitRate  time.Duration
+}
 
-	logger     *slog.Logger
-	recvLogger *slog.Logger
-	sendLogger *slog.Logger
+func NewRelay(handler Handler, option *RelayOption) *Relay {
+	relay := &Relay{
+		Handler: handler,
+		opt:     option,
+	}
+
+	relay.prepareLoggers()
+	relay.prepareRateLimitOpts()
+
+	return relay
 }
 
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -39,8 +59,6 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx = ctxWithRealIP(ctx, r)
 	ctx = ctxWithRequestID(ctx)
 	r = r.WithContext(ctx)
-
-	relay.prepareLoggers()
 
 	relay.logInfo(ctx, relay.logger, "mocrelay session start")
 
@@ -81,7 +99,7 @@ func (relay *Relay) serveRead(
 	recv chan<- ClientMsg,
 	send chan ServerMsg,
 ) error {
-	l := newRateLimiter(relay.RecvRateLimitRate, relay.RecvRateLimitBurst)
+	l := newRateLimiter(relay.recvRateLimitRate, relay.recvRateLimitBurst)
 	defer l.Stop()
 
 	for {
@@ -125,7 +143,7 @@ func (relay *Relay) serveWrite(
 	conn net.Conn,
 	send <-chan ServerMsg,
 ) error {
-	l := newRateLimiter(relay.SendRateLimitRate, 0)
+	l := newRateLimiter(relay.sendRateLimitRate, 0)
 	defer l.cancel()
 
 	pingTicker := time.NewTicker(10 * time.Second)
@@ -165,14 +183,18 @@ func (relay *Relay) serveWrite(
 }
 
 func (relay *Relay) prepareLoggers() {
-	if relay.Logger != nil {
-		relay.logger = slog.New(WithSlogMocrelayHandler(relay.Logger.Handler()))
+	if relay.opt == nil {
+		return
 	}
-	if relay.RecvLogger != nil {
-		relay.recvLogger = slog.New(WithSlogMocrelayHandler(relay.RecvLogger.Handler()))
+
+	if relay.opt.Logger != nil {
+		relay.logger = slog.New(WithSlogMocrelayHandler(relay.opt.Logger.Handler()))
 	}
-	if relay.SendLogger != nil {
-		relay.sendLogger = slog.New(WithSlogMocrelayHandler(relay.SendLogger.Handler()))
+	if relay.opt.RecvLogger != nil {
+		relay.recvLogger = slog.New(WithSlogMocrelayHandler(relay.opt.RecvLogger.Handler()))
+	}
+	if relay.opt.SendLogger != nil {
+		relay.sendLogger = slog.New(WithSlogMocrelayHandler(relay.opt.SendLogger.Handler()))
 	}
 }
 
@@ -188,4 +210,14 @@ func (relay *Relay) logDebug(ctx context.Context, logger *slog.Logger, msg strin
 		return
 	}
 	logger.DebugContext(ctx, msg, args...)
+}
+
+func (relay *Relay) prepareRateLimitOpts() {
+	if relay.opt == nil {
+		return
+	}
+
+	relay.recvRateLimitRate = relay.opt.RecvRateLimitRate
+	relay.recvRateLimitBurst = relay.opt.RecvRateLimitBurst
+	relay.sendRateLimitRate = relay.opt.SendRateLimitRate
 }
