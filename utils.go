@@ -2,6 +2,7 @@ package mocrelay
 
 import (
 	"context"
+	"reflect"
 	"time"
 )
 
@@ -49,3 +50,31 @@ func newRateLimiter(rate time.Duration, burst int) *rateLimiter {
 }
 
 func (l *rateLimiter) Stop() { l.cancel() }
+
+func sendCtx[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
+	select {
+	case <-ctx.Done():
+		return false
+	case ch <- v:
+		return true
+	}
+}
+
+func trySendCtx[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
+	select {
+	case <-ctx.Done():
+		return false
+	case ch <- v:
+		return true
+	default:
+		return false
+	}
+}
+
+func sendCtxIfNonZero[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
+	vv := reflect.ValueOf(v)
+	if !vv.IsValid() || vv.IsZero() {
+		return false
+	}
+	return sendCtx(ctx, ch, v)
+}

@@ -68,7 +68,7 @@ func (router *Router) Handle(
 	connID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(connID)
 
-	subCh := NewTryChan[ServerMsg](router.Option.bufLen())
+	subCh := make(chan ServerMsg, router.Option.bufLen())
 
 	sendCh := make(chan ServerMsg, 1)
 Loop:
@@ -106,7 +106,7 @@ func (router *Router) recv(
 	ctx context.Context,
 	connID string,
 	msg ClientMsg,
-	subCh TryChan[ServerMsg],
+	subCh chan ServerMsg,
 ) ServerMsg {
 	switch m := msg.(type) {
 	case *ClientReqMsg:
@@ -127,7 +127,7 @@ func (router *Router) recvClientReqMsg(
 	ctx context.Context,
 	connID string,
 	msg *ClientReqMsg,
-	subCh TryChan[ServerMsg],
+	subCh chan ServerMsg,
 ) ServerMsg {
 	sub := newSubscriber(connID, msg, subCh)
 	router.subs.Subscribe(sub)
@@ -138,7 +138,7 @@ func (router *Router) recvClientEventMsg(
 	ctx context.Context,
 	connID string,
 	msg *ClientEventMsg,
-	subCh TryChan[ServerMsg],
+	subCh chan ServerMsg,
 ) ServerMsg {
 	router.subs.Publish(msg.Event)
 	return NewServerOKMsg(msg.Event.ID, true, ServerOKMsgPrefixNoPrefix, "")
@@ -157,7 +157,7 @@ type subscriber struct {
 	ConnID         string
 	SubscriptionID string
 	Matcher        EventMatcher
-	Ch             TryChan[ServerMsg]
+	Ch             chan ServerMsg
 }
 
 func newSubscriber(connID string, msg *ClientReqMsg, ch chan ServerMsg) *subscriber {
@@ -171,7 +171,7 @@ func newSubscriber(connID string, msg *ClientReqMsg, ch chan ServerMsg) *subscri
 
 func (sub *subscriber) SendIfMatch(event *Event) {
 	if sub.Matcher.Match(event) {
-		sub.Ch.TrySend(NewServerEventMsg(sub.SubscriptionID, event))
+		trySendCtx(context.TODO(), sub.Ch, ServerMsg(NewServerEventMsg(sub.SubscriptionID, event)))
 	}
 }
 
