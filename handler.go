@@ -942,7 +942,7 @@ func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
 	chIdx int,
 	msg *ServerEventMsg,
 ) bool {
-	if stat.seen[msg.SubscriptionID][msg.Event.ID] {
+	if stat.seen[msg.SubscriptionID] == nil || stat.seen[msg.SubscriptionID][msg.Event.ID] {
 		return false
 	}
 	stat.seen[msg.SubscriptionID][msg.Event.ID] = true
