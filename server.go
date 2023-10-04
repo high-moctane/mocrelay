@@ -216,13 +216,6 @@ func (relay *Relay) logInfo(ctx context.Context, logger *slog.Logger, msg string
 	logger.InfoContext(ctx, msg, args...)
 }
 
-func (relay *Relay) logDebug(ctx context.Context, logger *slog.Logger, msg string, args ...any) {
-	if logger == nil {
-		return
-	}
-	logger.DebugContext(ctx, msg, args...)
-}
-
 func (relay *Relay) prepareRateLimitOpts() {
 	if relay.opt == nil {
 		return

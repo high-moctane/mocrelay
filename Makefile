@@ -12,7 +12,7 @@ all:
 build: $(TARGET)
 
 
-$(TARGET):
+$(TARGET): *.go cmd/*/*.go
 	cd $(EXEDIR) && go build
 
 
@@ -23,9 +23,9 @@ run: $(TARGET)
 
 .PHONY: check
 check:
-	find . -name \*.go -exec golines -l {} \;
+	test -z "$$(find . -name \*.go | xargs -P 8 -I {} golines -l {} 2>&1 | tee /dev/stderr)"
 	go vet ./...
-	# staticcheck ./...
+	staticcheck ./...
 
 
 .PHONY: test
@@ -40,7 +40,7 @@ clean:
 
 .PHONY: fmt
 fmt:
-	find . -name \*.go -exec golines -w {} \;
+	find . -name \*.go | xargs -P 8 -I {} golines -w {}
 
 
 .PHONY: githook

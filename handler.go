@@ -1070,6 +1070,7 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 
 	ids := newRingBuffer[string](buflen)
 	seen := make(map[string]bool)
+	sema := make(chan struct{}, 1)
 
 	return func(handler Handler) Handler {
 		return HandlerFunc(
@@ -1091,7 +1092,9 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 								return
 							}
 							if m, ok := msg.(*ClientEventMsg); ok {
+								sema <- struct{}{}
 								if seen[m.Event.ID] {
+									<-sema
 									continue
 								}
 
@@ -1102,6 +1105,7 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 
 								ids.Enqueue(m.Event.ID)
 								seen[m.Event.ID] = true
+								<-sema
 							}
 							sendCtx(ctx, ch, msg)
 						}
@@ -1125,6 +1129,7 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 
 	keys := newRingBuffer[string](buflen)
 	seen := make(map[string]bool)
+	sema := make(chan struct{}, 1)
 
 	key := func(subID, eventID string) string { return subID + ":" + eventID }
 
@@ -1134,7 +1139,6 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 				ctx := r.Context()
 
 				ch := make(chan ServerMsg, 1)
-				defer close(ch)
 
 				go func() {
 					for {
@@ -1149,7 +1153,9 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 							if m, ok := msg.(*ServerEventMsg); ok {
 								k := key(m.SubscriptionID, m.Event.ID)
 
+								sema <- struct{}{}
 								if seen[k] {
+									<-sema
 									continue
 								}
 
@@ -1159,6 +1165,7 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 								}
 								keys.Enqueue(k)
 								seen[k] = true
+								<-sema
 							}
 							sendCtx(ctx, send, msg)
 						}
