@@ -1042,9 +1042,8 @@ func NewEventCreatedAtReqFilterMiddleware(
 								return
 							}
 							if m, ok := msg.(*ClientEventMsg); ok {
-								t := m.Event.CreatedAtTime()
-								now := time.Now()
-								if t.Sub(now) < from || to < t.Sub(now) {
+								sub := time.Until(m.Event.CreatedAtTime())
+								if sub < from || to < -sub {
 									continue
 								}
 							}
