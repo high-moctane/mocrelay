@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Handler interface {
@@ -123,8 +121,8 @@ func (router *Router) Handle(
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	connID := uuid.NewString()
-	defer router.subs.UnsubscribeAll(connID)
+	reqID := GetRequestID(ctx)
+	defer router.subs.UnsubscribeAll(reqID)
 
 	subCh := make(chan ServerMsg, router.Option.bufLen())
 
@@ -138,7 +136,7 @@ Loop:
 			if !ok {
 				break Loop
 			}
-			m := router.recv(ctx, connID, msg, subCh)
+			m := router.recv(ctx, reqID, msg, subCh)
 			sendCtxIfNonZero(ctx, send, m)
 
 		case msg := <-subCh:
@@ -151,19 +149,19 @@ Loop:
 
 func (router *Router) recv(
 	ctx context.Context,
-	connID string,
+	reqID string,
 	msg ClientMsg,
 	subCh chan ServerMsg,
 ) ServerMsg {
 	switch m := msg.(type) {
 	case *ClientReqMsg:
-		return router.recvClientReqMsg(ctx, connID, m, subCh)
+		return router.recvClientReqMsg(ctx, reqID, m, subCh)
 
 	case *ClientEventMsg:
-		return router.recvClientEventMsg(ctx, connID, m, subCh)
+		return router.recvClientEventMsg(ctx, reqID, m, subCh)
 
 	case *ClientCloseMsg:
-		return router.recvClientCloseMsg(ctx, connID, m)
+		return router.recvClientCloseMsg(ctx, reqID, m)
 
 	default:
 		return nil
@@ -172,18 +170,18 @@ func (router *Router) recv(
 
 func (router *Router) recvClientReqMsg(
 	ctx context.Context,
-	connID string,
+	reqID string,
 	msg *ClientReqMsg,
 	subCh chan ServerMsg,
 ) ServerMsg {
-	sub := newSubscriber(connID, msg, subCh)
+	sub := newSubscriber(reqID, msg, subCh)
 	router.subs.Subscribe(sub)
 	return NewServerEOSEMsg(msg.SubscriptionID)
 }
 
 func (router *Router) recvClientEventMsg(
 	ctx context.Context,
-	connID string,
+	reqID string,
 	msg *ClientEventMsg,
 	subCh chan ServerMsg,
 ) ServerMsg {
@@ -193,23 +191,23 @@ func (router *Router) recvClientEventMsg(
 
 func (router *Router) recvClientCloseMsg(
 	ctx context.Context,
-	connID string,
+	reqID string,
 	msg *ClientCloseMsg,
 ) ServerMsg {
-	router.subs.Unsubscribe(connID, msg.SubscriptionID)
+	router.subs.Unsubscribe(reqID, msg.SubscriptionID)
 	return nil
 }
 
 type subscriber struct {
-	ConnID         string
+	ReqID          string
 	SubscriptionID string
 	Matcher        EventMatcher
 	Ch             chan ServerMsg
 }
 
-func newSubscriber(connID string, msg *ClientReqMsg, ch chan ServerMsg) *subscriber {
+func newSubscriber(reqID string, msg *ClientReqMsg, ch chan ServerMsg) *subscriber {
 	return &subscriber{
-		ConnID:         connID,
+		ReqID:          reqID,
 		SubscriptionID: msg.SubscriptionID,
 		Matcher:        NewReqFiltersEventMatchers(msg.ReqFilters),
 		Ch:             ch,
@@ -223,7 +221,7 @@ func (sub *subscriber) SendIfMatch(event *Event) {
 }
 
 type subscribers struct {
-	// map[connID]map[subID]*subscriber
+	// map[reqID]map[subID]*subscriber
 	subs chan map[string]chan map[string]chan *subscriber
 }
 
@@ -237,12 +235,12 @@ func newSubscribers() *subscribers {
 
 func (subs *subscribers) Subscribe(sub *subscriber) {
 	m := <-subs.subs
-	mch, ok := m[sub.ConnID]
+	mch, ok := m[sub.ReqID]
 	if ok {
 		subs.subs <- m
 	} else {
 		mch = make(chan map[string]chan *subscriber, 1)
-		m[sub.ConnID] = mch
+		m[sub.ReqID] = mch
 		subs.subs <- m
 		mch <- make(map[string]chan *subscriber)
 	}
@@ -261,7 +259,7 @@ func (subs *subscribers) Subscribe(sub *subscriber) {
 	mmch <- sub
 }
 
-func (subs *subscribers) Unsubscribe(connID, subID string) {
+func (subs *subscribers) Unsubscribe(reqID, subID string) {
 	m := <-subs.subs
 	mch, ok := m[subID]
 	subs.subs <- m
@@ -273,9 +271,9 @@ func (subs *subscribers) Unsubscribe(connID, subID string) {
 	mch <- mm
 }
 
-func (subs *subscribers) UnsubscribeAll(connID string) {
+func (subs *subscribers) UnsubscribeAll(reqID string) {
 	m := <-subs.subs
-	delete(m, connID)
+	delete(m, reqID)
 	subs.subs <- m
 }
 
