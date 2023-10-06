@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -1172,6 +1173,87 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 				}()
 
 				return handler.Handle(r, recv, ch)
+			},
+		)
+	}
+}
+
+type SimpleMiddleware func(Handler) Handler
+
+type SimpleMiddlewareInterface interface {
+	HandleStart(*http.Request) error
+	HandleStop(*http.Request) error
+	RecvMsg(*http.Request, ClientMsg) ClientMsg
+	SendMsg(*http.Request, ServerMsg) ServerMsg
+}
+
+func NewSimpleMiddleware(smi SimpleMiddlewareInterface) SimpleMiddleware {
+	return func(handler Handler) Handler {
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
+				if err = smi.HandleStart(r); err != nil {
+					return err
+				}
+				defer func() { err = errors.Join(err, smi.HandleStop(r)) }()
+
+				ctx := r.Context()
+				ctx, cancel := context.WithCancel(ctx)
+				defer cancel()
+				r = r.WithContext(ctx)
+
+				rr := make(chan ClientMsg)
+				ss := make(chan ServerMsg)
+
+				rBuf := make(chan ClientMsg, 1)
+				sBuf := make(chan ServerMsg, 1)
+
+				rCh := recv
+				sCh := ss
+
+				go func() {
+					defer cancel()
+					defer close(rr)
+
+				Loop:
+					for {
+						select {
+						case <-ctx.Done():
+							return
+
+						case msg, ok := <-rCh:
+							if !ok {
+								return
+							}
+							msg = smi.RecvMsg(r, msg)
+							if msg == nil || reflect.ValueOf(msg).IsNil() {
+								continue Loop
+							}
+							rBuf <- msg
+							rCh = nil
+
+						case msg, ok := <-rBuf:
+							if !ok {
+								return
+							}
+							sendCtx(ctx, rr, msg)
+							rCh = recv
+
+						case msg := <-sCh:
+							msg = smi.SendMsg(r, msg)
+							if msg == nil || reflect.ValueOf(msg).IsNil() {
+								continue Loop
+							}
+							sBuf <- msg
+							sCh = nil
+
+						case msg := <-sBuf:
+							sendCtx(ctx, send, msg)
+							sCh = ss
+						}
+					}
+				}()
+
+				return handler.Handle(r, rr, ss)
 			},
 		)
 	}
