@@ -30,6 +30,64 @@ func (f HandlerFunc) Handle(
 	return f(r, recv, send)
 }
 
+type SimpleHandler Handler
+
+type SimpleHandlerInterface interface {
+	HandleStart(*http.Request) error
+	HandleStop(*http.Request) error
+	HandleMsg(*http.Request, ClientMsg) []ServerMsg
+}
+
+func NewSimpleHandler(shi SimpleHandlerInterface) SimpleHandler {
+	return HandlerFunc(
+		func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
+			if err = shi.HandleStart(r); err != nil {
+				return
+			}
+			defer func() { err = errors.Join(err, shi.HandleStop(r)) }()
+
+			ctx := r.Context()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			r = r.WithContext(ctx)
+
+			ch := make(chan []ServerMsg)
+
+			go func() {
+				defer cancel()
+
+				for {
+					select {
+					case <-ctx.Done():
+						return
+
+					case msg, ok := <-recv:
+						if !ok {
+							return
+						}
+						sendCtx(ctx, ch, shi.HandleMsg(r, msg))
+					}
+				}
+			}()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+
+				case msgs := <-ch:
+					for _, msg := range msgs {
+						if msg == nil || reflect.ValueOf(msg).IsNil() {
+							continue
+						}
+						send <- msg
+					}
+				}
+			}
+		},
+	)
+}
+
 var ErrRouterStop = errors.New("router stopped")
 
 type RouterOption struct {
@@ -1192,7 +1250,7 @@ func NewSimpleMiddleware(smi SimpleMiddlewareInterface) SimpleMiddleware {
 		return HandlerFunc(
 			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
 				if err = smi.HandleStart(r); err != nil {
-					return err
+					return
 				}
 				defer func() { err = errors.Join(err, smi.HandleStop(r)) }()
 
