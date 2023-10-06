@@ -52,3 +52,4 @@ githook:
 tool:
 	go install github.com/segmentio/golines@latest
 	go install golang.org/x/tools/cmd/goimports@latest
+	go install honnef.co/go/tools/cmd/staticcheck@latest
