@@ -1074,167 +1074,9 @@ func (stat *mergeHandlerSessionCountState) ClearSubID(subID string) {
 	delete(stat.counts, subID)
 }
 
-type EventCreatedAtReqFilterMiddleware func(next Handler) Handler
+type Middleware func(Handler) Handler
 
-func NewEventCreatedAtReqFilterMiddleware(
-	from, to time.Duration,
-) EventCreatedAtReqFilterMiddleware {
-	return func(next Handler) Handler {
-		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-				ctx := r.Context()
-
-				ch := make(chan ClientMsg, 1)
-
-				go func() {
-					defer close(ch)
-
-					for {
-						select {
-						case <-ctx.Done():
-							return
-
-						case msg, ok := <-recv:
-							if !ok {
-								return
-							}
-							if m, ok := msg.(*ClientEventMsg); ok {
-								sub := time.Until(m.Event.CreatedAtTime())
-								if sub < from || to < -sub {
-									continue
-								}
-							}
-							sendCtx(ctx, ch, msg)
-						}
-					}
-				}()
-
-				return next.Handle(r, ch, send)
-			},
-		)
-	}
-}
-
-type RecvEventUniquefyMiddleware func(Handler) Handler
-
-func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
-	if buflen < 0 {
-		panic(
-			fmt.Sprintf("RecvEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen),
-		)
-	}
-
-	ids := newRingBuffer[string](buflen)
-	seen := make(map[string]bool)
-	sema := make(chan struct{}, 1)
-
-	return func(handler Handler) Handler {
-		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-				ctx := r.Context()
-
-				ch := make(chan ClientMsg, 1)
-
-				go func() {
-					defer close(ch)
-
-					for {
-						select {
-						case <-ctx.Done():
-							return
-
-						case msg, ok := <-recv:
-							if !ok {
-								return
-							}
-							if m, ok := msg.(*ClientEventMsg); ok {
-								sema <- struct{}{}
-								if seen[m.Event.ID] {
-									<-sema
-									continue
-								}
-
-								if ids.Len() == ids.Cap {
-									old := ids.Dequeue()
-									delete(seen, old)
-								}
-
-								ids.Enqueue(m.Event.ID)
-								seen[m.Event.ID] = true
-								<-sema
-							}
-							sendCtx(ctx, ch, msg)
-						}
-					}
-				}()
-
-				return handler.Handle(r, ch, send)
-			},
-		)
-	}
-}
-
-type SendEventUniquefyMiddleware func(Handler) Handler
-
-func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
-	if buflen < 0 {
-		panic(
-			fmt.Sprintf("SendEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen),
-		)
-	}
-
-	keys := newRingBuffer[string](buflen)
-	seen := make(map[string]bool)
-	sema := make(chan struct{}, 1)
-
-	key := func(subID, eventID string) string { return subID + ":" + eventID }
-
-	return func(handler Handler) Handler {
-		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-				ctx := r.Context()
-
-				ch := make(chan ServerMsg, 1)
-
-				go func() {
-					for {
-						select {
-						case <-ctx.Done():
-							return
-
-						case msg, ok := <-ch:
-							if !ok {
-								return
-							}
-							if m, ok := msg.(*ServerEventMsg); ok {
-								k := key(m.SubscriptionID, m.Event.ID)
-
-								sema <- struct{}{}
-								if seen[k] {
-									<-sema
-									continue
-								}
-
-								if keys.Len() == keys.Cap {
-									old := keys.Dequeue()
-									delete(seen, old)
-								}
-								keys.Enqueue(k)
-								seen[k] = true
-								<-sema
-							}
-							sendCtx(ctx, send, msg)
-						}
-					}
-				}()
-
-				return handler.Handle(r, recv, ch)
-			},
-		)
-	}
-}
-
-type SimpleMiddleware func(Handler) Handler
+type SimpleMiddleware Middleware
 
 type SimpleMiddlewareInterface interface {
 	HandleStart(*http.Request) error
@@ -1310,6 +1152,166 @@ func NewSimpleMiddleware(smi SimpleMiddlewareInterface) SimpleMiddleware {
 				}()
 
 				return handler.Handle(r, rr, ss)
+			},
+		)
+	}
+}
+
+type EventCreatedAtReqFilterMiddleware Middleware
+
+func NewEventCreatedAtReqFilterMiddleware(
+	from, to time.Duration,
+) EventCreatedAtReqFilterMiddleware {
+	return func(handler Handler) Handler {
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+				ctx := r.Context()
+
+				ch := make(chan ClientMsg, 1)
+
+				go func() {
+					defer close(ch)
+
+					for {
+						select {
+						case <-ctx.Done():
+							return
+
+						case msg, ok := <-recv:
+							if !ok {
+								return
+							}
+							if m, ok := msg.(*ClientEventMsg); ok {
+								sub := time.Until(m.Event.CreatedAtTime())
+								if sub < from || to < -sub {
+									continue
+								}
+							}
+							sendCtx(ctx, ch, msg)
+						}
+					}
+				}()
+
+				return handler.Handle(r, ch, send)
+			},
+		)
+	}
+}
+
+type RecvEventUniquefyMiddleware Middleware
+
+func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
+	if buflen < 0 {
+		panic(
+			fmt.Sprintf("RecvEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen),
+		)
+	}
+
+	ids := newRingBuffer[string](buflen)
+	seen := make(map[string]bool)
+	sema := make(chan struct{}, 1)
+
+	return func(handler Handler) Handler {
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+				ctx := r.Context()
+
+				ch := make(chan ClientMsg, 1)
+
+				go func() {
+					defer close(ch)
+
+					for {
+						select {
+						case <-ctx.Done():
+							return
+
+						case msg, ok := <-recv:
+							if !ok {
+								return
+							}
+							if m, ok := msg.(*ClientEventMsg); ok {
+								sema <- struct{}{}
+								if seen[m.Event.ID] {
+									<-sema
+									continue
+								}
+
+								if ids.Len() == ids.Cap {
+									old := ids.Dequeue()
+									delete(seen, old)
+								}
+
+								ids.Enqueue(m.Event.ID)
+								seen[m.Event.ID] = true
+								<-sema
+							}
+							sendCtx(ctx, ch, msg)
+						}
+					}
+				}()
+
+				return handler.Handle(r, ch, send)
+			},
+		)
+	}
+}
+
+type SendEventUniquefyMiddleware Middleware
+
+func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
+	if buflen < 0 {
+		panic(
+			fmt.Sprintf("SendEventUniquefyMiddleware buflen must be 0 or more but got %v", buflen),
+		)
+	}
+
+	keys := newRingBuffer[string](buflen)
+	seen := make(map[string]bool)
+	sema := make(chan struct{}, 1)
+
+	key := func(subID, eventID string) string { return subID + ":" + eventID }
+
+	return func(handler Handler) Handler {
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+				ctx := r.Context()
+
+				ch := make(chan ServerMsg, 1)
+
+				go func() {
+					for {
+						select {
+						case <-ctx.Done():
+							return
+
+						case msg, ok := <-ch:
+							if !ok {
+								return
+							}
+							if m, ok := msg.(*ServerEventMsg); ok {
+								k := key(m.SubscriptionID, m.Event.ID)
+
+								sema <- struct{}{}
+								if seen[k] {
+									<-sema
+									continue
+								}
+
+								if keys.Len() == keys.Cap {
+									old := keys.Dequeue()
+									delete(seen, old)
+								}
+								keys.Enqueue(k)
+								seen[k] = true
+								<-sema
+							}
+							sendCtx(ctx, send, msg)
+						}
+					}
+				}()
+
+				return handler.Handle(r, recv, ch)
 			},
 		)
 	}
