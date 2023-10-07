@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -1062,79 +1061,93 @@ type Middleware func(Handler) Handler
 type SimpleMiddleware Middleware
 
 type SimpleMiddlewareInterface interface {
-	HandleStart(*http.Request) error
+	HandleStart(*http.Request) (*http.Request, error)
 	HandleStop(*http.Request) error
-	RecvMsg(*http.Request, ClientMsg) ClientMsg
-	SendMsg(*http.Request, ServerMsg) ServerMsg
+	HandleClientMsg(*http.Request, ClientMsg) (ClientMsg, []ServerMsg, error)
+	HandleServerMsg(*http.Request, ServerMsg) ([]ServerMsg, error)
 }
 
 func NewSimpleMiddleware(smi SimpleMiddlewareInterface) SimpleMiddleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(
 			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
-				if err = smi.HandleStart(r); err != nil {
+				errCh := make(chan error, 2)
+
+				defer func() { err = errors.Join(err, <-errCh, <-errCh, smi.HandleStop(r)) }()
+
+				r, err = smi.HandleStart(r)
+				if err != nil {
 					return
 				}
-				defer func() { err = errors.Join(err, smi.HandleStop(r)) }()
 
 				ctx := r.Context()
 				ctx, cancel := context.WithCancel(ctx)
 				defer cancel()
 				r = r.WithContext(ctx)
 
-				rr := make(chan ClientMsg)
-				ss := make(chan ServerMsg)
-
-				rBuf := make(chan ClientMsg, 1)
-				sBuf := make(chan ServerMsg, 1)
-
-				rCh := recv
-				sCh := ss
+				rCh := make(chan ClientMsg)
+				sCh := make(chan ServerMsg)
 
 				go func() {
 					defer cancel()
-					defer close(rr)
 
-				Loop:
+					var err error
+					defer func() { errCh <- err }()
+
+					defer close(rCh)
+
+					var ccmsg ClientMsg
+					var smsgs []ServerMsg
+
 					for {
 						select {
 						case <-ctx.Done():
 							return
 
-						case msg, ok := <-rCh:
+						case cmsg, ok := <-recv:
 							if !ok {
 								return
 							}
-							msg = smi.RecvMsg(r, msg)
-							if msg == nil || reflect.ValueOf(msg).IsNil() {
-								continue Loop
-							}
-							rBuf <- msg
-							rCh = nil
 
-						case msg, ok := <-rBuf:
-							if !ok {
+							ccmsg, smsgs, err = smi.HandleClientMsg(r, cmsg)
+							if err != nil {
 								return
 							}
-							sendCtx(ctx, rr, msg)
-							rCh = recv
-
-						case msg := <-sCh:
-							msg = smi.SendMsg(r, msg)
-							if msg == nil || reflect.ValueOf(msg).IsNil() {
-								continue Loop
+							sendClientMsgCtx(ctx, rCh, ccmsg)
+							for _, smsg := range smsgs {
+								sendServerMsgCtx(ctx, send, smsg)
 							}
-							sBuf <- msg
-							sCh = nil
-
-						case msg := <-sBuf:
-							sendCtx(ctx, send, msg)
-							sCh = ss
 						}
 					}
 				}()
 
-				return handler.Handle(r, rr, ss)
+				go func() {
+					defer cancel()
+
+					var err error
+					defer func() { errCh <- err }()
+
+					var smsgs []ServerMsg
+
+					for {
+						select {
+						case <-ctx.Done():
+							return
+
+						case smsg := <-sCh:
+							smsgs, err = smi.HandleServerMsg(r, smsg)
+							if err != nil {
+								return
+							}
+
+							for _, smsg := range smsgs {
+								sendServerMsgCtx(ctx, send, smsg)
+							}
+						}
+					}
+				}()
+
+				return handler.Handle(r, rCh, sCh)
 			},
 		)
 	}
