@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+var (
+	ErrRecvClosed = errors.New("recv closed")
+)
+
 type Handler interface {
 	Handle(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error
 }
@@ -31,57 +35,36 @@ func (f HandlerFunc) Handle(
 type SimpleHandler Handler
 
 type SimpleHandlerInterface interface {
-	HandleStart(*http.Request) error
+	HandleStart(*http.Request) (*http.Request, error)
 	HandleStop(*http.Request) error
-	HandleMsg(*http.Request, ClientMsg) []ServerMsg
+	HandleClientMsg(*http.Request, ClientMsg) ([]ServerMsg, error)
 }
 
 func NewSimpleHandler(shi SimpleHandlerInterface) SimpleHandler {
 	return HandlerFunc(
 		func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
-			if err = shi.HandleStart(r); err != nil {
-				return
-			}
 			defer func() { err = errors.Join(err, shi.HandleStop(r)) }()
 
+			r, err = shi.HandleStart(r)
+			if err != nil {
+				return
+			}
+
 			ctx := r.Context()
-			ctx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			r = r.WithContext(ctx)
+			var smsgs []ServerMsg
 
-			ch := make(chan []ServerMsg)
-
-			go func() {
-				defer cancel()
-
-				for {
-					select {
-					case <-ctx.Done():
-						return
-
-					case msg, ok := <-recv:
-						if !ok {
-							return
-						}
-						sendCtx(ctx, ch, shi.HandleMsg(r, msg))
-					}
-				}
-			}()
-
-			for {
-				select {
-				case <-ctx.Done():
+			for cmsg := range recv {
+				smsgs, err = shi.HandleClientMsg(r, cmsg)
+				if err != nil {
 					return
+				}
 
-				case msgs := <-ch:
-					for _, msg := range msgs {
-						if msg == nil || reflect.ValueOf(msg).IsNil() {
-							continue
-						}
-						send <- msg
-					}
+				for _, smsg := range smsgs {
+					sendServerMsgCtx(ctx, send, smsg)
 				}
 			}
+
+			return ErrRecvClosed
 		},
 	)
 }
