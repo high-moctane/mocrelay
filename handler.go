@@ -1292,53 +1292,64 @@ func NewSendEventUniquefyMiddleware(buflen int) SendEventUniquefyMiddleware {
 		)
 	}
 
-	keys := newRingBuffer[string](buflen)
-	seen := make(map[string]bool)
-	sema := make(chan struct{}, 1)
+	m := newSimpleSendEventUniquefyMiddleware(buflen)
+	return SendEventUniquefyMiddleware(NewSimpleMiddleware(m))
+}
 
-	key := func(subID, eventID string) string { return subID + ":" + eventID }
+type simpleSendEventUniquefyMiddleware struct {
+	sema chan struct{}
+	keys *ringBuffer[string]
+	seen map[string]bool
+}
 
-	return func(handler Handler) Handler {
-		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-				ctx := r.Context()
-
-				ch := make(chan ServerMsg, 1)
-
-				go func() {
-					for {
-						select {
-						case <-ctx.Done():
-							return
-
-						case msg, ok := <-ch:
-							if !ok {
-								return
-							}
-							if m, ok := msg.(*ServerEventMsg); ok {
-								k := key(m.SubscriptionID, m.Event.ID)
-
-								sema <- struct{}{}
-								if seen[k] {
-									<-sema
-									continue
-								}
-
-								if keys.Len() == keys.Cap {
-									old := keys.Dequeue()
-									delete(seen, old)
-								}
-								keys.Enqueue(k)
-								seen[k] = true
-								<-sema
-							}
-							sendCtx(ctx, send, msg)
-						}
-					}
-				}()
-
-				return handler.Handle(r, recv, ch)
-			},
-		)
+func newSimpleSendEventUniquefyMiddleware(buflen int) *simpleSendEventUniquefyMiddleware {
+	return &simpleSendEventUniquefyMiddleware{
+		sema: make(chan struct{}, 1),
+		keys: newRingBuffer[string](buflen),
+		seen: make(map[string]bool),
 	}
+}
+
+func (m *simpleSendEventUniquefyMiddleware) HandleStart(r *http.Request) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleSendEventUniquefyMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleSendEventUniquefyMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (ClientMsg, []ServerMsg, error) {
+	return msg, nil, nil
+}
+
+func (m *simpleSendEventUniquefyMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) ([]ServerMsg, error) {
+	if msg, ok := msg.(*ServerEventMsg); ok {
+		k := m.key(msg.SubscriptionID, msg.Event.ID)
+
+		m.sema <- struct{}{}
+		defer func() { <-m.sema }()
+
+		if m.seen[k] {
+			return nil, nil
+		}
+
+		if m.keys.Len() == m.keys.Cap {
+			old := m.keys.Dequeue()
+			delete(m.seen, old)
+		}
+		m.keys.Enqueue(k)
+		m.seen[k] = true
+	}
+
+	return []ServerMsg{msg}, nil
+}
+
+func (*simpleSendEventUniquefyMiddleware) key(subID, eventID string) string {
+	return subID + ":" + eventID
 }
