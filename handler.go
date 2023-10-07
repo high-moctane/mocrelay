@@ -1191,13 +1191,13 @@ func (m *simpleEventCreatedAtFilterMiddleware) HandleClientMsg(
 	if msg, ok := msg.(*ClientEventMsg); ok {
 		sub := time.Until(msg.Event.CreatedAtTime())
 		if sub < m.from || m.to < -sub {
-			notice := NewServerOKMsg(
+			okMsg := NewServerOKMsg(
 				msg.Event.ID,
 				false,
 				ServerOKMsgPrefixNoPrefix,
 				"too old created_at",
 			)
-			return nil, []ServerMsg{notice}, nil
+			return nil, []ServerMsg{okMsg}, nil
 		}
 	}
 	return msg, nil, nil
@@ -1219,54 +1219,68 @@ func NewRecvEventUniquefyMiddleware(buflen int) RecvEventUniquefyMiddleware {
 		)
 	}
 
-	ids := newRingBuffer[string](buflen)
-	seen := make(map[string]bool)
-	sema := make(chan struct{}, 1)
+	m := newSimpleRecvEventUniquefyMiddleware(buflen)
+	return RecvEventUniquefyMiddleware(NewSimpleMiddleware(m))
+}
 
-	return func(handler Handler) Handler {
-		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-				ctx := r.Context()
+var _ SimpleMiddlewareInterface = (*simpleRecvEventUniquefyMiddleware)(nil)
 
-				ch := make(chan ClientMsg, 1)
+type simpleRecvEventUniquefyMiddleware struct {
+	sema chan struct{}
+	ids  *ringBuffer[string]
+	seen map[string]bool
+}
 
-				go func() {
-					defer close(ch)
-
-					for {
-						select {
-						case <-ctx.Done():
-							return
-
-						case msg, ok := <-recv:
-							if !ok {
-								return
-							}
-							if m, ok := msg.(*ClientEventMsg); ok {
-								sema <- struct{}{}
-								if seen[m.Event.ID] {
-									<-sema
-									continue
-								}
-
-								if ids.Len() == ids.Cap {
-									old := ids.Dequeue()
-									delete(seen, old)
-								}
-
-								ids.Enqueue(m.Event.ID)
-								seen[m.Event.ID] = true
-								<-sema
-							}
-							sendCtx(ctx, ch, msg)
-						}
-					}
-				}()
-
-				return handler.Handle(r, ch, send)
-			},
-		)
+func newSimpleRecvEventUniquefyMiddleware(buflen int) *simpleRecvEventUniquefyMiddleware {
+	return &simpleRecvEventUniquefyMiddleware{
+		ids:  newRingBuffer[string](buflen),
+		seen: make(map[string]bool),
+		sema: make(chan struct{}, 1),
 	}
+}
+
+func (m *simpleRecvEventUniquefyMiddleware) HandleStart(r *http.Request) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleRecvEventUniquefyMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleRecvEventUniquefyMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (ClientMsg, []ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		m.sema <- struct{}{}
+		defer func() { <-m.sema }()
+
+		if m.seen[msg.Event.ID] {
+			okMsg := NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOKMsgPrefixDuplicate,
+				"duplicated id",
+			)
+			return nil, []ServerMsg{okMsg}, nil
+		}
+
+		if m.ids.Len() == m.ids.Cap {
+			old := m.ids.Dequeue()
+			delete(m.seen, old)
+		}
+
+		m.ids.Enqueue(msg.Event.ID)
+		m.seen[msg.Event.ID] = true
+	}
+	return msg, nil, nil
+}
+
+func (m *simpleRecvEventUniquefyMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) ([]ServerMsg, error) {
+	return []ServerMsg{msg}, nil
 }
 
 type SendEventUniquefyMiddleware Middleware
