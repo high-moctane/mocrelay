@@ -137,7 +137,7 @@ Loop:
 				break Loop
 			}
 			m := router.recv(ctx, reqID, msg, subCh)
-			sendCtxIfNonZero(ctx, send, m)
+			sendServerMsgCtx(ctx, send, m)
 
 		case msg := <-subCh:
 			sendCtx(ctx, send, msg)
@@ -709,7 +709,7 @@ func (ss *mergeHandlerSession) handleRecvSend(
 				return
 			}
 			msg = ss.handleRecvMsg(ctx, msg)
-			sendCtxIfNonZero(ctx, recvBuf, msg)
+			sendClientMsgCtx(ctx, recvBuf, msg)
 			recvCh = nil
 
 		case msg, ok := <-recvBuf:
@@ -721,7 +721,7 @@ func (ss *mergeHandlerSession) handleRecvSend(
 
 		case msg := <-sendCh:
 			m := ss.handleSendMsg(ctx, msg)
-			if sendCtxIfNonZero(ctx, sendBuf, m) {
+			if sendServerMsgCtx(ctx, sendBuf, m) {
 				sendCh = nil
 			}
 

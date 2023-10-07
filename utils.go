@@ -2,7 +2,6 @@ package mocrelay
 
 import (
 	"context"
-	"reflect"
 	"time"
 )
 
@@ -71,10 +70,16 @@ func trySendCtx[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
 	}
 }
 
-func sendCtxIfNonZero[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
-	vv := reflect.ValueOf(v)
-	if !vv.IsValid() || vv.IsZero() {
-		return false
+func sendClientMsgCtx(ctx context.Context, ch chan<- ClientMsg, msg ClientMsg) (sent bool) {
+	if IsNilClientMsg(msg) {
+		return
 	}
-	return sendCtx(ctx, ch, v)
+	return sendCtx(ctx, ch, msg)
+}
+
+func sendServerMsgCtx(ctx context.Context, ch chan<- ServerMsg, msg ServerMsg) (sent bool) {
+	if IsNilServerMsg(msg) {
+		return
+	}
+	return sendCtx(ctx, ch, msg)
 }

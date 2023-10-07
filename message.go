@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"time"
 	"unicode/utf8"
@@ -18,6 +19,10 @@ var ErrInvalidClientMsg = errors.New("invalid client message")
 
 type ClientMsg interface {
 	ClientMsg()
+}
+
+func IsNilClientMsg(msg ClientMsg) bool {
+	return msg == nil || reflect.ValueOf(msg).IsNil()
 }
 
 var clientMsgRegexp = regexp.MustCompile(`^\[\s*"(\w*)"`)
@@ -404,6 +409,10 @@ func ParseReqFilter(b []byte) (fil *ReqFilter, err error) {
 type ServerMsg interface {
 	ServerMsg()
 	MarshalJSON() ([]byte, error)
+}
+
+func IsNilServerMsg(msg ServerMsg) bool {
+	return msg == nil || reflect.ValueOf(msg).IsNil()
 }
 
 type ServerEOSEMsg struct {
