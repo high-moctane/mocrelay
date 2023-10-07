@@ -1153,38 +1153,38 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 	}
 }
 
-type EventCreatedAtReqFilterMiddleware Middleware
+type EventCreatedAtFilterMiddleware Middleware
 
-func NewEventCreatedAtReqFilterMiddleware(
+func NewEventCreatedAtFilterMiddleware(
 	from, to time.Duration,
-) EventCreatedAtReqFilterMiddleware {
-	m := newSimpleEventCreatedAtReqFilterMiddleware(from, to)
-	return EventCreatedAtReqFilterMiddleware(NewSimpleMiddleware(m))
+) EventCreatedAtFilterMiddleware {
+	m := newSimpleEventCreatedAtFilterMiddleware(from, to)
+	return EventCreatedAtFilterMiddleware(NewSimpleMiddleware(m))
 }
 
-var _ SimpleMiddlewareInterface = (*simpleEventCreatedAtReqFilterMiddleware)(nil)
+var _ SimpleMiddlewareInterface = (*simpleEventCreatedAtFilterMiddleware)(nil)
 
-type simpleEventCreatedAtReqFilterMiddleware struct {
+type simpleEventCreatedAtFilterMiddleware struct {
 	from, to time.Duration
 }
 
-func newSimpleEventCreatedAtReqFilterMiddleware(
+func newSimpleEventCreatedAtFilterMiddleware(
 	from, to time.Duration,
-) *simpleEventCreatedAtReqFilterMiddleware {
-	return &simpleEventCreatedAtReqFilterMiddleware{from: from, to: to}
+) *simpleEventCreatedAtFilterMiddleware {
+	return &simpleEventCreatedAtFilterMiddleware{from: from, to: to}
 }
 
-func (m *simpleEventCreatedAtReqFilterMiddleware) HandleStart(
+func (m *simpleEventCreatedAtFilterMiddleware) HandleStart(
 	r *http.Request,
 ) (*http.Request, error) {
 	return r, nil
 }
 
-func (m *simpleEventCreatedAtReqFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleEventCreatedAtFilterMiddleware) HandleStop(r *http.Request) error {
 	return nil
 }
 
-func (m *simpleEventCreatedAtReqFilterMiddleware) HandleClientMsg(
+func (m *simpleEventCreatedAtFilterMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
 ) (ClientMsg, []ServerMsg, error) {
@@ -1203,7 +1203,7 @@ func (m *simpleEventCreatedAtReqFilterMiddleware) HandleClientMsg(
 	return msg, nil, nil
 }
 
-func (m *simpleEventCreatedAtReqFilterMiddleware) HandleServerMsg(
+func (m *simpleEventCreatedAtFilterMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
 ) ([]ServerMsg, error) {

@@ -14,7 +14,7 @@ func main() {
 	h := mocrelay.NewMergeHandler(mocrelay.NewCacheHandler(ctx, 100), mocrelay.NewRouter(nil))
 	h = mocrelay.NewRecvEventUniquefyMiddleware(100)(h)
 	h = mocrelay.NewSendEventUniquefyMiddleware(100)(h)
-	h = mocrelay.NewEventCreatedAtReqFilterMiddleware(-5*time.Minute, 1*time.Minute)(h)
+	h = mocrelay.NewEventCreatedAtFilterMiddleware(-5*time.Minute, 1*time.Minute)(h)
 
 	r := mocrelay.NewRelay(h, &mocrelay.RelayOption{
 		Logger:     slog.Default(),
