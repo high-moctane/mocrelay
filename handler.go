@@ -39,12 +39,12 @@ type SimpleHandlerInterface interface {
 	HandleClientMsg(*http.Request, ClientMsg) ([]ServerMsg, error)
 }
 
-func NewSimpleHandler(shi SimpleHandlerInterface) SimpleHandler {
+func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 	return HandlerFunc(
 		func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
-			defer func() { err = errors.Join(err, shi.HandleStop(r)) }()
+			defer func() { err = errors.Join(err, h.HandleStop(r)) }()
 
-			r, err = shi.HandleStart(r)
+			r, err = h.HandleStart(r)
 			if err != nil {
 				return
 			}
@@ -53,7 +53,7 @@ func NewSimpleHandler(shi SimpleHandlerInterface) SimpleHandler {
 			var smsgs []ServerMsg
 
 			for cmsg := range recv {
-				smsgs, err = shi.HandleClientMsg(r, cmsg)
+				smsgs, err = h.HandleClientMsg(r, cmsg)
 				if err != nil {
 					return
 				}
@@ -1067,15 +1067,15 @@ type SimpleMiddlewareInterface interface {
 	HandleServerMsg(*http.Request, ServerMsg) ([]ServerMsg, error)
 }
 
-func NewSimpleMiddleware(smi SimpleMiddlewareInterface) SimpleMiddleware {
+func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(
 			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
 				errCh := make(chan error, 2)
 
-				defer func() { err = errors.Join(err, <-errCh, <-errCh, smi.HandleStop(r)) }()
+				defer func() { err = errors.Join(err, <-errCh, <-errCh, m.HandleStop(r)) }()
 
-				r, err = smi.HandleStart(r)
+				r, err = m.HandleStart(r)
 				if err != nil {
 					return
 				}
@@ -1109,7 +1109,7 @@ func NewSimpleMiddleware(smi SimpleMiddlewareInterface) SimpleMiddleware {
 								return
 							}
 
-							ccmsg, smsgs, err = smi.HandleClientMsg(r, cmsg)
+							ccmsg, smsgs, err = m.HandleClientMsg(r, cmsg)
 							if err != nil {
 								return
 							}
@@ -1135,7 +1135,7 @@ func NewSimpleMiddleware(smi SimpleMiddlewareInterface) SimpleMiddleware {
 							return
 
 						case smsg := <-sCh:
-							smsgs, err = smi.HandleServerMsg(r, smsg)
+							smsgs, err = m.HandleServerMsg(r, smsg)
 							if err != nil {
 								return
 							}
@@ -1158,40 +1158,56 @@ type EventCreatedAtReqFilterMiddleware Middleware
 func NewEventCreatedAtReqFilterMiddleware(
 	from, to time.Duration,
 ) EventCreatedAtReqFilterMiddleware {
-	return func(handler Handler) Handler {
-		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-				ctx := r.Context()
+	m := newSimpleEventCreatedAtReqFilterMiddleware(from, to)
+	return EventCreatedAtReqFilterMiddleware(NewSimpleMiddleware(m))
+}
 
-				ch := make(chan ClientMsg, 1)
+var _ SimpleMiddlewareInterface = (*simpleEventCreatedAtReqFilterMiddleware)(nil)
 
-				go func() {
-					defer close(ch)
+type simpleEventCreatedAtReqFilterMiddleware struct {
+	from, to time.Duration
+}
 
-					for {
-						select {
-						case <-ctx.Done():
-							return
+func newSimpleEventCreatedAtReqFilterMiddleware(
+	from, to time.Duration,
+) *simpleEventCreatedAtReqFilterMiddleware {
+	return &simpleEventCreatedAtReqFilterMiddleware{from: from, to: to}
+}
 
-						case msg, ok := <-recv:
-							if !ok {
-								return
-							}
-							if m, ok := msg.(*ClientEventMsg); ok {
-								sub := time.Until(m.Event.CreatedAtTime())
-								if sub < from || to < -sub {
-									continue
-								}
-							}
-							sendCtx(ctx, ch, msg)
-						}
-					}
-				}()
+func (m *simpleEventCreatedAtReqFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
 
-				return handler.Handle(r, ch, send)
-			},
-		)
+func (m *simpleEventCreatedAtReqFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleEventCreatedAtReqFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (ClientMsg, []ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		sub := time.Until(msg.Event.CreatedAtTime())
+		if sub < m.from || m.to < -sub {
+			notice := NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOKMsgPrefixNoPrefix,
+				"too old created_at",
+			)
+			return nil, []ServerMsg{notice}, nil
+		}
 	}
+	return msg, nil, nil
+}
+
+func (m *simpleEventCreatedAtReqFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) ([]ServerMsg, error) {
+	return []ServerMsg{msg}, nil
 }
 
 type RecvEventUniquefyMiddleware Middleware
