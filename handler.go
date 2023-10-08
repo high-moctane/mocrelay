@@ -1274,6 +1274,9 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 	msg ServerMsg,
 ) ([]ServerMsg, error) {
 	switch msg.(type) {
+	case *ServerEOSEMsg:
+		m.sendMsgTotal.WithLabelValues("EOSE").Inc()
+
 	case *ServerEventMsg:
 		m.sendMsgTotal.WithLabelValues("EVENT").Inc()
 
