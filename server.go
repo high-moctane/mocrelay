@@ -74,12 +74,14 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	send := make(chan ServerMsg, 1)
 
 	go func() {
+		defer cancel()
 		defer close(recv)
 		err := relay.serveRead(ctx, conn, recv, send)
 		errs <- fmt.Errorf("serveRead terminated: %w", err)
 	}()
 
 	go func() {
+		defer cancel()
 		err := relay.serveWrite(ctx, conn, send)
 		errs <- fmt.Errorf("serveWrite terminated: %w", err)
 	}()
