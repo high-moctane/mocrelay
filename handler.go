@@ -283,128 +283,83 @@ func (subs *subscribers) Publish(event *Event) {
 	}
 }
 
-type CacheHandler struct {
-	opEventCh chan *cacheHandlerOpEvent
-	opReqCh   chan *cacheHandlerOpReq
-	cancel    context.CancelFunc
+type CacheHandler SimpleHandler
+
+func NewCacheHandler(size int) CacheHandler {
+	return CacheHandler(NewSimpleHandler(newSimpleCacheHandler(size)))
 }
 
-type cacheHandlerOpEvent struct {
-	ev  *Event
-	ret chan bool
+type simpleCacheHandler struct {
+	sema chan struct{}
+	c    *eventCache
 }
 
-type cacheHandlerOpReq struct {
-	matcher EventCountMatcher
-	ret     chan []*Event
-}
-
-var ErrCacheHandlerStop = errors.New("cache handler stopped")
-
-func NewCacheHandler(ctx context.Context, capacity int) *CacheHandler {
-	ctx, cancel := context.WithCancel(ctx)
-	c := &CacheHandler{
-		opEventCh: make(chan *cacheHandlerOpEvent, 1),
-		opReqCh:   make(chan *cacheHandlerOpReq, 1),
-		cancel:    cancel,
+func newSimpleCacheHandler(size int) *simpleCacheHandler {
+	return &simpleCacheHandler{
+		sema: make(chan struct{}, runtime.GOMAXPROCS(0)),
+		c:    newEventCache(size),
 	}
-	c.start(ctx, capacity)
-	return c
 }
 
-func (h *CacheHandler) Handle(
-	r *http.Request,
-	recv <-chan ClientMsg,
-	send chan<- ServerMsg,
-) error {
-	ctx := r.Context()
+func (h *simpleCacheHandler) HandleStart(r *http.Request) (*http.Request, error) {
+	return r, nil
+}
 
-	for msg := range recv {
-		switch msg := msg.(type) {
-		case *ClientEventMsg:
-			ch := make(chan bool)
-			h.opEventCh <- &cacheHandlerOpEvent{
-				ev:  msg.Event,
-				ret: ch,
-			}
-			if <-ch {
-				sendCtx(ctx, send, ServerMsg(NewServerOKMsg(msg.Event.ID, true, "", "")))
-			} else {
-				sendCtx(ctx, send, ServerMsg(NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")))
-			}
+func (h *simpleCacheHandler) HandleStop(r *http.Request) error {
+	return nil
+}
 
-		case *ClientReqMsg:
-			ch := make(chan []*Event)
-			h.opReqCh <- &cacheHandlerOpReq{
-				matcher: NewReqFiltersEventMatchers(msg.ReqFilters),
-				ret:     ch,
-			}
-			for _, e := range <-ch {
-				sendCtx(ctx, send, ServerMsg(NewServerEventMsg(msg.SubscriptionID, e)))
-			}
-			sendCtx(ctx, send, ServerMsg(NewServerEOSEMsg(msg.SubscriptionID)))
+func (h *simpleCacheHandler) HandleClientMsg(r *http.Request, msg ClientMsg) ([]ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientEventMsg:
+		for i := 0; i < cap(h.sema); i++ {
+			h.sema <- struct{}{}
 		}
-	}
-	return ErrCacheHandlerStop
-}
-
-func (h *CacheHandler) start(ctx context.Context, capacity int) {
-	c := newEventCache(capacity)
-
-	num := runtime.GOMAXPROCS(0)
-	sema := make(chan struct{}, num)
-
-	for i := 0; i < num; i++ {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-
-				case op := <-h.opEventCh:
-					e := op.ev
-
-					for i := 0; i < num; i++ {
-						sema <- struct{}{}
-					}
-
-					if e.Kind == 5 {
-						h.kind5(c, e)
-					}
-					ret := c.Add(e)
-
-					for i := 0; i < num; i++ {
-						<-sema
-					}
-
-					op.ret <- ret
-
-				case op := <-h.opReqCh:
-					sema <- struct{}{}
-					ret := c.Find(op.matcher)
-					<-sema
-					op.ret <- ret
-				}
+		defer func() {
+			for i := 0; i < cap(h.sema); i++ {
+				<-h.sema
 			}
 		}()
-	}
-}
 
-func (h *CacheHandler) Stop() {
-	h.cancel()
-}
+		ev := msg.Event
+		if ev.Kind == 5 {
+			for _, tag := range ev.Tags {
+				if len(tag) < 2 {
+					continue
+				}
+				switch tag[0] {
+				case "e":
+					h.c.DeleteID(tag[1], ev.Pubkey)
+				case "a":
+					h.c.DeleteNaddr(tag[1], ev.Pubkey)
+				}
+			}
+		}
 
-func (h *CacheHandler) kind5(c *eventCache, event *Event) {
-	for _, tag := range event.Tags {
-		if len(tag) < 2 {
-			continue
+		var okMsg *ServerOKMsg
+		if h.c.Add(ev) {
+			okMsg = NewServerOKMsg(msg.Event.ID, true, "", "")
+		} else {
+			okMsg = NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
 		}
-		switch tag[0] {
-		case "e":
-			c.DeleteID(tag[1], event.Pubkey)
-		case "a":
-			c.DeleteNaddr(tag[1], event.Pubkey)
+		return []ServerMsg{okMsg}, nil
+
+	case *ClientReqMsg:
+		h.sema <- struct{}{}
+		defer func() { <-h.sema }()
+
+		evs := h.c.Find(NewReqFiltersEventMatchers(msg.ReqFilters))
+		var ret []ServerMsg
+		for _, ev := range evs {
+			ret = append(ret, NewServerEventMsg(msg.SubscriptionID, ev))
 		}
+		ret = append(ret, NewServerEOSEMsg(msg.SubscriptionID))
+		return ret, nil
+
+	case *ClientCountMsg:
+		return []ServerMsg{NewServerCountMsg(msg.SubscriptionID, 0, nil)}, nil
+	default:
+		return nil, nil
 	}
 }
 

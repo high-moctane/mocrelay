@@ -711,7 +711,7 @@ func TestCacheHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := NewCacheHandler(context.Background(), tt.cap)
+			h := NewCacheHandler(tt.cap)
 			helperTestHandler(t, h, tt.input, tt.want)
 		})
 	}
@@ -864,7 +864,7 @@ func TestMergeHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h1 := NewRouter(nil)
-			h2 := NewCacheHandler(context.Background(), tt.cap)
+			h2 := NewCacheHandler(tt.cap)
 			h := NewMergeHandler(h1, h2)
 			helperTestHandler(t, h, tt.input, tt.want)
 		})

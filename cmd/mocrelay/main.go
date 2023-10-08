@@ -11,7 +11,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	h := mocrelay.NewMergeHandler(mocrelay.NewCacheHandler(ctx, 100), mocrelay.NewRouter(nil))
+	h := mocrelay.NewMergeHandler(mocrelay.NewCacheHandler(100), mocrelay.NewRouter(nil))
 	h = mocrelay.NewRecvEventUniquefyMiddleware(100)(h)
 	h = mocrelay.NewSendEventUniquefyMiddleware(100)(h)
 	h = mocrelay.NewEventCreatedAtFilterMiddleware(-5*time.Minute, 1*time.Minute)(h)
