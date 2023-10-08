@@ -1198,21 +1198,21 @@ func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusM
 		}),
 		recvMsgTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "mocrelay_recv_msg_total",
+				Name: "mocrelay_recv_msg_count_total",
 				Help: "Number of received client messages.",
 			},
 			[]string{"type"},
 		),
 		recvEventTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "mocrelay_recv_event_total",
+				Name: "mocrelay_recv_event_count_total",
 				Help: "Number of received client messages.",
 			},
 			[]string{"kind"},
 		),
 		sendMsgTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "mocrelay_send_msg_total",
+				Name: "mocrelay_send_msg_count_total",
 				Help: "Number of sent server messages.",
 			},
 			[]string{"type"},
