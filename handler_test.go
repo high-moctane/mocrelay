@@ -26,6 +26,15 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 	}
 
 	var gots []ServerMsg
+	var gotjsons, wantjsons []string
+	for _, v := range out {
+		j, err := v.MarshalJSON()
+		if err != nil {
+			t.Errorf("unexpect error: %s", err)
+			return
+		}
+		wantjsons = append(wantjsons, string(j))
+	}
 
 	for i := 0; i < len(out); i++ {
 		select {
@@ -40,14 +49,13 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 				gotsstr = append(gotsstr, string(b))
 			}
 			t.Errorf("timeout: gots: %#+v", gotsstr)
+			assert.EqualValuesf(t, wantjsons, gotsstr, "timeout")
 			return
 
 		case got := <-send:
 			gots = append(gots, got)
 		}
 	}
-
-	var gotjsons, wantjsons []string
 
 	for _, v := range gots {
 		j, err := v.MarshalJSON()
@@ -56,14 +64,6 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 			return
 		}
 		gotjsons = append(gotjsons, string(j))
-	}
-	for _, v := range out {
-		j, err := v.MarshalJSON()
-		if err != nil {
-			t.Errorf("unexpect error: %s", err)
-			return
-		}
-		wantjsons = append(wantjsons, string(j))
 	}
 
 	slices.Sort(gotjsons)
