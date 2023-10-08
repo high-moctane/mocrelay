@@ -1193,26 +1193,26 @@ type simplePrometheusMiddleware struct {
 func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusMiddleware {
 	m := &simplePrometheusMiddleware{
 		connectionCount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "connection_count",
+			Name: "mocrelay_connection_count",
 			Help: "Current websocket connection count.",
 		}),
 		recvMsgTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "recv_msg_total",
+				Name: "mocrelay_recv_msg_total",
 				Help: "Number of received client messages.",
 			},
 			[]string{"type"},
 		),
 		recvEventTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "recv_event_total",
+				Name: "mocrelay_recv_event_total",
 				Help: "Number of received client messages.",
 			},
 			[]string{"kind"},
 		),
 		sendMsgTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "send_msg_total",
+				Name: "mocrelay_send_msg_total",
 				Help: "Number of sent server messages.",
 			},
 			[]string{"type"},
