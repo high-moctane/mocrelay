@@ -72,33 +72,36 @@ type ClientMsgHandler interface {
 	HandleClientMsg(*http.Request, ClientMsg) ([]ServerMsg, error)
 }
 
-type ClientMsgHandlerFunc func(*http.Request, ClientMsg) ([]ServerMsg, error)
+var _ ClientMsgHandler = (*SimpleClientMsgHandler)(nil)
 
-func (f ClientMsgHandlerFunc) HandleClientMsg(r *http.Request, msg ClientMsg) ([]ServerMsg, error) {
-	return f(r, msg)
+type SimpleClientMsgHandler struct {
+	h SimpleClientMsgHandlerInterface
 }
 
-type SimpleClientMsgHandler ClientMsgHandler
+func NewSimpleClientMsgHandler(h SimpleClientMsgHandlerInterface) *SimpleClientMsgHandler {
+	return &SimpleClientMsgHandler{h}
+}
 
-func NewSimpleClientMsgHandler(h SimpleClientMsgHandlerInterface) SimpleClientMsgHandler {
-	return ClientMsgHandlerFunc(func(r *http.Request, msg ClientMsg) ([]ServerMsg, error) {
-		switch msg := msg.(type) {
-		case *ClientUnknownMsg:
-			return h.HandleClientUnknownMsg(r, msg)
-		case *ClientEventMsg:
-			return h.HandleClientEventMsg(r, msg)
-		case *ClientReqMsg:
-			return h.HandleClientReqMsg(r, msg)
-		case *ClientCloseMsg:
-			return h.HandleClientCloseMsg(r, msg)
-		case *ClientAuthMsg:
-			return h.HandleClientAuthMsg(r, msg)
-		case *ClientCountMsg:
-			return h.HandleClientCountMsg(r, msg)
-		default:
-			return nil, nil
-		}
-	})
+func (h *SimpleClientMsgHandler) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) ([]ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientUnknownMsg:
+		return h.h.HandleClientUnknownMsg(r, msg)
+	case *ClientEventMsg:
+		return h.h.HandleClientEventMsg(r, msg)
+	case *ClientReqMsg:
+		return h.h.HandleClientReqMsg(r, msg)
+	case *ClientCloseMsg:
+		return h.h.HandleClientCloseMsg(r, msg)
+	case *ClientAuthMsg:
+		return h.h.HandleClientAuthMsg(r, msg)
+	case *ClientCountMsg:
+		return h.h.HandleClientCountMsg(r, msg)
+	default:
+		return nil, nil
+	}
 }
 
 type SimpleClientMsgHandlerInterface interface {
