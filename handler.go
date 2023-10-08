@@ -36,7 +36,7 @@ type SimpleHandler Handler
 type SimpleHandlerInterface interface {
 	HandleStart(*http.Request) (*http.Request, error)
 	HandleStop(*http.Request) error
-	ClientMsgHandler
+	HandleClientMsg(*http.Request, ClientMsg) ([]ServerMsg, error)
 }
 
 func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
@@ -66,97 +66,6 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 			return ErrRecvClosed
 		},
 	)
-}
-
-type ClientMsgHandler interface {
-	HandleClientMsg(*http.Request, ClientMsg) ([]ServerMsg, error)
-}
-
-var _ ClientMsgHandler = (*SimpleClientMsgHandler)(nil)
-
-type SimpleClientMsgHandler struct {
-	h SimpleClientMsgHandlerInterface
-}
-
-func NewSimpleClientMsgHandler(h SimpleClientMsgHandlerInterface) *SimpleClientMsgHandler {
-	return &SimpleClientMsgHandler{h}
-}
-
-func (h *SimpleClientMsgHandler) HandleClientMsg(
-	r *http.Request,
-	msg ClientMsg,
-) ([]ServerMsg, error) {
-	switch msg := msg.(type) {
-	case *ClientUnknownMsg:
-		return h.h.HandleClientUnknownMsg(r, msg)
-	case *ClientEventMsg:
-		return h.h.HandleClientEventMsg(r, msg)
-	case *ClientReqMsg:
-		return h.h.HandleClientReqMsg(r, msg)
-	case *ClientCloseMsg:
-		return h.h.HandleClientCloseMsg(r, msg)
-	case *ClientAuthMsg:
-		return h.h.HandleClientAuthMsg(r, msg)
-	case *ClientCountMsg:
-		return h.h.HandleClientCountMsg(r, msg)
-	default:
-		return nil, nil
-	}
-}
-
-type SimpleClientMsgHandlerInterface interface {
-	HandleClientUnknownMsg(*http.Request, *ClientUnknownMsg) ([]ServerMsg, error)
-	HandleClientEventMsg(*http.Request, *ClientEventMsg) ([]ServerMsg, error)
-	HandleClientReqMsg(*http.Request, *ClientReqMsg) ([]ServerMsg, error)
-	HandleClientCloseMsg(*http.Request, *ClientCloseMsg) ([]ServerMsg, error)
-	HandleClientAuthMsg(*http.Request, *ClientAuthMsg) ([]ServerMsg, error)
-	HandleClientCountMsg(*http.Request, *ClientCountMsg) ([]ServerMsg, error)
-}
-
-var _ SimpleClientMsgHandlerInterface = DefaultSimpleClientMsgHandler{}
-
-type DefaultSimpleClientMsgHandler struct{}
-
-func (DefaultSimpleClientMsgHandler) HandleClientUnknownMsg(
-	r *http.Request,
-	msg *ClientUnknownMsg,
-) ([]ServerMsg, error) {
-	return nil, nil
-}
-
-func (DefaultSimpleClientMsgHandler) HandleClientEventMsg(
-	r *http.Request,
-	msg *ClientEventMsg,
-) ([]ServerMsg, error) {
-	return []ServerMsg{NewServerOKMsg(msg.Event.ID, false, "", "nop")}, nil
-}
-
-func (DefaultSimpleClientMsgHandler) HandleClientReqMsg(
-	r *http.Request,
-	msg *ClientReqMsg,
-) ([]ServerMsg, error) {
-	return []ServerMsg{NewServerEOSEMsg(msg.SubscriptionID)}, nil
-}
-
-func (DefaultSimpleClientMsgHandler) HandleClientCloseMsg(
-	r *http.Request,
-	msg *ClientCloseMsg,
-) ([]ServerMsg, error) {
-	return nil, nil
-}
-
-func (DefaultSimpleClientMsgHandler) HandleClientAuthMsg(
-	r *http.Request,
-	msg *ClientAuthMsg,
-) ([]ServerMsg, error) {
-	return nil, nil
-}
-
-func (DefaultSimpleClientMsgHandler) HandleClientCountMsg(
-	r *http.Request,
-	msg *ClientCountMsg,
-) ([]ServerMsg, error) {
-	return []ServerMsg{NewServerCountMsg(msg.SubscriptionID, 0, nil)}, nil
 }
 
 var ErrRouterStop = errors.New("router stopped")
