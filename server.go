@@ -122,6 +122,18 @@ func (relay *Relay) serveRead(
 			json.RawMessage(payload),
 		)
 
+		if msg, ok := msg.(*ClientEventMsg); ok {
+			good, err := msg.Event.Verify()
+			if err != nil {
+				relay.logInfo(ctx, relay.recvLogger, "failed to verify event", "error", err)
+				continue
+			}
+			if !good {
+				relay.logInfo(ctx, relay.recvLogger, "invalid signature")
+				continue
+			}
+		}
+
 		select {
 		case <-l.C:
 			sendCtx(ctx, recv, msg)
