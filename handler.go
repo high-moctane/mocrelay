@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -1171,4 +1174,124 @@ func (m *simpleSendEventUniquefyMiddleware) HandleServerMsg(
 
 func (*simpleSendEventUniquefyMiddleware) key(subID, eventID string) string {
 	return subID + ":" + eventID
+}
+
+type PrometheusMiddleware SimpleMiddleware
+
+func NewPrometheusMiddleware(reg prometheus.Registerer) PrometheusMiddleware {
+	m := newSimplePrometheusMiddleware(reg)
+	return PrometheusMiddleware(NewSimpleMiddleware(m))
+}
+
+type simplePrometheusMiddleware struct {
+	connectionCount prometheus.Gauge
+	recvMsgTotal    *prometheus.CounterVec
+	recvEventTotal  *prometheus.CounterVec
+	sendMsgTotal    *prometheus.CounterVec
+}
+
+func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusMiddleware {
+	m := &simplePrometheusMiddleware{
+		connectionCount: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "connection_count",
+			Help: "Current websocket connection count.",
+		}),
+		recvMsgTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "recv_msg_total",
+				Help: "Number of received client messages.",
+			},
+			[]string{"type"},
+		),
+		recvEventTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "recv_event_total",
+				Help: "Number of received client messages.",
+			},
+			[]string{"kind"},
+		),
+		sendMsgTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "send_msg_total",
+				Help: "Number of sent server messages.",
+			},
+			[]string{"type"},
+		),
+	}
+
+	reg.MustRegister(m.connectionCount)
+	reg.MustRegister(m.recvMsgTotal)
+	reg.MustRegister(m.recvEventTotal)
+	reg.MustRegister(m.sendMsgTotal)
+
+	return m
+}
+
+func (m *simplePrometheusMiddleware) HandleStart(r *http.Request) (*http.Request, error) {
+	m.connectionCount.Inc()
+	return r, nil
+}
+
+func (m *simplePrometheusMiddleware) HandleStop(r *http.Request) error {
+	m.connectionCount.Dec()
+	return nil
+}
+
+func (m *simplePrometheusMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (ClientMsg, []ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientUnknownMsg:
+		m.recvMsgTotal.WithLabelValues("UNKNOWN").Inc()
+
+	case *ClientEventMsg:
+		m.recvMsgTotal.WithLabelValues("EVENT").Inc()
+		k := strconv.FormatInt(msg.Event.Kind, 10)
+		m.recvEventTotal.WithLabelValues(k).Inc()
+
+	case *ClientReqMsg:
+		m.recvMsgTotal.WithLabelValues("REQ").Inc()
+
+	case *ClientCloseMsg:
+		m.recvMsgTotal.WithLabelValues("CLOSE").Inc()
+
+	case *ClientAuthMsg:
+		m.recvMsgTotal.WithLabelValues("AUTH").Inc()
+
+	case *ClientCountMsg:
+		m.recvMsgTotal.WithLabelValues("COUNT").Inc()
+
+	default:
+		m.recvMsgTotal.WithLabelValues("UNDEFINED").Inc()
+	}
+
+	return msg, nil, nil
+}
+
+func (m *simplePrometheusMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) ([]ServerMsg, error) {
+	switch msg.(type) {
+	case *ServerEventMsg:
+		m.sendMsgTotal.WithLabelValues("EVENT").Inc()
+
+	case *ServerNoticeMsg:
+		m.sendMsgTotal.WithLabelValues("NOTICE").Inc()
+
+	case *ServerOKMsg:
+		m.sendMsgTotal.WithLabelValues("OK").Inc()
+
+	case *ServerAuthMsg:
+		m.sendMsgTotal.WithLabelValues("AUTH").Inc()
+
+	case *ServerCountMsg:
+		m.sendMsgTotal.WithLabelValues("COUNT").Inc()
+
+	default:
+		m.sendMsgTotal.WithLabelValues("UNDEFINED").Inc()
+	}
+
+	return []ServerMsg{msg}, nil
 }
