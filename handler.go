@@ -1143,9 +1143,14 @@ type simplePrometheusMiddleware struct {
 	recvMsgTotal    *prometheus.CounterVec
 	recvEventTotal  *prometheus.CounterVec
 	sendMsgTotal    *prometheus.CounterVec
+	reqTotal        prometheus.GaugeFunc
+
+	reqCounter *reqCounter
 }
 
 func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusMiddleware {
+	reqCounter := newReqCounter()
+
 	m := &simplePrometheusMiddleware{
 		connectionCount: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "mocrelay_connection_count",
@@ -1172,23 +1177,41 @@ func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusM
 			},
 			[]string{"type"},
 		),
+		reqTotal: prometheus.NewGaugeFunc(
+			prometheus.GaugeOpts{
+				Name: "mocrelay_req_count",
+				Help: "Current req count.",
+			},
+			func() float64 { return float64(reqCounter.Count()) },
+		),
+
+		reqCounter: reqCounter,
 	}
 
 	reg.MustRegister(m.connectionCount)
 	reg.MustRegister(m.recvMsgTotal)
 	reg.MustRegister(m.recvEventTotal)
 	reg.MustRegister(m.sendMsgTotal)
+	reg.MustRegister(m.reqTotal)
 
 	return m
 }
 
 func (m *simplePrometheusMiddleware) HandleStart(r *http.Request) (*http.Request, error) {
 	m.connectionCount.Inc()
+
+	reqID := GetRequestID(r.Context())
+	m.reqCounter.AddReqID(reqID)
+
 	return r, nil
 }
 
 func (m *simplePrometheusMiddleware) HandleStop(r *http.Request) error {
 	m.connectionCount.Dec()
+
+	reqID := GetRequestID(r.Context())
+	m.reqCounter.DeleteReqID(reqID)
+
 	return nil
 }
 
@@ -1207,9 +1230,13 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 
 	case *ClientReqMsg:
 		m.recvMsgTotal.WithLabelValues("REQ").Inc()
+		reqID := GetRequestID(r.Context())
+		m.reqCounter.AddSubID(reqID, msg.SubscriptionID)
 
 	case *ClientCloseMsg:
 		m.recvMsgTotal.WithLabelValues("CLOSE").Inc()
+		reqID := GetRequestID(r.Context())
+		m.reqCounter.DeleteSubID(reqID, msg.SubscriptionID)
 
 	case *ClientAuthMsg:
 		m.recvMsgTotal.WithLabelValues("AUTH").Inc()
@@ -1252,4 +1279,70 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 	}
 
 	return []ServerMsg{msg}, nil
+}
+
+type reqCounter struct {
+	// chan map[reqID]chan map[subID]exist
+	c chan map[string]chan map[string]bool
+}
+
+func newReqCounter() *reqCounter {
+	c := &reqCounter{
+		c: make(chan map[string]chan map[string]bool, 1),
+	}
+	c.c <- make(map[string]chan map[string]bool)
+	return c
+}
+
+func (c *reqCounter) AddReqID(reqID string) {
+	cc := make(chan map[string]bool, 1)
+	cc <- make(map[string]bool)
+	m := <-c.c
+	m[reqID] = cc
+	c.c <- m
+}
+
+func (c *reqCounter) DeleteReqID(reqID string) {
+	m := <-c.c
+	delete(m, reqID)
+	c.c <- m
+}
+
+func (c *reqCounter) AddSubID(reqID, subID string) {
+	m := <-c.c
+	cc := m[reqID]
+	c.c <- m
+
+	mm := <-cc
+	mm[subID] = true
+	cc <- mm
+}
+
+func (c *reqCounter) DeleteSubID(reqID, subID string) {
+	m := <-c.c
+	cc := m[reqID]
+	c.c <- m
+
+	mm := <-cc
+	delete(mm, subID)
+	cc <- mm
+}
+
+func (c *reqCounter) Count() int {
+	ret := 0
+
+	m := <-c.c
+	var ccs []chan map[string]bool
+	for _, cc := range m {
+		ccs = append(ccs, cc)
+	}
+	c.c <- m
+
+	for _, cc := range ccs {
+		mm := <-cc
+		ret += len(mm)
+		cc <- mm
+	}
+
+	return ret
 }
