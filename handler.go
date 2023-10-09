@@ -404,8 +404,8 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 	recvs := make([]chan ClientMsg, size)
 	sends := make([]chan ServerMsg, size)
 	for i := 0; i < len(h.hs); i++ {
-		recvs[i] = make(chan ClientMsg, 1)
-		sends[i] = make(chan ServerMsg, 1)
+		recvs[i] = make(chan ClientMsg)
+		sends[i] = make(chan ServerMsg)
 	}
 
 	return &mergeHandlerSession{
@@ -435,7 +435,11 @@ func (ss *mergeHandlerSession) Handle(
 	go func() {
 		defer ss.closeRecvs()
 		defer cancel()
-		ss.handleRecvSend(ctx, recv, send)
+		ss.handleRecv(ctx, recv)
+	}()
+	go func() {
+		defer cancel()
+		ss.handleSend(ctx, send)
 	}()
 
 	return ss.runHandlers(r)
@@ -499,104 +503,51 @@ func (ss *mergeHandlerSession) closeRecvs() {
 	}
 }
 
-func (ss *mergeHandlerSession) handleRecvSend(
-	ctx context.Context,
-	recv <-chan ClientMsg,
-	send chan<- ServerMsg,
-) {
-	recvCh := recv
-	sendCh := ss.preSendCh
-	recvBuf := make(chan ClientMsg, 1)
-	sendBuf := make(chan ServerMsg, 1)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-
-		case msg, ok := <-recvCh:
-			if !ok {
-				return
-			}
-			msg = ss.handleRecvMsg(ctx, msg)
-			sendClientMsgCtx(ctx, recvBuf, msg)
-			recvCh = nil
-
-		case msg, ok := <-recvBuf:
-			if !ok {
-				return
-			}
-			ss.broadcastRecvs(ctx, msg)
-			recvCh = recv
-
-		case msg := <-sendCh:
-			m := ss.handleSendMsg(ctx, msg)
-			if sendServerMsgCtx(ctx, sendBuf, m) {
-				sendCh = nil
-			}
-
-		case msg := <-sendBuf:
-			sendCtx(ctx, send, msg)
-			sendCh = ss.preSendCh
-		}
+func (ss *mergeHandlerSession) handleRecv(ctx context.Context, recv <-chan ClientMsg) {
+	for msg := range recv {
+		msg = ss.handleRecvMsg(msg)
+		ss.broadcastRecvs(ctx, msg)
 	}
 }
 
-func (ss *mergeHandlerSession) handleRecvMsg(
-	ctx context.Context,
-	msg ClientMsg,
-) ClientMsg {
+func (ss *mergeHandlerSession) handleRecvMsg(msg ClientMsg) ClientMsg {
 	switch msg := msg.(type) {
 	case *ClientEventMsg:
-		return ss.handleRecvEventMsg(ctx, msg)
+		return ss.handleRecvEventMsg(msg)
 	case *ClientReqMsg:
-		return ss.handleRecvReqMsg(ctx, msg)
+		return ss.handleRecvReqMsg(msg)
 	case *ClientCloseMsg:
-		return ss.handleRecvCloseMsg(ctx, msg)
+		return ss.handleRecvCloseMsg(msg)
 	case *ClientCountMsg:
-		return ss.handleRecvCountMsg(ctx, msg)
+		return ss.handleRecvCountMsg(msg)
 	default:
 		return msg
 	}
 }
 
-func (ss *mergeHandlerSession) handleRecvEventMsg(
-	ctx context.Context,
-	msg *ClientEventMsg,
-) ClientMsg {
+func (ss *mergeHandlerSession) handleRecvEventMsg(msg *ClientEventMsg) ClientMsg {
 	ss.okStat.TrySetEventID(msg.Event.ID)
 	return msg
 }
 
-func (ss *mergeHandlerSession) handleRecvReqMsg(
-	ctx context.Context,
-	msg *ClientReqMsg,
-) ClientMsg {
+func (ss *mergeHandlerSession) handleRecvReqMsg(msg *ClientReqMsg) ClientMsg {
 	ss.reqStat.SetSubID(msg.SubscriptionID)
 	return msg
 }
 
-func (ss *mergeHandlerSession) handleRecvCloseMsg(
-	ctx context.Context,
-	msg *ClientCloseMsg,
-) ClientMsg {
+func (ss *mergeHandlerSession) handleRecvCloseMsg(msg *ClientCloseMsg) ClientMsg {
 	ss.reqStat.ClearSubID(msg.SubscriptionID)
 	return msg
 }
 
-func (ss *mergeHandlerSession) handleRecvCountMsg(
-	ctx context.Context,
-	msg *ClientCountMsg,
-) ClientMsg {
+func (ss *mergeHandlerSession) handleRecvCountMsg(msg *ClientCountMsg) ClientMsg {
 	ss.countStat.SetSubID(msg.SubscriptionID)
 	return msg
 }
 
 func (ss *mergeHandlerSession) broadcastRecvs(ctx context.Context, msg ClientMsg) {
 	for _, r := range ss.recvs {
-		if !sendCtx(ctx, r, msg) {
-			return
-		}
+		sendClientMsgCtx(ctx, r, msg)
 	}
 }
 
@@ -612,28 +563,35 @@ func newMergeHandlerSessionSendMsg(idx int, msg ServerMsg) *mergeHandlerSessionS
 	}
 }
 
-func (ss *mergeHandlerSession) handleSendMsg(
-	ctx context.Context,
-	msg *mergeHandlerSessionSendMsg,
-) ServerMsg {
+func (ss *mergeHandlerSession) handleSend(ctx context.Context, send chan<- ServerMsg) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case msg := <-ss.preSendCh:
+			m := ss.handleSendMsg(msg)
+			sendServerMsgCtx(ctx, send, m)
+		}
+	}
+}
+
+func (ss *mergeHandlerSession) handleSendMsg(msg *mergeHandlerSessionSendMsg) ServerMsg {
 	switch msg.Msg.(type) {
 	case *ServerEOSEMsg:
-		return ss.handleSendEOSEMsg(ctx, msg)
+		return ss.handleSendEOSEMsg(msg)
 	case *ServerEventMsg:
-		return ss.handleSendEventMsg(ctx, msg)
+		return ss.handleSendEventMsg(msg)
 	case *ServerOKMsg:
-		return ss.handleSendOKMsg(ctx, msg)
+		return ss.handleSendOKMsg(msg)
 	case *ServerCountMsg:
-		return ss.handleSendCountMsg(ctx, msg)
+		return ss.handleSendCountMsg(msg)
 	default:
 		return msg.Msg
 	}
 }
 
-func (ss *mergeHandlerSession) handleSendEOSEMsg(
-	ctx context.Context,
-	msg *mergeHandlerSessionSendMsg,
-) *ServerEOSEMsg {
+func (ss *mergeHandlerSession) handleSendEOSEMsg(msg *mergeHandlerSessionSendMsg) *ServerEOSEMsg {
 	m := msg.Msg.(*ServerEOSEMsg)
 
 	if ss.reqStat.AllEOSE(m.SubscriptionID) {
@@ -647,10 +605,7 @@ func (ss *mergeHandlerSession) handleSendEOSEMsg(
 	return m
 }
 
-func (ss *mergeHandlerSession) handleSendEventMsg(
-	ctx context.Context,
-	msg *mergeHandlerSessionSendMsg,
-) *ServerEventMsg {
+func (ss *mergeHandlerSession) handleSendEventMsg(msg *mergeHandlerSessionSendMsg) *ServerEventMsg {
 	m := msg.Msg.(*ServerEventMsg)
 
 	if !ss.reqStat.IsSendableEventMsg(msg.Idx, m) {
@@ -660,10 +615,7 @@ func (ss *mergeHandlerSession) handleSendEventMsg(
 	return m
 }
 
-func (ss *mergeHandlerSession) handleSendOKMsg(
-	ctx context.Context,
-	msg *mergeHandlerSessionSendMsg,
-) *ServerOKMsg {
+func (ss *mergeHandlerSession) handleSendOKMsg(msg *mergeHandlerSessionSendMsg) *ServerOKMsg {
 	m := msg.Msg.(*ServerOKMsg)
 
 	ss.okStat.SetMsg(msg.Idx, m)
@@ -677,10 +629,7 @@ func (ss *mergeHandlerSession) handleSendOKMsg(
 	return ret
 }
 
-func (ss *mergeHandlerSession) handleSendCountMsg(
-	ctx context.Context,
-	msg *mergeHandlerSessionSendMsg,
-) *ServerCountMsg {
+func (ss *mergeHandlerSession) handleSendCountMsg(msg *mergeHandlerSessionSendMsg) *ServerCountMsg {
 	m := msg.Msg.(*ServerCountMsg)
 
 	ss.countStat.SetCountMsg(msg.Idx, m)
