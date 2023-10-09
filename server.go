@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -23,21 +24,35 @@ type Relay struct {
 
 	opt *RelayOption
 
-	logger             *slog.Logger
-	recvLogger         *slog.Logger
-	sendLogger         *slog.Logger
+	logger     *slog.Logger
+	recvLogger *slog.Logger
+	sendLogger *slog.Logger
+
 	recvRateLimitRate  time.Duration
 	recvRateLimitBurst int
 	sendRateLimitRate  time.Duration
 }
 
 type RelayOption struct {
-	Logger             *slog.Logger
-	RecvLogger         *slog.Logger
-	SendLogger         *slog.Logger
+	Logger     *slog.Logger
+	RecvLogger *slog.Logger
+	SendLogger *slog.Logger
+
 	RecvRateLimitRate  time.Duration
 	RecvRateLimitBurst int
 	SendRateLimitRate  time.Duration
+
+	MaxMessageLength int64
+}
+
+func (opt *RelayOption) maxMessageLength() int64 {
+	const defaultMaxMessageLength = 16384
+
+	if opt == nil || opt.MaxMessageLength == 0 {
+		return defaultMaxMessageLength
+	}
+
+	return opt.MaxMessageLength
 }
 
 func NewRelay(handler Handler, option *RelayOption) *Relay {
@@ -109,10 +124,43 @@ func (relay *Relay) serveRead(
 	l := newRateLimiter(relay.recvRateLimitRate, relay.recvRateLimitBurst)
 	defer l.Stop()
 
+	r := wsutil.NewServerSideReader(conn)
+	r.OnContinuation = wsutil.ControlFrameHandler(conn, ws.StateServerSide)
+	r.OnIntermediate = wsutil.ControlFrameHandler(conn, ws.StateServerSide)
+
 	for {
-		payload, err := wsutil.ReadClientText(conn)
+		hdr, err := r.NextFrame()
 		if err != nil {
+			return fmt.Errorf("failed to read websocket header: %w", err)
+		}
+		if hdr.Length > relay.opt.maxMessageLength() {
+			if err := r.Discard(); err != nil {
+				return fmt.Errorf("failed to discard unread websocket: %w", err)
+			}
+
+			notice := NewServerNoticeMsg(
+				fmt.Sprintf("too large message: limit is %d bytes", relay.opt.maxMessageLength()),
+			)
+			sendServerMsgCtx(ctx, send, notice)
+
+			continue
+		}
+		if hdr.OpCode == ws.OpClose {
+			return nil
+		}
+		if hdr.OpCode != ws.OpText {
+			continue
+		}
+		payload := make([]byte, hdr.Length)
+		n, err := r.Read(payload)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to read websocket: %w", err)
+		}
+		if len(payload) != n {
+			return fmt.Errorf("invalid length of payload: %d", len(payload))
 		}
 
 		msg, err := ParseClientMsg(payload)
