@@ -446,10 +446,16 @@ func (ss *mergeHandlerSession) runHandlers(r *http.Request) error {
 	var wg sync.WaitGroup
 	errs := make(chan error, len(hs))
 
+	ctx := r.Context()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	r = r.WithContext(ctx)
+
 	wg.Add(len(hs))
 	for i := 0; i < len(ss.h.hs); i++ {
 		go func(i int) {
 			defer wg.Done()
+			defer cancel()
 			errs <- hs[i].Handle(r, ss.recvs[i], ss.sends[i])
 		}(i)
 	}
