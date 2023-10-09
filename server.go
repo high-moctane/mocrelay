@@ -62,6 +62,12 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	relay.logInfo(ctx, relay.logger, "mocrelay session start")
 
+	errs := make(chan error, 3)
+	defer func() {
+		err := errors.Join(ErrRelayStop, <-errs, <-errs, <-errs)
+		relay.logInfo(ctx, relay.logger, "mocrelay session end", "err", err)
+	}()
+
 	conn, _, _, err := ws.UpgradeHTTP(r, w)
 	if err != nil {
 		relay.logInfo(ctx, relay.logger, "failed to upgrade http", "err", err)
@@ -69,9 +75,8 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	errs := make(chan error, 2)
-	recv := make(chan ClientMsg, 1)
-	send := make(chan ServerMsg, 1)
+	recv := make(chan ClientMsg)
+	send := make(chan ServerMsg)
 
 	go func() {
 		defer cancel()
@@ -86,13 +91,13 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errs <- fmt.Errorf("serveWrite terminated: %w", err)
 	}()
 
-	err = relay.Handler.Handle(r, recv, send)
+	go func() {
+		defer cancel()
+		err := relay.Handler.Handle(r, recv, send)
+		errs <- fmt.Errorf("handler terminated: %w", err)
+	}()
 
-	cancel()
-	err = fmt.Errorf("handler terminated: %w", err)
-	err = errors.Join(err, <-errs, <-errs, ErrRelayStop)
-
-	relay.logInfo(ctx, relay.logger, "mocrelay session end", "err", err)
+	<-ctx.Done()
 }
 
 func (relay *Relay) serveRead(

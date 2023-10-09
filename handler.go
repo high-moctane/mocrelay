@@ -404,15 +404,15 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 	recvs := make([]chan ClientMsg, size)
 	sends := make([]chan ServerMsg, size)
 	for i := 0; i < len(h.hs); i++ {
-		recvs[i] = make(chan ClientMsg, 1)
-		sends[i] = make(chan ServerMsg, 1)
+		recvs[i] = make(chan ClientMsg)
+		sends[i] = make(chan ServerMsg)
 	}
 
 	return &mergeHandlerSession{
 		h:         h,
 		recvs:     recvs,
 		sends:     sends,
-		preSendCh: make(chan *mergeHandlerSessionSendMsg, len(h.hs)+1),
+		preSendCh: make(chan *mergeHandlerSessionSendMsg),
 		okStat:    newMergeHandlerSessionOKState(size),
 		reqStat:   newMergeHandlerSessionReqState(size),
 		countStat: newMergeHandlerSessionCountState(size),
