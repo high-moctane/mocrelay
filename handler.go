@@ -393,9 +393,9 @@ type mergeHandlerSession struct {
 	sends     []chan ServerMsg
 	preSendCh chan *mergeHandlerSessionSendMsg
 
-	okStat    *mergeHandlerSessionOKState
-	reqStat   *mergeHandlerSessionReqState
-	countStat *mergeHandlerSessionCountState
+	okStat    chan *mergeHandlerSessionOKState
+	reqStat   chan *mergeHandlerSessionReqState
+	countStat chan *mergeHandlerSessionCountState
 }
 
 func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
@@ -408,15 +408,21 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 		sends[i] = make(chan ServerMsg)
 	}
 
-	return &mergeHandlerSession{
+	ss := &mergeHandlerSession{
 		h:         h,
 		recvs:     recvs,
 		sends:     sends,
 		preSendCh: make(chan *mergeHandlerSessionSendMsg),
-		okStat:    newMergeHandlerSessionOKState(size),
-		reqStat:   newMergeHandlerSessionReqState(size),
-		countStat: newMergeHandlerSessionCountState(size),
+		okStat:    make(chan *mergeHandlerSessionOKState, 1),
+		reqStat:   make(chan *mergeHandlerSessionReqState, 1),
+		countStat: make(chan *mergeHandlerSessionCountState, 1),
 	}
+
+	ss.okStat <- newMergeHandlerSessionOKState(size)
+	ss.reqStat <- newMergeHandlerSessionReqState(size)
+	ss.countStat <- newMergeHandlerSessionCountState(size)
+
+	return ss
 }
 
 func (ss *mergeHandlerSession) Handle(
@@ -526,22 +532,30 @@ func (ss *mergeHandlerSession) handleRecvMsg(msg ClientMsg) ClientMsg {
 }
 
 func (ss *mergeHandlerSession) handleRecvEventMsg(msg *ClientEventMsg) ClientMsg {
-	ss.okStat.TrySetEventID(msg.Event.ID)
+	s := <-ss.okStat
+	defer func() { ss.okStat <- s }()
+	s.TrySetEventID(msg.Event.ID)
 	return msg
 }
 
 func (ss *mergeHandlerSession) handleRecvReqMsg(msg *ClientReqMsg) ClientMsg {
-	ss.reqStat.SetSubID(msg.SubscriptionID)
+	s := <-ss.reqStat
+	defer func() { ss.reqStat <- s }()
+	s.SetSubID(msg.SubscriptionID)
 	return msg
 }
 
 func (ss *mergeHandlerSession) handleRecvCloseMsg(msg *ClientCloseMsg) ClientMsg {
-	ss.reqStat.ClearSubID(msg.SubscriptionID)
+	s := <-ss.reqStat
+	defer func() { ss.reqStat <- s }()
+	s.ClearSubID(msg.SubscriptionID)
 	return msg
 }
 
 func (ss *mergeHandlerSession) handleRecvCountMsg(msg *ClientCountMsg) ClientMsg {
-	ss.countStat.SetSubID(msg.SubscriptionID)
+	s := <-ss.countStat
+	defer func() { ss.countStat <- s }()
+	s.SetSubID(msg.SubscriptionID)
 	return msg
 }
 
@@ -594,11 +608,14 @@ func (ss *mergeHandlerSession) handleSendMsg(msg *mergeHandlerSessionSendMsg) Se
 func (ss *mergeHandlerSession) handleSendEOSEMsg(msg *mergeHandlerSessionSendMsg) *ServerEOSEMsg {
 	m := msg.Msg.(*ServerEOSEMsg)
 
-	if ss.reqStat.AllEOSE(m.SubscriptionID) {
+	s := <-ss.reqStat
+	defer func() { ss.reqStat <- s }()
+
+	if s.AllEOSE(m.SubscriptionID) {
 		return nil
 	}
-	ss.reqStat.SetEOSE(m.SubscriptionID, msg.Idx)
-	if !ss.reqStat.AllEOSE(m.SubscriptionID) {
+	s.SetEOSE(m.SubscriptionID, msg.Idx)
+	if !s.AllEOSE(m.SubscriptionID) {
 		return nil
 	}
 
@@ -608,7 +625,10 @@ func (ss *mergeHandlerSession) handleSendEOSEMsg(msg *mergeHandlerSessionSendMsg
 func (ss *mergeHandlerSession) handleSendEventMsg(msg *mergeHandlerSessionSendMsg) *ServerEventMsg {
 	m := msg.Msg.(*ServerEventMsg)
 
-	if !ss.reqStat.IsSendableEventMsg(msg.Idx, m) {
+	s := <-ss.reqStat
+	defer func() { ss.reqStat <- s }()
+
+	if !s.IsSendableEventMsg(msg.Idx, m) {
 		return nil
 	}
 
@@ -618,13 +638,16 @@ func (ss *mergeHandlerSession) handleSendEventMsg(msg *mergeHandlerSessionSendMs
 func (ss *mergeHandlerSession) handleSendOKMsg(msg *mergeHandlerSessionSendMsg) *ServerOKMsg {
 	m := msg.Msg.(*ServerOKMsg)
 
-	ss.okStat.SetMsg(msg.Idx, m)
-	if !ss.okStat.Ready(m.EventID) {
+	s := <-ss.okStat
+	defer func() { ss.okStat <- s }()
+
+	s.SetMsg(msg.Idx, m)
+	if !s.Ready(m.EventID) {
 		return nil
 	}
 
-	ret := ss.okStat.Msg(m.EventID)
-	ss.okStat.ClearEventID(m.EventID)
+	ret := s.Msg(m.EventID)
+	s.ClearEventID(m.EventID)
 
 	return ret
 }
@@ -632,13 +655,16 @@ func (ss *mergeHandlerSession) handleSendOKMsg(msg *mergeHandlerSessionSendMsg) 
 func (ss *mergeHandlerSession) handleSendCountMsg(msg *mergeHandlerSessionSendMsg) *ServerCountMsg {
 	m := msg.Msg.(*ServerCountMsg)
 
-	ss.countStat.SetCountMsg(msg.Idx, m)
-	if !ss.countStat.Ready(m.SubscriptionID, msg.Idx) {
+	s := <-ss.countStat
+	defer func() { ss.countStat <- s }()
+
+	s.SetCountMsg(msg.Idx, m)
+	if !s.Ready(m.SubscriptionID, msg.Idx) {
 		return nil
 	}
 
-	ret := ss.countStat.Msg(m.SubscriptionID)
-	ss.countStat.ClearSubID(m.SubscriptionID)
+	ret := s.Msg(m.SubscriptionID)
+	s.ClearSubID(m.SubscriptionID)
 
 	return ret
 }
