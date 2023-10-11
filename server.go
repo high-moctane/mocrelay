@@ -129,38 +129,25 @@ func (relay *Relay) serveRead(
 	r.OnIntermediate = wsutil.ControlFrameHandler(conn, ws.StateServerSide)
 
 	for {
-		hdr, err := r.NextFrame()
+		payload, err := relay.readWebsocket(r)
 		if err != nil {
-			return fmt.Errorf("failed to read websocket header: %w", err)
-		}
-		if hdr.Length > relay.opt.maxMessageLength() {
-			if _, err := io.Copy(io.Discard, r); err != nil {
-				return fmt.Errorf("failed to discard unread websocket: %w", err)
+			if errors.Is(err, io.EOF) {
+				return io.EOF
 			}
-
-			notice := NewServerNoticeMsg(
-				fmt.Sprintf("too large message: limit is %d bytes", relay.opt.maxMessageLength()),
-			)
-			sendServerMsgCtx(ctx, send, notice)
-
-			continue
-		}
-		if hdr.OpCode == ws.OpClose {
-			return nil
-		}
-		if hdr.OpCode != ws.OpText {
-			continue
-		}
-		payload := make([]byte, hdr.Length)
-		n, err := r.Read(payload)
-		if err == nil {
-			continue
-		}
-		if !errors.Is(err, io.EOF) {
+			if errors.Is(err, ErrWebsocketMessageTooLong) {
+				notice := NewServerNoticeMsg(
+					fmt.Sprintf(
+						"too long websocket message: limit is %d",
+						relay.opt.maxMessageLength(),
+					),
+				)
+				sendServerMsgCtx(ctx, send, notice)
+				continue
+			}
 			return fmt.Errorf("failed to read websocket: %w", err)
 		}
-		if len(payload) != n {
-			return fmt.Errorf("invalid length of payload: %d", len(payload))
+		if payload == nil {
+			continue
 		}
 
 		msg, err := ParseClientMsg(payload)
@@ -214,6 +201,48 @@ func (relay *Relay) serveRead(
 			}
 		}
 	}
+}
+
+var ErrWebsocketMessageTooLong = errors.New("too long websocket message")
+
+func (relay *Relay) readWebsocket(r *wsutil.Reader) ([]byte, error) {
+	hdr, err := r.NextFrame()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read websocket header: %w", err)
+	}
+
+	if hdr.Length > relay.opt.maxMessageLength() {
+		if err := r.Discard(); err != nil {
+			return nil, fmt.Errorf("failed to discard unread websocket: %w", err)
+		}
+		return nil, ErrWebsocketMessageTooLong
+	}
+	if hdr.OpCode == ws.OpClose {
+		if err := r.Discard(); err != nil {
+			return nil, fmt.Errorf("failed to discard unread websocket: %w", err)
+		}
+		return nil, io.EOF
+	}
+	if hdr.OpCode != ws.OpText {
+		if err := r.Discard(); err != nil {
+			return nil, fmt.Errorf("failed to discard unread websocket: %w", err)
+		}
+		return nil, nil
+	}
+
+	payload := make([]byte, hdr.Length)
+	n, err := r.Read(payload)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return payload, nil
+		}
+		return payload, err
+	}
+	if len(payload) != n {
+		return payload, fmt.Errorf("invalid length of payload: %d", len(payload))
+	}
+
+	return payload, nil
 }
 
 func (relay *Relay) serveWrite(
