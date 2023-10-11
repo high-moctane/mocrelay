@@ -39,7 +39,7 @@ type SimpleHandler Handler
 type SimpleHandlerInterface interface {
 	HandleStart(*http.Request) (*http.Request, error)
 	HandleStop(*http.Request) error
-	HandleClientMsg(*http.Request, ClientMsg) ([]ServerMsg, error)
+	HandleClientMsg(*http.Request, ClientMsg) (<-chan ServerMsg, error)
 }
 
 func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
@@ -53,20 +53,43 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 			}
 
 			ctx := r.Context()
-			var smsgs []ServerMsg
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 
-			for cmsg := range recv {
-				smsgs, err = h.HandleClientMsg(r, cmsg)
-				if err != nil {
-					return
+			errs := make(chan error, 1)
+			smsgChCh := make(chan (<-chan ServerMsg))
+
+			go func() {
+				defer cancel()
+				defer close(smsgChCh)
+
+				var err error
+				defer func() { errs <- err }()
+
+				for cmsg := range recv {
+					smsgCh, err := h.HandleClientMsg(r, cmsg)
+					if err != nil {
+						return
+					}
+					if smsgCh == nil {
+						continue
+					}
+					sendCtx(ctx, smsgChCh, smsgCh)
 				}
+			}()
 
-				for _, smsg := range smsgs {
-					sendServerMsgCtx(ctx, send, smsg)
+			go func() {
+				defer cancel()
+
+				for smsgCh := range smsgChCh {
+					for smsg := range smsgCh {
+						sendServerMsgCtx(ctx, send, smsg)
+					}
 				}
-			}
+			}()
 
-			return ErrRecvClosed
+			<-ctx.Done()
+			return errors.Join(err, <-errs, ErrRecvClosed)
 		},
 	)
 }
@@ -312,7 +335,10 @@ func (h *simpleCacheHandler) HandleStop(r *http.Request) error {
 	return nil
 }
 
-func (h *simpleCacheHandler) HandleClientMsg(r *http.Request, msg ClientMsg) ([]ServerMsg, error) {
+func (h *simpleCacheHandler) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *ClientEventMsg:
 		for i := 0; i < cap(h.sema); i++ {
@@ -339,28 +365,38 @@ func (h *simpleCacheHandler) HandleClientMsg(r *http.Request, msg ClientMsg) ([]
 			}
 		}
 
-		var okMsg *ServerOKMsg
+		smsgCh := make(chan ServerMsg, 1)
+		defer close(smsgCh)
+
 		if h.c.Add(ev) {
-			okMsg = NewServerOKMsg(msg.Event.ID, true, "", "")
+			smsgCh <- NewServerOKMsg(msg.Event.ID, true, "", "")
 		} else {
-			okMsg = NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
+			smsgCh <- NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
 		}
-		return []ServerMsg{okMsg}, nil
+		return smsgCh, nil
 
 	case *ClientReqMsg:
 		h.sema <- struct{}{}
 		defer func() { <-h.sema }()
 
 		evs := h.c.Find(NewReqFiltersEventMatchers(msg.ReqFilters))
-		var ret []ServerMsg
+
+		smsgCh := make(chan ServerMsg, len(evs)+1)
+		defer close(smsgCh)
+
 		for _, ev := range evs {
-			ret = append(ret, NewServerEventMsg(msg.SubscriptionID, ev))
+			smsgCh <- NewServerEventMsg(msg.SubscriptionID, ev)
 		}
-		ret = append(ret, NewServerEOSEMsg(msg.SubscriptionID))
-		return ret, nil
+		smsgCh <- NewServerEOSEMsg(msg.SubscriptionID)
+		return smsgCh, nil
 
 	case *ClientCountMsg:
-		return []ServerMsg{NewServerCountMsg(msg.SubscriptionID, 0, nil)}, nil
+		smsgCh := make(chan ServerMsg, 1)
+		defer close(smsgCh)
+
+		smsgCh <- NewServerCountMsg(msg.SubscriptionID, 0, nil)
+		return smsgCh, nil
+
 	default:
 		return nil, nil
 	}
