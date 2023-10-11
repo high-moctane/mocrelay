@@ -83,3 +83,19 @@ func sendServerMsgCtx(ctx context.Context, ch chan<- ServerMsg, msg ServerMsg) (
 	}
 	return sendCtx(ctx, ch, msg)
 }
+
+type bufCh[T any] chan T
+
+func newBufCh[T any](items ...T) bufCh[T] {
+	ret := make(chan T, len(items))
+	for _, item := range items {
+		ret <- item
+	}
+	return ret
+}
+
+func newClosedBufCh[T any](items ...T) bufCh[T] {
+	ret := newBufCh(items...)
+	close(ret)
+	return ret
+}

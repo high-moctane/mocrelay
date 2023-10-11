@@ -902,8 +902,8 @@ type SimpleMiddleware Middleware
 type SimpleMiddlewareInterface interface {
 	HandleStart(*http.Request) (*http.Request, error)
 	HandleStop(*http.Request) error
-	HandleClientMsg(*http.Request, ClientMsg) (ClientMsg, []ServerMsg, error)
-	HandleServerMsg(*http.Request, ServerMsg) ([]ServerMsg, error)
+	HandleClientMsg(*http.Request, ClientMsg) (<-chan ClientMsg, <-chan ServerMsg, error)
+	HandleServerMsg(*http.Request, ServerMsg) (<-chan ServerMsg, error)
 }
 
 func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
@@ -926,6 +926,7 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 
 				rCh := make(chan ClientMsg)
 				sCh := make(chan ServerMsg)
+				defer close(sCh)
 
 				go func() {
 					defer cancel()
@@ -935,25 +936,21 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 
 					defer close(rCh)
 
-					var ccmsg ClientMsg
-					var smsgs []ServerMsg
+					var cmsgCh <-chan ClientMsg
+					var smsgCh <-chan ServerMsg
 
-					for {
-						select {
-						case <-ctx.Done():
+					for cmsg := range recv {
+						cmsgCh, smsgCh, err = m.HandleClientMsg(r, cmsg)
+						if err != nil {
 							return
-
-						case cmsg, ok := <-recv:
-							if !ok {
-								return
+						}
+						if cmsgCh != nil {
+							for cmsg := range cmsgCh {
+								sendClientMsgCtx(ctx, rCh, cmsg)
 							}
-
-							ccmsg, smsgs, err = m.HandleClientMsg(r, cmsg)
-							if err != nil {
-								return
-							}
-							sendClientMsgCtx(ctx, rCh, ccmsg)
-							for _, smsg := range smsgs {
+						}
+						if smsgCh != nil {
+							for smsg := range smsgCh {
 								sendServerMsgCtx(ctx, send, smsg)
 							}
 						}
@@ -966,22 +963,19 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 					var err error
 					defer func() { errCh <- err }()
 
-					var smsgs []ServerMsg
+					var smsgCh <-chan ServerMsg
 
-					for {
-						select {
-						case <-ctx.Done():
+					for smsg := range sCh {
+						smsgCh, err = m.HandleServerMsg(r, smsg)
+						if err != nil {
 							return
+						}
+						if smsgCh == nil {
+							continue
+						}
 
-						case smsg := <-sCh:
-							smsgs, err = m.HandleServerMsg(r, smsg)
-							if err != nil {
-								return
-							}
-
-							for _, smsg := range smsgs {
-								sendServerMsgCtx(ctx, send, smsg)
-							}
+						for smsg := range smsgCh {
+							sendServerMsgCtx(ctx, send, smsg)
 						}
 					}
 				}()
@@ -1026,27 +1020,28 @@ func (m *simpleEventCreatedAtFilterMiddleware) HandleStop(r *http.Request) error
 func (m *simpleEventCreatedAtFilterMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
-) (ClientMsg, []ServerMsg, error) {
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
 		sub := time.Until(msg.Event.CreatedAtTime())
 		if sub < m.from || m.to < -sub {
-			okMsg := NewServerOKMsg(
+			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
 				msg.Event.ID,
 				false,
 				ServerOKMsgPrefixNoPrefix,
 				"too old created_at",
-			)
-			return nil, []ServerMsg{okMsg}, nil
+			))
+			return nil, smsgCh, nil
 		}
 	}
-	return msg, nil, nil
+
+	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
 func (m *simpleEventCreatedAtFilterMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
-) ([]ServerMsg, error) {
-	return []ServerMsg{msg}, nil
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh[ServerMsg](msg), nil
 }
 
 type RecvEventUniquefyMiddleware Middleware
@@ -1089,19 +1084,19 @@ func (m *simpleRecvEventUniquefyMiddleware) HandleStop(r *http.Request) error {
 func (m *simpleRecvEventUniquefyMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
-) (ClientMsg, []ServerMsg, error) {
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
 		m.sema <- struct{}{}
 		defer func() { <-m.sema }()
 
 		if m.seen[msg.Event.ID] {
-			okMsg := NewServerOKMsg(
+			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
 				msg.Event.ID,
 				false,
 				ServerOKMsgPrefixDuplicate,
 				"duplicated id",
-			)
-			return nil, []ServerMsg{okMsg}, nil
+			))
+			return nil, smsgCh, nil
 		}
 
 		if m.ids.Len() == m.ids.Cap {
@@ -1112,14 +1107,15 @@ func (m *simpleRecvEventUniquefyMiddleware) HandleClientMsg(
 		m.ids.Enqueue(msg.Event.ID)
 		m.seen[msg.Event.ID] = true
 	}
-	return msg, nil, nil
+
+	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
 func (m *simpleRecvEventUniquefyMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
-) ([]ServerMsg, error) {
-	return []ServerMsg{msg}, nil
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh[ServerMsg](msg), nil
 }
 
 type SendEventUniquefyMiddleware Middleware
@@ -1160,14 +1156,14 @@ func (m *simpleSendEventUniquefyMiddleware) HandleStop(r *http.Request) error {
 func (m *simpleSendEventUniquefyMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
-) (ClientMsg, []ServerMsg, error) {
-	return msg, nil, nil
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
 func (m *simpleSendEventUniquefyMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
-) ([]ServerMsg, error) {
+) (<-chan ServerMsg, error) {
 	if msg, ok := msg.(*ServerEventMsg); ok {
 		k := m.key(msg.SubscriptionID, msg.Event.ID)
 
@@ -1186,7 +1182,7 @@ func (m *simpleSendEventUniquefyMiddleware) HandleServerMsg(
 		m.seen[k] = true
 	}
 
-	return []ServerMsg{msg}, nil
+	return newClosedBufCh[ServerMsg](msg), nil
 }
 
 func (*simpleSendEventUniquefyMiddleware) key(subID, eventID string) string {
@@ -1280,7 +1276,7 @@ func (m *simplePrometheusMiddleware) HandleStop(r *http.Request) error {
 func (m *simplePrometheusMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
-) (ClientMsg, []ServerMsg, error) {
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *ClientUnknownMsg:
 		m.recvMsgTotal.WithLabelValues("UNKNOWN").Inc()
@@ -1310,13 +1306,13 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 		m.recvMsgTotal.WithLabelValues("UNDEFINED").Inc()
 	}
 
-	return msg, nil, nil
+	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
 func (m *simplePrometheusMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
-) ([]ServerMsg, error) {
+) (<-chan ServerMsg, error) {
 	switch msg.(type) {
 	case *ServerEOSEMsg:
 		m.sendMsgTotal.WithLabelValues("EOSE").Inc()
@@ -1340,7 +1336,7 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 		m.sendMsgTotal.WithLabelValues("UNDEFINED").Inc()
 	}
 
-	return []ServerMsg{msg}, nil
+	return newClosedBufCh[ServerMsg](msg), nil
 }
 
 type reqCounter struct {
