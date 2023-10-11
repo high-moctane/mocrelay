@@ -134,7 +134,7 @@ func (relay *Relay) serveRead(
 			return fmt.Errorf("failed to read websocket header: %w", err)
 		}
 		if hdr.Length > relay.opt.maxMessageLength() {
-			if err := r.Discard(); err != nil {
+			if _, err := io.Copy(io.Discard, r); err != nil {
 				return fmt.Errorf("failed to discard unread websocket: %w", err)
 			}
 
