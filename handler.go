@@ -826,7 +826,7 @@ func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
 		if res := cmp.Compare(last.Event.CreatedAt, msg.Event.CreatedAt); res < 0 {
 			return false
 		} else if res > 0 {
-			delete(stat.seen[msg.SubscriptionID], last.Event.ID)
+			stat.seen[msg.SubscriptionID] = make(map[string]bool)
 		}
 	}
 	stat.lastEvent[msg.SubscriptionID] = msg
