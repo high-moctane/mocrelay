@@ -818,25 +818,25 @@ func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
 		return true
 	}
 
+	if stat.IsEOSE(msg.SubscriptionID, chIdx) {
+		return false
+	}
+
+	if last := stat.lastEvent[msg.SubscriptionID]; last != nil {
+		if res := cmp.Compare(last.Event.CreatedAt, msg.Event.CreatedAt); res < 0 {
+			return false
+		} else if res > 0 {
+			delete(stat.seen[msg.SubscriptionID], last.Event.ID)
+		}
+	}
+	stat.lastEvent[msg.SubscriptionID] = msg
+
 	if stat.seen[msg.SubscriptionID] == nil || stat.seen[msg.SubscriptionID][msg.Event.ID] {
 		return false
 	}
 	stat.seen[msg.SubscriptionID][msg.Event.ID] = true
 
-	if stat.IsEOSE(msg.SubscriptionID, chIdx) {
-		return false
-	}
-
-	old := stat.lastEvent[msg.SubscriptionID]
-	if old == nil {
-		stat.lastEvent[msg.SubscriptionID] = msg
-		return true
-	}
-	if old.Event.CreatedAt >= msg.Event.CreatedAt {
-		stat.lastEvent[msg.SubscriptionID] = msg
-		return true
-	}
-	return false
+	return true
 }
 
 func (stat *mergeHandlerSessionReqState) ClearSubID(subID string) {
