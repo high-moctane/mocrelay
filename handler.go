@@ -56,29 +56,45 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			errs := make(chan error, 1)
 			smsgChCh := make(chan (<-chan ServerMsg))
+			errs := make(chan error, 1)
 
+			var wg sync.WaitGroup
+
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				defer cancel()
 				defer close(smsgChCh)
 
-				var err error
-				defer func() { errs <- err }()
-
-				for cmsg := range recv {
-					smsgCh, err := h.HandleClientMsg(r, cmsg)
-					if err != nil {
+				for {
+					select {
+					case <-ctx.Done():
+						errs <- ctx.Err()
 						return
+
+					case cmsg, ok := <-recv:
+						if !ok {
+							errs <- ErrRecvClosed
+							return
+						}
+
+						smsgCh, err := h.HandleClientMsg(r, cmsg)
+						if err != nil {
+							errs <- err
+							return
+						}
+						if smsgCh == nil {
+							continue
+						}
+						sendCtx(ctx, smsgChCh, smsgCh)
 					}
-					if smsgCh == nil {
-						continue
-					}
-					sendCtx(ctx, smsgChCh, smsgCh)
 				}
 			}()
 
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				defer cancel()
 
 				for smsgCh := range smsgChCh {
@@ -88,8 +104,14 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 				}
 			}()
 
-			<-ctx.Done()
-			return errors.Join(err, <-errs, ErrRecvClosed)
+			wg.Wait()
+
+			close(errs)
+			for e := range errs {
+				err = errors.Join(err, e)
+			}
+
+			return
 		},
 	)
 }
@@ -910,9 +932,7 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(
 			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
-				errCh := make(chan error, 2)
-
-				defer func() { err = errors.Join(err, <-errCh, <-errCh, m.HandleStop(r)) }()
+				defer func() { err = errors.Join(err, m.HandleStop(r)) }()
 
 				r, err = m.HandleStart(r)
 				if err != nil {
@@ -926,48 +946,57 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 
 				rCh := make(chan ClientMsg)
 				sCh := make(chan ServerMsg)
-				defer close(sCh)
 
+				errs := make(chan error, 3)
+
+				var wg sync.WaitGroup
+
+				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					defer cancel()
-
-					var err error
-					defer func() { errCh <- err }()
-
 					defer close(rCh)
 
-					var cmsgCh <-chan ClientMsg
-					var smsgCh <-chan ServerMsg
-
-					for cmsg := range recv {
-						cmsgCh, smsgCh, err = m.HandleClientMsg(r, cmsg)
-						if err != nil {
+					for {
+						select {
+						case <-ctx.Done():
+							errs <- ctx.Err()
 							return
-						}
-						if cmsgCh != nil {
-							for cmsg := range cmsgCh {
-								sendClientMsgCtx(ctx, rCh, cmsg)
+
+						case cmsg, ok := <-recv:
+							if !ok {
+								errs <- ErrRecvClosed
+								return
 							}
-						}
-						if smsgCh != nil {
-							for smsg := range smsgCh {
-								sendServerMsgCtx(ctx, send, smsg)
+
+							cmsgCh, smsgCh, err := m.HandleClientMsg(r, cmsg)
+							if err != nil {
+								errs <- err
+								return
+							}
+							if cmsgCh != nil {
+								for cmsg := range cmsgCh {
+									sendClientMsgCtx(ctx, rCh, cmsg)
+								}
+							}
+							if smsgCh != nil {
+								for smsg := range smsgCh {
+									sendServerMsgCtx(ctx, send, smsg)
+								}
 							}
 						}
 					}
 				}()
 
+				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					defer cancel()
 
-					var err error
-					defer func() { errCh <- err }()
-
-					var smsgCh <-chan ServerMsg
-
 					for smsg := range sCh {
-						smsgCh, err = m.HandleServerMsg(r, smsg)
+						smsgCh, err := m.HandleServerMsg(r, smsg)
 						if err != nil {
+							errs <- err
 							return
 						}
 						if smsgCh == nil {
@@ -980,7 +1009,21 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 					}
 				}()
 
-				return handler.Handle(r, rCh, sCh)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					defer close(sCh)
+					errs <- handler.Handle(r, rCh, sCh)
+				}()
+
+				wg.Wait()
+
+				close(errs)
+				for e := range errs {
+					err = errors.Join(err, e)
+				}
+
+				return
 			},
 		)
 	}
