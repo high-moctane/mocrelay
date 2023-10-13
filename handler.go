@@ -791,8 +791,18 @@ func (stat *mergeHandlerSessionReqState) SetEOSE(subID string, chIdx int) {
 }
 
 func (stat *mergeHandlerSessionReqState) AllEOSE(subID string) bool {
-	eoses := stat.eose[subID]
-	return len(eoses) == 0 || !slices.Contains(eoses, false)
+	eoses, ok := stat.eose[subID]
+	if !ok {
+		return true
+	}
+
+	res := !slices.Contains(eoses, false)
+	if res {
+		delete(stat.eose, subID)
+		delete(stat.lastEvent, subID)
+		delete(stat.seen, subID)
+	}
+	return res
 }
 
 func (stat *mergeHandlerSessionReqState) IsEOSE(subID string, chIdx int) bool {
@@ -804,14 +814,14 @@ func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
 	chIdx int,
 	msg *ServerEventMsg,
 ) bool {
+	if stat.AllEOSE(msg.SubscriptionID) {
+		return true
+	}
+
 	if stat.seen[msg.SubscriptionID] == nil || stat.seen[msg.SubscriptionID][msg.Event.ID] {
 		return false
 	}
 	stat.seen[msg.SubscriptionID][msg.Event.ID] = true
-
-	if stat.AllEOSE(msg.SubscriptionID) {
-		return true
-	}
 
 	if stat.IsEOSE(msg.SubscriptionID, chIdx) {
 		return false
