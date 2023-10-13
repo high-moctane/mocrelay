@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gobwas/ws"
@@ -78,41 +79,59 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	relay.logInfo(ctx, relay.logger, "mocrelay session start")
 
 	errs := make(chan error, 3)
-	defer func() {
-		err := errors.Join(ErrRelayStop, <-errs, <-errs, <-errs)
-		relay.logInfo(ctx, relay.logger, "mocrelay session end", "err", err)
-	}()
 
 	conn, _, _, err := ws.UpgradeHTTP(r, w)
 	if err != nil {
 		relay.logInfo(ctx, relay.logger, "failed to upgrade http", "err", err)
 		return
 	}
-	defer conn.Close()
 
 	recv := make(chan ClientMsg)
 	send := make(chan ServerMsg)
 
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer cancel()
 		defer close(recv)
 		err := relay.serveRead(ctx, conn, recv, send)
 		errs <- fmt.Errorf("serveRead terminated: %w", err)
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer cancel()
 		err := relay.serveWrite(ctx, conn, send)
 		errs <- fmt.Errorf("serveWrite terminated: %w", err)
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer cancel()
 		err := relay.Handler.Handle(r, recv, send)
 		errs <- fmt.Errorf("handler terminated: %w", err)
 	}()
 
 	<-ctx.Done()
+	conn.Close()
+
+	wg.Wait()
+
+	close(errs)
+	for e := range errs {
+		err = errors.Join(err, e)
+	}
+	err = errors.Join(ErrRelayStop, err)
+
+	if errors.Is(err, io.EOF) {
+		relay.logInfo(ctx, relay.logger, "mocrelay session end")
+	} else {
+		relay.logInfo(ctx, relay.logger, "mocrelay session end with error", "err", err)
+	}
 }
 
 func (relay *Relay) serveRead(
