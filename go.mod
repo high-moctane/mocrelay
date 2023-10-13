@@ -5,6 +5,7 @@ go 1.21.0
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/gobwas/ws v1.3.0
+	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/stretchr/testify v1.8.4

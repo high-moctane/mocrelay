@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,9 +20,15 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 	recv := make(chan ClientMsg, len(in))
 	send := make(chan ServerMsg, len(out)*2)
 
-	go h.Handle(r, recv, send)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer cancel()
+		errCh <- h.Handle(r, recv, send)
+	}()
 
 	for _, msg := range in {
+		time.Sleep(1 * time.Millisecond)
 		recv <- msg
 	}
 
@@ -33,24 +40,14 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 			t.Errorf("unexpect error: %s", err)
 			return
 		}
-		wantjsons = append(wantjsons, string(j))
+		wantjsons = append(wantjsons, string(j)+"\n")
 	}
 
+Loop:
 	for i := 0; i < len(out); i++ {
 		select {
 		case <-ctx.Done():
-			var gotsstr []string
-			for i := 0; i < len(gots); i++ {
-				b, err := gots[i].MarshalJSON()
-				if err != nil {
-					t.Errorf("marshal error: %s", err)
-					return
-				}
-				gotsstr = append(gotsstr, string(b))
-			}
-			t.Errorf("timeout: gots: %#+v", gotsstr)
-			assert.EqualValuesf(t, wantjsons, gotsstr, "timeout")
-			return
+			break Loop
 
 		case got := <-send:
 			gots = append(gots, got)
@@ -63,8 +60,11 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 			t.Errorf("unexpect error: %s", err)
 			return
 		}
-		gotjsons = append(gotjsons, string(j))
+		gotjsons = append(gotjsons, string(j)+"\n")
 	}
+
+	t.Log(gotjsons, "\n\n", wantjsons)
+	t.Log(cmp.Diff(gotjsons, wantjsons))
 
 	slices.Sort(gotjsons)
 	slices.Sort(wantjsons)
@@ -76,6 +76,9 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 		t.Errorf("too much server msg: %#+v", msg)
 	default:
 	}
+
+	cancel()
+	t.Logf("error: %v", <-errCh)
 }
 
 func TestRouterHandler_Handle(t *testing.T) {
