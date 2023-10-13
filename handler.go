@@ -116,55 +116,44 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 	)
 }
 
-var ErrRouterStop = errors.New("router stopped")
+var ErrRouterHandlerStop = errors.New("router handler stopped")
 
-type RouterOption struct {
-	BufLen int
-	// TODO(high-moctane) Add logger
+type RouterHandler struct {
+	buflen int
+	subs   *subscribers
 }
 
-func (opt *RouterOption) bufLen() int {
-	if opt == nil || opt.BufLen == 0 {
-		return 50
+func NewRouterHandler(buflen int) *RouterHandler {
+	if buflen <= 0 {
+		panic(fmt.Sprintf("router handler buflen must be a positive integer but got %d", buflen))
 	}
-	return opt.BufLen
-}
-
-type Router struct {
-	Option *RouterOption
-
-	subs *subscribers
-}
-
-func NewRouter(option *RouterOption) *Router {
-	return &Router{
-		Option: option,
+	return &RouterHandler{
+		buflen: buflen,
 		subs:   newSubscribers(),
 	}
 }
 
-func (router *Router) Handle(
+func (router *RouterHandler) Handle(
 	r *http.Request,
 	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
-) error {
+) (err error) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
 	reqID := GetRequestID(ctx)
 	defer router.subs.UnsubscribeAll(reqID)
 
-	subCh := make(chan ServerMsg, router.Option.bufLen())
+	subCh := make(chan ServerMsg, router.buflen)
 
-Loop:
 	for {
 		select {
 		case <-ctx.Done():
-			break Loop
+			return errors.Join(ErrRouterHandlerStop, ctx.Err())
 
 		case msg, ok := <-recv:
 			if !ok {
-				break Loop
+				return errors.Join(ErrRouterHandlerStop, ErrRecvClosed)
 			}
 			m := router.recv(ctx, reqID, msg, subCh)
 			sendServerMsgCtx(ctx, send, m)
@@ -173,59 +162,34 @@ Loop:
 			sendCtx(ctx, send, msg)
 		}
 	}
-
-	return ErrRouterStop
 }
 
-func (router *Router) recv(
+func (router *RouterHandler) recv(
 	ctx context.Context,
 	reqID string,
 	msg ClientMsg,
 	subCh chan ServerMsg,
 ) ServerMsg {
-	switch m := msg.(type) {
+	switch msg := msg.(type) {
 	case *ClientReqMsg:
-		return router.recvClientReqMsg(ctx, reqID, m, subCh)
+		sub := newSubscriber(reqID, msg, subCh)
+		router.subs.Subscribe(sub)
+		return NewServerEOSEMsg(msg.SubscriptionID)
 
 	case *ClientEventMsg:
-		return router.recvClientEventMsg(ctx, reqID, m, subCh)
+		router.subs.Publish(msg.Event)
+		return NewServerOKMsg(msg.Event.ID, true, ServerOKMsgPrefixNoPrefix, "")
 
 	case *ClientCloseMsg:
-		return router.recvClientCloseMsg(ctx, reqID, m)
+		router.subs.Unsubscribe(reqID, msg.SubscriptionID)
+		return nil
+
+	case *ClientCountMsg:
+		return NewServerCountMsg(msg.SubscriptionID, 0, nil)
 
 	default:
 		return nil
 	}
-}
-
-func (router *Router) recvClientReqMsg(
-	ctx context.Context,
-	reqID string,
-	msg *ClientReqMsg,
-	subCh chan ServerMsg,
-) ServerMsg {
-	sub := newSubscriber(reqID, msg, subCh)
-	router.subs.Subscribe(sub)
-	return NewServerEOSEMsg(msg.SubscriptionID)
-}
-
-func (router *Router) recvClientEventMsg(
-	ctx context.Context,
-	reqID string,
-	msg *ClientEventMsg,
-	subCh chan ServerMsg,
-) ServerMsg {
-	router.subs.Publish(msg.Event)
-	return NewServerOKMsg(msg.Event.ID, true, ServerOKMsgPrefixNoPrefix, "")
-}
-
-func (router *Router) recvClientCloseMsg(
-	ctx context.Context,
-	reqID string,
-	msg *ClientCloseMsg,
-) ServerMsg {
-	router.subs.Unsubscribe(reqID, msg.SubscriptionID)
-	return nil
 }
 
 type subscriber struct {

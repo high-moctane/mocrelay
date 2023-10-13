@@ -78,7 +78,7 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 	}
 }
 
-func TestRouter_Handle(t *testing.T) {
+func TestRouterHandler_Handle(t *testing.T) {
 	tests := []struct {
 		name  string
 		input []ClientMsg
@@ -283,7 +283,7 @@ func TestRouter_Handle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			router := NewRouter(nil)
+			router := NewRouterHandler(100)
 			helperTestHandler(t, router, tt.input, tt.want)
 		})
 	}
@@ -863,7 +863,7 @@ func TestMergeHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h1 := NewRouter(nil)
+			h1 := NewRouterHandler(100)
 			h2 := NewCacheHandler(tt.cap)
 			h := NewMergeHandler(h1, h2)
 			helperTestHandler(t, h, tt.input, tt.want)
@@ -1245,7 +1245,7 @@ func TestRecvEventUniquefyMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var handler Handler
-			handler = NewRouter(nil)
+			handler = NewRouterHandler(100)
 			handler = NewRecvEventUniquefyMiddleware(2)(handler)
 
 			helperTestHandler(t, handler, tt.input, tt.want)
@@ -1627,7 +1627,7 @@ func TestSendEventUniquefyMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var handler Handler
-			handler = NewRouter(nil)
+			handler = NewRouterHandler(100)
 			handler = NewSendEventUniquefyMiddleware(5)(handler)
 
 			helperTestHandler(t, handler, tt.input, tt.want)
