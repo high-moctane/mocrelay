@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/high-moctane/mocrelay"
+	mocprom "github.com/high-moctane/mocrelay/middleware/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -18,7 +19,7 @@ func main() {
 
 	h := mocrelay.NewMergeHandler(mocrelay.NewCacheHandler(100), mocrelay.NewRouterHandler(100))
 	h = mocrelay.NewEventCreatedAtFilterMiddleware(-5*time.Minute, 1*time.Minute)(h)
-	h = mocrelay.NewPrometheusMiddleware(reg)(h)
+	h = mocprom.NewPrometheusMiddleware(reg)(h)
 
 	r := mocrelay.NewRelay(h, &mocrelay.RelayOption{
 		Logger:     slog.Default(),
