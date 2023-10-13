@@ -779,6 +779,7 @@ func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
 
 func (stat *mergeHandlerSessionReqState) SetSubID(subID string) {
 	stat.eose[subID] = make([]bool, stat.size)
+	stat.lastEvent[subID] = nil
 	stat.seen[subID] = make(map[string]bool)
 }
 
