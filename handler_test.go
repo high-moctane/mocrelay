@@ -64,7 +64,7 @@ Loop:
 	}
 
 	t.Log(gotjsons, "\n\n", wantjsons)
-	t.Log(cmp.Diff(gotjsons, wantjsons))
+	t.Log(cmp.Diff(wantjsons, gotjsons))
 
 	slices.Sort(gotjsons)
 	slices.Sort(wantjsons)
@@ -1220,6 +1220,47 @@ func TestMaxEventTagsMiddleware(t *testing.T) {
 			var h Handler
 			h = NewRouterHandler(100)
 			h = NewMaxEventTagsMiddleware(tt.maxEventTags)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}
+
+func TestMaxContentLengthMiddleware(t *testing.T) {
+	tests := []struct {
+		name             string
+		maxContentLength int
+		input            []ClientMsg
+		want             []ServerMsg
+	}{
+		{
+			name:             "test",
+			maxContentLength: 5,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:      "id1",
+						Content: "12345",
+					},
+				},
+				&ClientEventMsg{
+					&Event{
+						ID:      "id2",
+						Content: "123456",
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+				NewServerOKMsg("id2", false, "", "too long content: max content length is 5"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewMaxContentLengthMiddleware(tt.maxContentLength)(h)
 			helperTestHandler(t, h, tt.input, tt.want)
 		})
 	}

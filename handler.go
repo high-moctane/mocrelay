@@ -1372,3 +1372,67 @@ func (m *simpleMaxEventTagsMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
 }
+
+type MaxContentLengthMiddleware Middleware
+
+func NewMaxContentLengthMiddleware(maxContentLength int) MaxContentLengthMiddleware {
+	return MaxContentLengthMiddleware(
+		NewSimpleMiddleware(newSimpleMaxContentLengthMiddleware(maxContentLength)),
+	)
+}
+
+var _ SimpleMiddlewareInterface = (*simpleMaxContentLengthMiddleware)(nil)
+
+type simpleMaxContentLengthMiddleware struct {
+	maxContentLength int
+}
+
+func newSimpleMaxContentLengthMiddleware(
+	maxContentLength int,
+) *simpleMaxContentLengthMiddleware {
+	if maxContentLength < 1 {
+		panic(
+			fmt.Sprintf(
+				"max content length must be a positive integer but got %d",
+				maxContentLength,
+			),
+		)
+	}
+	return &simpleMaxContentLengthMiddleware{maxContentLength: maxContentLength}
+}
+
+func (m *simpleMaxContentLengthMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleMaxContentLengthMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleMaxContentLengthMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		if len(msg.Event.Content) > m.maxContentLength {
+			okMsg := NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				"",
+				fmt.Sprintf("too long content: max content length is %d", m.maxContentLength),
+			)
+			return nil, newClosedBufCh[ServerMsg](okMsg), nil
+		}
+	}
+
+	return newClosedBufCh(msg), nil, nil
+}
+
+func (m *simpleMaxContentLengthMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh(msg), nil
+}
