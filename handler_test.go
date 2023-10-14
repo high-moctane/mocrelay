@@ -875,7 +875,7 @@ func TestMergeHandler(t *testing.T) {
 	}
 }
 
-func TestMaxSubscriptionsFilterMiddleware(t *testing.T) {
+func TestMaxSubscriptionsMiddleware(t *testing.T) {
 	tests := []struct {
 		name    string
 		maxSubs int
@@ -981,13 +981,13 @@ func TestMaxSubscriptionsFilterMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var h Handler
 			h = NewRouterHandler(100)
-			h = NewMaxSubscriptionsFilterMiddleware(tt.maxSubs)(h)
+			h = NewMaxSubscriptionsMiddleware(tt.maxSubs)(h)
 			helperTestHandler(t, h, tt.input, tt.want)
 		})
 	}
 }
 
-func TestMaxReqFiltersFilterMiddleware(t *testing.T) {
+func TestMaxReqFiltersMiddleware(t *testing.T) {
 	tests := []struct {
 		name       string
 		maxFilters int
@@ -1052,13 +1052,13 @@ func TestMaxReqFiltersFilterMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var h Handler
 			h = NewRouterHandler(100)
-			h = NewMaxReqFiltersFilterMiddleware(tt.maxFilters)(h)
+			h = NewMaxReqFiltersMiddleware(tt.maxFilters)(h)
 			helperTestHandler(t, h, tt.input, tt.want)
 		})
 	}
 }
 
-func TestMaxReqFilterLimitFilterMiddleware(t *testing.T) {
+func TestMaxReqFilterLimitMiddleware(t *testing.T) {
 	tests := []struct {
 		name     string
 		maxLimit int
@@ -1123,7 +1123,7 @@ func TestMaxReqFilterLimitFilterMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var h Handler
 			h = NewRouterHandler(100)
-			h = NewMaxReqFilterLimitFilterMiddleware(tt.maxLimit)(h)
+			h = NewMaxReqFilterLimitMiddleware(tt.maxLimit)(h)
 			helperTestHandler(t, h, tt.input, tt.want)
 		})
 	}

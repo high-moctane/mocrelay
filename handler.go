@@ -1001,38 +1001,38 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 	}
 }
 
-type EventCreatedAtFilterMiddleware Middleware
+type EventCreatedAtMiddleware Middleware
 
-func NewEventCreatedAtFilterMiddleware(
+func NewEventCreatedAtMiddleware(
 	from, to time.Duration,
-) EventCreatedAtFilterMiddleware {
-	m := newSimpleEventCreatedAtFilterMiddleware(from, to)
-	return EventCreatedAtFilterMiddleware(NewSimpleMiddleware(m))
+) EventCreatedAtMiddleware {
+	m := newSimpleEventCreatedAtMiddleware(from, to)
+	return EventCreatedAtMiddleware(NewSimpleMiddleware(m))
 }
 
-var _ SimpleMiddlewareInterface = (*simpleEventCreatedAtFilterMiddleware)(nil)
+var _ SimpleMiddlewareInterface = (*simpleEventCreatedAtMiddleware)(nil)
 
-type simpleEventCreatedAtFilterMiddleware struct {
+type simpleEventCreatedAtMiddleware struct {
 	from, to time.Duration
 }
 
-func newSimpleEventCreatedAtFilterMiddleware(
+func newSimpleEventCreatedAtMiddleware(
 	from, to time.Duration,
-) *simpleEventCreatedAtFilterMiddleware {
-	return &simpleEventCreatedAtFilterMiddleware{from: from, to: to}
+) *simpleEventCreatedAtMiddleware {
+	return &simpleEventCreatedAtMiddleware{from: from, to: to}
 }
 
-func (m *simpleEventCreatedAtFilterMiddleware) HandleStart(
+func (m *simpleEventCreatedAtMiddleware) HandleStart(
 	r *http.Request,
 ) (*http.Request, error) {
 	return r, nil
 }
 
-func (m *simpleEventCreatedAtFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleEventCreatedAtMiddleware) HandleStop(r *http.Request) error {
 	return nil
 }
 
-func (m *simpleEventCreatedAtFilterMiddleware) HandleClientMsg(
+func (m *simpleEventCreatedAtMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1052,61 +1052,61 @@ func (m *simpleEventCreatedAtFilterMiddleware) HandleClientMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleEventCreatedAtFilterMiddleware) HandleServerMsg(
+func (m *simpleEventCreatedAtMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
 }
 
-type MaxSubscriptionsFilterMiddleware Middleware
+type MaxSubscriptionsMiddleware Middleware
 
-func NewMaxSubscriptionsFilterMiddleware(maxSubs int) MaxSubscriptionsFilterMiddleware {
-	return MaxSubscriptionsFilterMiddleware(
-		NewSimpleMiddleware(newSimpleMaxSubscriptionsFilterMiddleware(maxSubs)),
+func NewMaxSubscriptionsMiddleware(maxSubs int) MaxSubscriptionsMiddleware {
+	return MaxSubscriptionsMiddleware(
+		NewSimpleMiddleware(newSimpleMaxSubscriptionsMiddleware(maxSubs)),
 	)
 }
 
-type maxSubscriptionsFilterMiddlewareKeyType struct{}
+type maxSubscriptionsMiddlewareKeyType struct{}
 
-var maxSubscriptionsFilterMiddlewareKey = maxSubscriptionsFilterMiddlewareKeyType{}
+var maxSubscriptionsMiddlewareKey = maxSubscriptionsMiddlewareKeyType{}
 
-var _ SimpleMiddlewareInterface = (*simpleMaxSubscriptionsFilterMiddleware)(nil)
+var _ SimpleMiddlewareInterface = (*simpleMaxSubscriptionsMiddleware)(nil)
 
-type simpleMaxSubscriptionsFilterMiddleware struct {
+type simpleMaxSubscriptionsMiddleware struct {
 	maxSubs int
 }
 
-func newSimpleMaxSubscriptionsFilterMiddleware(
+func newSimpleMaxSubscriptionsMiddleware(
 	maxSubs int,
-) *simpleMaxSubscriptionsFilterMiddleware {
+) *simpleMaxSubscriptionsMiddleware {
 	if maxSubs < 1 {
 		panic(fmt.Sprintf("max subscriptions must be a positive integer but got %d", maxSubs))
 	}
-	return &simpleMaxSubscriptionsFilterMiddleware{maxSubs: maxSubs}
+	return &simpleMaxSubscriptionsMiddleware{maxSubs: maxSubs}
 }
 
-func (m *simpleMaxSubscriptionsFilterMiddleware) HandleStart(
+func (m *simpleMaxSubscriptionsMiddleware) HandleStart(
 	r *http.Request,
 ) (*http.Request, error) {
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, maxSubscriptionsFilterMiddlewareKey, make(map[string]bool))
+	ctx = context.WithValue(ctx, maxSubscriptionsMiddlewareKey, make(map[string]bool))
 	r = r.WithContext(ctx)
 
 	return r, nil
 }
 
-func (m *simpleMaxSubscriptionsFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxSubscriptionsMiddleware) HandleStop(r *http.Request) error {
 	return nil
 }
 
-func (m *simpleMaxSubscriptionsFilterMiddleware) HandleClientMsg(
+func (m *simpleMaxSubscriptionsMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *ClientReqMsg:
-		mm := r.Context().Value(maxSubscriptionsFilterMiddlewareKey).(map[string]bool)
+		mm := r.Context().Value(maxSubscriptionsMiddlewareKey).(map[string]bool)
 		mm[msg.SubscriptionID] = true
 		if len(mm) > m.maxSubs {
 			delete(mm, msg.SubscriptionID)
@@ -1115,54 +1115,54 @@ func (m *simpleMaxSubscriptionsFilterMiddleware) HandleClientMsg(
 		}
 
 	case *ClientCloseMsg:
-		mm := r.Context().Value(maxSubscriptionsFilterMiddlewareKey).(map[string]bool)
+		mm := r.Context().Value(maxSubscriptionsMiddlewareKey).(map[string]bool)
 		delete(mm, msg.SubscriptionID)
 	}
 
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxSubscriptionsFilterMiddleware) HandleServerMsg(
+func (m *simpleMaxSubscriptionsMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
 }
 
-type MaxReqFiltersFilterMiddleware Middleware
+type MaxReqFiltersMiddleware Middleware
 
-func NewMaxReqFiltersFilterMiddleware(maxSubs int) MaxReqFiltersFilterMiddleware {
-	return MaxReqFiltersFilterMiddleware(
-		NewSimpleMiddleware(newSimpleMaxReqFiltersFilterMiddleware(maxSubs)),
+func NewMaxReqFiltersMiddleware(maxSubs int) MaxReqFiltersMiddleware {
+	return MaxReqFiltersMiddleware(
+		NewSimpleMiddleware(newSimpleMaxReqFiltersMiddleware(maxSubs)),
 	)
 }
 
-var _ SimpleMiddlewareInterface = (*simpleMaxReqFiltersFilterMiddleware)(nil)
+var _ SimpleMiddlewareInterface = (*simpleMaxReqFiltersMiddleware)(nil)
 
-type simpleMaxReqFiltersFilterMiddleware struct {
+type simpleMaxReqFiltersMiddleware struct {
 	maxFilters int
 }
 
-func newSimpleMaxReqFiltersFilterMiddleware(
+func newSimpleMaxReqFiltersMiddleware(
 	maxFilters int,
-) *simpleMaxReqFiltersFilterMiddleware {
+) *simpleMaxReqFiltersMiddleware {
 	if maxFilters < 1 {
 		panic(fmt.Sprintf("max subscriptions must be a positive integer but got %d", maxFilters))
 	}
-	return &simpleMaxReqFiltersFilterMiddleware{maxFilters: maxFilters}
+	return &simpleMaxReqFiltersMiddleware{maxFilters: maxFilters}
 }
 
-func (m *simpleMaxReqFiltersFilterMiddleware) HandleStart(
+func (m *simpleMaxReqFiltersMiddleware) HandleStart(
 	r *http.Request,
 ) (*http.Request, error) {
 	return r, nil
 }
 
-func (m *simpleMaxReqFiltersFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxReqFiltersMiddleware) HandleStop(r *http.Request) error {
 	return nil
 }
 
-func (m *simpleMaxReqFiltersFilterMiddleware) HandleClientMsg(
+func (m *simpleMaxReqFiltersMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1183,47 +1183,47 @@ func (m *simpleMaxReqFiltersFilterMiddleware) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxReqFiltersFilterMiddleware) HandleServerMsg(
+func (m *simpleMaxReqFiltersMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
 }
 
-type MaxReqFilterLimitFilterMiddleware Middleware
+type MaxReqFilterLimitMiddleware Middleware
 
-func NewMaxReqFilterLimitFilterMiddleware(maxSubs int) MaxReqFilterLimitFilterMiddleware {
-	return MaxReqFilterLimitFilterMiddleware(
-		NewSimpleMiddleware(newSimpleMaxReqFilterLimitFilterMiddleware(maxSubs)),
+func NewMaxReqFilterLimitMiddleware(maxSubs int) MaxReqFilterLimitMiddleware {
+	return MaxReqFilterLimitMiddleware(
+		NewSimpleMiddleware(newSimpleMaxReqFilterLimitMiddleware(maxSubs)),
 	)
 }
 
-var _ SimpleMiddlewareInterface = (*simpleMaxReqFilterLimitFilterMiddleware)(nil)
+var _ SimpleMiddlewareInterface = (*simpleMaxReqFilterLimitMiddleware)(nil)
 
-type simpleMaxReqFilterLimitFilterMiddleware struct {
+type simpleMaxReqFilterLimitMiddleware struct {
 	maxLimit int
 }
 
-func newSimpleMaxReqFilterLimitFilterMiddleware(
+func newSimpleMaxReqFilterLimitMiddleware(
 	maxLimit int,
-) *simpleMaxReqFilterLimitFilterMiddleware {
+) *simpleMaxReqFilterLimitMiddleware {
 	if maxLimit < 1 {
 		panic(fmt.Sprintf("max limit must be a positive integer but got %d", maxLimit))
 	}
-	return &simpleMaxReqFilterLimitFilterMiddleware{maxLimit: maxLimit}
+	return &simpleMaxReqFilterLimitMiddleware{maxLimit: maxLimit}
 }
 
-func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleStart(
+func (m *simpleMaxReqFilterLimitMiddleware) HandleStart(
 	r *http.Request,
 ) (*http.Request, error) {
 	return r, nil
 }
 
-func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxReqFilterLimitMiddleware) HandleStop(r *http.Request) error {
 	return nil
 }
 
-func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleClientMsg(
+func (m *simpleMaxReqFilterLimitMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1246,7 +1246,7 @@ func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleServerMsg(
+func (m *simpleMaxReqFilterLimitMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {

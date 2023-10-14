@@ -24,7 +24,7 @@ func main() {
 	reg := prometheus.NewRegistry()
 
 	h := mocrelay.NewMergeHandler(mocrelay.NewCacheHandler(100), mocrelay.NewRouterHandler(100))
-	h = mocrelay.NewEventCreatedAtFilterMiddleware(-5*time.Minute, 1*time.Minute)(h)
+	h = mocrelay.NewEventCreatedAtMiddleware(-5*time.Minute, 1*time.Minute)(h)
 	h = mocprom.NewPrometheusMiddleware(reg)(h)
 
 	r := mocrelay.NewRelay(h, &mocrelay.RelayOption{
