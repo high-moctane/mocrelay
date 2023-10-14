@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -27,14 +28,32 @@ func main() {
 	h = mocrelay.NewEventCreatedAtMiddleware(-5*time.Minute, 1*time.Minute)(h)
 	h = mocprom.NewPrometheusMiddleware(reg)(h)
 
-	r := mocrelay.NewRelay(h, &mocrelay.RelayOption{
+	relay := mocrelay.NewRelay(h, &mocrelay.RelayOption{
 		Logger:     slog.Default(),
 		RecvLogger: slog.Default(),
 		SendLogger: slog.Default(),
 	})
 
+	nip11 := &mocrelay.NIP11{
+		Name:        "mocrelay",
+		Description: "moctane's nostr relay",
+		Software:    "https://github.com/high-moctane/mocrelay",
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/", r)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") != "" {
+			relay.ServeHTTP(w, r)
+			return
+		}
+
+		if r.Header.Get("Accept") == "application/nostr+json" {
+			nip11.ServeHTTP(w, r)
+			return
+		}
+
+		io.WriteString(w, "Hello Mocrelay (｀･ω･´)！")
+	})
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
 
 	srv := &http.Server{
@@ -50,7 +69,7 @@ func main() {
 		defer cancel()
 
 		go func() {
-			r.Wait()
+			relay.Wait()
 			cancel()
 		}()
 
