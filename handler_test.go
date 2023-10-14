@@ -971,7 +971,7 @@ func TestMaxSubscriptionsFilterMiddleware(t *testing.T) {
 				NewServerEOSEMsg("sub1"),
 				NewServerEOSEMsg("sub2"),
 				NewServerEOSEMsg("sub3"),
-				NewServerNoticeMsg("too many req: max subscriptions is 3"),
+				NewServerNoticeMsg("sub4: too many req: max subscriptions is 3"),
 				NewServerEOSEMsg("sub5"),
 			},
 		},
@@ -1001,7 +1001,7 @@ func TestMaxReqFiltersFilterMiddleware(t *testing.T) {
 			want:       nil,
 		},
 		{
-			name:       "less",
+			name:       "req",
 			maxFilters: 2,
 			input: []ClientMsg{
 				&ClientReqMsg{
@@ -1016,6 +1016,17 @@ func TestMaxReqFiltersFilterMiddleware(t *testing.T) {
 					SubscriptionID: "req3",
 					ReqFilters:     []*ReqFilter{{}, {}, {}},
 				},
+			},
+			want: []ServerMsg{
+				NewServerEOSEMsg("req1"),
+				NewServerEOSEMsg("req2"),
+				NewServerNoticeMsg("req3: too many req filters: max filters is 2"),
+			},
+		},
+		{
+			name:       "count",
+			maxFilters: 2,
+			input: []ClientMsg{
 				&ClientCountMsg{
 					SubscriptionID: "count1",
 					ReqFilters:     []*ReqFilter{{}},
@@ -1030,12 +1041,9 @@ func TestMaxReqFiltersFilterMiddleware(t *testing.T) {
 				},
 			},
 			want: []ServerMsg{
-				NewServerEOSEMsg("req1"),
-				NewServerEOSEMsg("req2"),
-				NewServerNoticeMsg("too many req filters: max filters is 2"),
 				NewServerCountMsg("count1", 0, nil),
 				NewServerCountMsg("count2", 0, nil),
-				NewServerNoticeMsg("too many count filters: max filters is 2"),
+				NewServerNoticeMsg("count3: too many count filters: max filters is 2"),
 			},
 		},
 	}

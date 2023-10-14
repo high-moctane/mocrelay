@@ -1110,14 +1110,13 @@ func (m *simpleMaxSubscriptionsFilterMiddleware) HandleClientMsg(
 		mm[msg.SubscriptionID] = true
 		if len(mm) > m.maxSubs {
 			delete(mm, msg.SubscriptionID)
-			notice := NewServerNoticeMsg(fmt.Sprintf("too many req: max subscriptions is %d", m.maxSubs))
+			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too many req: max subscriptions is %d", msg.SubscriptionID, m.maxSubs))
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 
 	case *ClientCloseMsg:
 		mm := r.Context().Value(maxSubscriptionsFilterMiddlewareKey).(map[string]bool)
 		delete(mm, msg.SubscriptionID)
-
 	}
 
 	return newClosedBufCh(msg), nil, nil
@@ -1170,13 +1169,13 @@ func (m *simpleMaxReqFiltersFilterMiddleware) HandleClientMsg(
 	switch msg := msg.(type) {
 	case *ClientReqMsg:
 		if len(msg.ReqFilters) > m.maxFilters {
-			notice := NewServerNoticeMsg(fmt.Sprintf("too many req filters: max filters is %d", m.maxFilters))
+			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too many req filters: max filters is %d", msg.SubscriptionID, m.maxFilters))
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 
 	case *ClientCountMsg:
 		if len(msg.ReqFilters) > m.maxFilters {
-			notice := NewServerNoticeMsg(fmt.Sprintf("too many count filters: max filters is %d", m.maxFilters))
+			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too many count filters: max filters is %d", msg.SubscriptionID, m.maxFilters))
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 	}
