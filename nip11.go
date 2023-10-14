@@ -55,8 +55,6 @@ func (nip11 *NIP11) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("Access-Control-Allow-Origin", "*")
-
 	nip11json, err := json.Marshal(nip11)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
