@@ -1001,6 +1001,38 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 	}
 }
 
+func BuildMiddlewareFromNIP11(nip11 *NIP11) Middleware {
+	if nip11 == nil {
+		return nil
+	}
+
+	return func(h Handler) Handler {
+		if v := nip11.Limitation.MaxSubscriptions; v != 0 {
+			h = NewMaxSubscriptionsMiddleware(v)(h)
+		}
+		if v := nip11.Limitation.MaxFilters; v != 0 {
+			h = NewMaxReqFiltersMiddleware(v)(h)
+		}
+		if v := nip11.Limitation.MaxLimit; v != 0 {
+			h = NewMaxLimitMiddleware(v)(h)
+		}
+		if v := nip11.Limitation.MaxEventTags; v != 0 {
+			h = NewMaxEventTagsMiddleware(v)(h)
+		}
+		if v := nip11.Limitation.MaxContentLength; v != 0 {
+			h = NewMaxContentLengthMiddleware(v)(h)
+		}
+		if v := nip11.Limitation.CreatedAtLowerLimit; v != 0 {
+			h = NewCreatedAtLowerLimitMiddleware(v)(h)
+		}
+		if v := nip11.Limitation.CreatedAtUpperLimit; v != 0 {
+			h = NewCreatedAtUpperLimitMiddleware(v)(h)
+		}
+
+		return h
+	}
+}
+
 type EventCreatedAtMiddleware Middleware
 
 func NewEventCreatedAtMiddleware(
