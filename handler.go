@@ -1436,3 +1436,109 @@ func (m *simpleMaxContentLengthMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
 }
+
+type CreatedAtLowerLimitMiddleware Middleware
+
+func NewCreatedAtLowerLimitMiddleware(lower int64) CreatedAtLowerLimitMiddleware {
+	m := newSimpleCreatedAtLowerLimitMiddleware(lower)
+	return CreatedAtLowerLimitMiddleware(NewSimpleMiddleware(m))
+}
+
+var _ SimpleMiddlewareInterface = (*simpleCreatedAtLowerLimitMiddleware)(nil)
+
+type simpleCreatedAtLowerLimitMiddleware struct {
+	lower int64
+}
+
+func newSimpleCreatedAtLowerLimitMiddleware(lower int64) *simpleCreatedAtLowerLimitMiddleware {
+	return &simpleCreatedAtLowerLimitMiddleware{lower: lower}
+}
+
+func (m *simpleCreatedAtLowerLimitMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleCreatedAtLowerLimitMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleCreatedAtLowerLimitMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		if time.Since(msg.Event.CreatedAtTime()) > time.Duration(m.lower)*time.Second {
+			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOKMsgPrefixNoPrefix,
+				"too old created_at",
+			))
+			return nil, smsgCh, nil
+		}
+	}
+
+	return newClosedBufCh[ClientMsg](msg), nil, nil
+}
+
+func (m *simpleCreatedAtLowerLimitMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh[ServerMsg](msg), nil
+}
+
+type CreatedAtUpperLimitMiddleware Middleware
+
+func NewCreatedAtUpperLimitMiddleware(upper int64) CreatedAtUpperLimitMiddleware {
+	m := newSimpleCreatedAtUpperLimitMiddleware(upper)
+	return CreatedAtUpperLimitMiddleware(NewSimpleMiddleware(m))
+}
+
+var _ SimpleMiddlewareInterface = (*simpleCreatedAtUpperLimitMiddleware)(nil)
+
+type simpleCreatedAtUpperLimitMiddleware struct {
+	upper int64
+}
+
+func newSimpleCreatedAtUpperLimitMiddleware(upper int64) *simpleCreatedAtUpperLimitMiddleware {
+	return &simpleCreatedAtUpperLimitMiddleware{upper: upper}
+}
+
+func (m *simpleCreatedAtUpperLimitMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleCreatedAtUpperLimitMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleCreatedAtUpperLimitMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		if time.Until(msg.Event.CreatedAtTime()) > time.Duration(m.upper)*time.Second {
+			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOKMsgPrefixNoPrefix,
+				"too far off created_at",
+			))
+			return nil, smsgCh, nil
+		}
+	}
+
+	return newClosedBufCh[ClientMsg](msg), nil, nil
+}
+
+func (m *simpleCreatedAtUpperLimitMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh[ServerMsg](msg), nil
+}

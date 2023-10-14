@@ -1265,3 +1265,131 @@ func TestMaxContentLengthMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestCreatedAtLowerLimitMiddleware(t *testing.T) {
+	tests := []struct {
+		name  string
+		lower int64
+		input []ClientMsg
+		want  []ServerMsg
+	}{
+		{
+			name:  "ok: past",
+			lower: 10,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:        "id1",
+						CreatedAt: time.Now().Unix() - 9,
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+			},
+		},
+		{
+			name:  "ok: future",
+			lower: 10,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:        "id1",
+						CreatedAt: time.Now().Unix() + 9,
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+			},
+		},
+		{
+			name:  "ng",
+			lower: 10,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:        "id1",
+						CreatedAt: time.Now().Unix() - 11,
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", false, "", "too old created_at"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewCreatedAtLowerLimitMiddleware(tt.lower)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}
+
+func TestCreatedAtUpperLimitMiddleware(t *testing.T) {
+	tests := []struct {
+		name  string
+		upper int64
+		input []ClientMsg
+		want  []ServerMsg
+	}{
+		{
+			name:  "ok: past",
+			upper: 10,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:        "id1",
+						CreatedAt: time.Now().Unix() - 9,
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+			},
+		},
+		{
+			name:  "ok: future",
+			upper: 10,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:        "id1",
+						CreatedAt: time.Now().Unix() + 9,
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+			},
+		},
+		{
+			name:  "ng",
+			upper: 10,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:        "id1",
+						CreatedAt: time.Now().Unix() + 11,
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", false, "", "too far off created_at"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewCreatedAtUpperLimitMiddleware(tt.upper)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}
