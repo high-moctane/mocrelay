@@ -1131,9 +1131,9 @@ func (m *simpleMaxSubscriptionsMiddleware) HandleServerMsg(
 
 type MaxReqFiltersMiddleware Middleware
 
-func NewMaxReqFiltersMiddleware(maxSubs int) MaxReqFiltersMiddleware {
+func NewMaxReqFiltersMiddleware(maxFilters int) MaxReqFiltersMiddleware {
 	return MaxReqFiltersMiddleware(
-		NewSimpleMiddleware(newSimpleMaxReqFiltersMiddleware(maxSubs)),
+		NewSimpleMiddleware(newSimpleMaxReqFiltersMiddleware(maxFilters)),
 	)
 }
 
@@ -1190,40 +1190,40 @@ func (m *simpleMaxReqFiltersMiddleware) HandleServerMsg(
 	return newClosedBufCh(msg), nil
 }
 
-type MaxReqFilterLimitMiddleware Middleware
+type MaxLimitMiddleware Middleware
 
-func NewMaxReqFilterLimitMiddleware(maxSubs int) MaxReqFilterLimitMiddleware {
-	return MaxReqFilterLimitMiddleware(
-		NewSimpleMiddleware(newSimpleMaxReqFilterLimitMiddleware(maxSubs)),
+func NewMaxLimitMiddleware(maxLimit int) MaxLimitMiddleware {
+	return MaxLimitMiddleware(
+		NewSimpleMiddleware(newSimpleMaxLimitMiddleware(maxLimit)),
 	)
 }
 
-var _ SimpleMiddlewareInterface = (*simpleMaxReqFilterLimitMiddleware)(nil)
+var _ SimpleMiddlewareInterface = (*simpleMaxLimitMiddleware)(nil)
 
-type simpleMaxReqFilterLimitMiddleware struct {
+type simpleMaxLimitMiddleware struct {
 	maxLimit int
 }
 
-func newSimpleMaxReqFilterLimitMiddleware(
+func newSimpleMaxLimitMiddleware(
 	maxLimit int,
-) *simpleMaxReqFilterLimitMiddleware {
+) *simpleMaxLimitMiddleware {
 	if maxLimit < 1 {
 		panic(fmt.Sprintf("max limit must be a positive integer but got %d", maxLimit))
 	}
-	return &simpleMaxReqFilterLimitMiddleware{maxLimit: maxLimit}
+	return &simpleMaxLimitMiddleware{maxLimit: maxLimit}
 }
 
-func (m *simpleMaxReqFilterLimitMiddleware) HandleStart(
+func (m *simpleMaxLimitMiddleware) HandleStart(
 	r *http.Request,
 ) (*http.Request, error) {
 	return r, nil
 }
 
-func (m *simpleMaxReqFilterLimitMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxLimitMiddleware) HandleStop(r *http.Request) error {
 	return nil
 }
 
-func (m *simpleMaxReqFilterLimitMiddleware) HandleClientMsg(
+func (m *simpleMaxLimitMiddleware) HandleClientMsg(
 	r *http.Request,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1246,7 +1246,68 @@ func (m *simpleMaxReqFilterLimitMiddleware) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxReqFilterLimitMiddleware) HandleServerMsg(
+func (m *simpleMaxLimitMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh(msg), nil
+}
+
+type MaxSubIDLengthMiddleware Middleware
+
+func NewMaxSubIDLengthMiddleware(maxSubIDLength int) MaxSubIDLengthMiddleware {
+	return MaxSubIDLengthMiddleware(
+		NewSimpleMiddleware(newSimpleMaxSubIDLengthMiddleware(maxSubIDLength)),
+	)
+}
+
+var _ SimpleMiddlewareInterface = (*simpleMaxSubIDLengthMiddleware)(nil)
+
+type simpleMaxSubIDLengthMiddleware struct {
+	maxSubIDLength int
+}
+
+func newSimpleMaxSubIDLengthMiddleware(
+	maxSubIDLength int,
+) *simpleMaxSubIDLengthMiddleware {
+	if maxSubIDLength < 1 {
+		panic(fmt.Sprintf("max subid length must be a positive integer but got %d", maxSubIDLength))
+	}
+	return &simpleMaxSubIDLengthMiddleware{maxSubIDLength: maxSubIDLength}
+}
+
+func (m *simpleMaxSubIDLengthMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleMaxSubIDLengthMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleMaxSubIDLengthMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientReqMsg:
+		if len(msg.SubscriptionID) > m.maxSubIDLength {
+			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too long subid: max subid length is %d", msg.SubscriptionID, m.maxSubIDLength))
+			return nil, newClosedBufCh[ServerMsg](notice), nil
+		}
+
+	case *ClientCountMsg:
+		if len(msg.SubscriptionID) > m.maxSubIDLength {
+			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too long subid: max subid length is %d", msg.SubscriptionID, m.maxSubIDLength))
+			return nil, newClosedBufCh[ServerMsg](notice), nil
+		}
+	}
+
+	return newClosedBufCh(msg), nil, nil
+}
+
+func (m *simpleMaxSubIDLengthMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {

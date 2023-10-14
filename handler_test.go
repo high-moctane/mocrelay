@@ -1058,7 +1058,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 	}
 }
 
-func TestMaxReqFilterLimitMiddleware(t *testing.T) {
+func TestMaxLimitMiddleware(t *testing.T) {
 	tests := []struct {
 		name     string
 		maxLimit int
@@ -1123,7 +1123,62 @@ func TestMaxReqFilterLimitMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var h Handler
 			h = NewRouterHandler(100)
-			h = NewMaxReqFilterLimitMiddleware(tt.maxLimit)(h)
+			h = NewMaxLimitMiddleware(tt.maxLimit)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}
+
+func TestMaxSubIDLengthMiddleware(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxLimit int
+		input    []ClientMsg
+		want     []ServerMsg
+	}{
+		{
+			name:     "req",
+			maxLimit: 5,
+			input: []ClientMsg{
+				&ClientReqMsg{
+					SubscriptionID: "12345",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "123456",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+			},
+			want: []ServerMsg{
+				NewServerEOSEMsg("12345"),
+				NewServerNoticeMsg("123456: too long subid: max subid length is 5"),
+			},
+		},
+		{
+			name:     "count",
+			maxLimit: 4,
+			input: []ClientMsg{
+				&ClientCountMsg{
+					SubscriptionID: "1234",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCountMsg{
+					SubscriptionID: "12345",
+					ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+				},
+			},
+			want: []ServerMsg{
+				NewServerCountMsg("1234", 0, nil),
+				NewServerNoticeMsg("12345: too long subid: max subid length is 4"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewMaxSubIDLengthMiddleware(tt.maxLimit)(h)
 			helperTestHandler(t, h, tt.input, tt.want)
 		})
 	}
