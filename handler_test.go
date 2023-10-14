@@ -986,3 +986,66 @@ func TestMaxSubscriptionsFilterMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestMaxReqFiltersFilterMiddleware(t *testing.T) {
+	tests := []struct {
+		name       string
+		maxFilters int
+		input      []ClientMsg
+		want       []ServerMsg
+	}{
+		{
+			name:       "empty",
+			maxFilters: 2,
+			input:      nil,
+			want:       nil,
+		},
+		{
+			name:       "less",
+			maxFilters: 2,
+			input: []ClientMsg{
+				&ClientReqMsg{
+					SubscriptionID: "req1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "req2",
+					ReqFilters:     []*ReqFilter{{}, {}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "req3",
+					ReqFilters:     []*ReqFilter{{}, {}, {}},
+				},
+				&ClientCountMsg{
+					SubscriptionID: "count1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCountMsg{
+					SubscriptionID: "count2",
+					ReqFilters:     []*ReqFilter{{}, {}},
+				},
+				&ClientCountMsg{
+					SubscriptionID: "count3",
+					ReqFilters:     []*ReqFilter{{}, {}, {}},
+				},
+			},
+			want: []ServerMsg{
+				NewServerEOSEMsg("req1"),
+				NewServerEOSEMsg("req2"),
+				NewServerNoticeMsg("too many req filters: max filters is 2"),
+				NewServerCountMsg("count1", 0, nil),
+				NewServerCountMsg("count2", 0, nil),
+				NewServerNoticeMsg("too many count filters: max filters is 2"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewMaxReqFiltersFilterMiddleware(tt.maxFilters)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}

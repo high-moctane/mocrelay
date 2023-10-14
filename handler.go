@@ -1129,3 +1129,64 @@ func (m *simpleMaxSubscriptionsFilterMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
 }
+
+type MaxReqFiltersFilterMiddleware Middleware
+
+func NewMaxReqFiltersFilterMiddleware(maxSubs int) MaxReqFiltersFilterMiddleware {
+	return MaxReqFiltersFilterMiddleware(
+		NewSimpleMiddleware(newSimpleMaxReqFiltersFilterMiddleware(maxSubs)),
+	)
+}
+
+var _ SimpleMiddlewareInterface = (*simpleMaxReqFiltersFilterMiddleware)(nil)
+
+type simpleMaxReqFiltersFilterMiddleware struct {
+	maxFilters int
+}
+
+func newSimpleMaxReqFiltersFilterMiddleware(
+	maxFilters int,
+) *simpleMaxReqFiltersFilterMiddleware {
+	if maxFilters < 1 {
+		panic(fmt.Sprintf("max subscriptions must be a positive integer but got %d", maxFilters))
+	}
+	return &simpleMaxReqFiltersFilterMiddleware{maxFilters: maxFilters}
+}
+
+func (m *simpleMaxReqFiltersFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleMaxReqFiltersFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleMaxReqFiltersFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientReqMsg:
+		if len(msg.ReqFilters) > m.maxFilters {
+			notice := NewServerNoticeMsg(fmt.Sprintf("too many req filters: max filters is %d", m.maxFilters))
+			return nil, newClosedBufCh[ServerMsg](notice), nil
+		}
+
+	case *ClientCountMsg:
+		if len(msg.ReqFilters) > m.maxFilters {
+			notice := NewServerNoticeMsg(fmt.Sprintf("too many count filters: max filters is %d", m.maxFilters))
+			return nil, newClosedBufCh[ServerMsg](notice), nil
+		}
+	}
+
+	return newClosedBufCh(msg), nil, nil
+}
+
+func (m *simpleMaxReqFiltersFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh(msg), nil
+}
