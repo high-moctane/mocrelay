@@ -11,7 +11,7 @@ type NIP11 struct {
 	Description   string           `json:"description,omitempty"`
 	Pubkey        string           `json:"pubkey,omitempty"`
 	Contact       string           `json:"contact,omitempty"`
-	SupportedNIPs []string         `json:"supported_nips,omitempty"`
+	SupportedNIPs []int            `json:"supported_nips,omitempty"`
 	Software      string           `json:"software,omitempty"`
 	Version       string           `json:"version,omitempty"`
 	Limitation    *NIP11Limitation `json:"limitation,omitempty"`
