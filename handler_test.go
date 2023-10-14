@@ -874,3 +874,115 @@ func TestMergeHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestMaxSubscriptionsFilterMiddleware(t *testing.T) {
+	tests := []struct {
+		name    string
+		maxSubs int
+		input   []ClientMsg
+		want    []ServerMsg
+	}{
+		{
+			name:    "empty",
+			maxSubs: 2,
+			input:   nil,
+			want:    nil,
+		},
+		{
+			name:    "less",
+			maxSubs: 3,
+			input: []ClientMsg{
+				&ClientReqMsg{
+					SubscriptionID: "sub1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCloseMsg{
+					SubscriptionID: "sub1",
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub2",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCloseMsg{
+					SubscriptionID: "sub1",
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub3",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCloseMsg{
+					SubscriptionID: "sub2",
+				},
+				&ClientCloseMsg{
+					SubscriptionID: "sub3",
+				},
+			},
+			want: []ServerMsg{
+				NewServerEOSEMsg("sub1"),
+				NewServerEOSEMsg("sub1"),
+				NewServerEOSEMsg("sub2"),
+				NewServerEOSEMsg("sub3"),
+			},
+		},
+		{
+			name:    "more",
+			maxSubs: 3,
+			input: []ClientMsg{
+				&ClientReqMsg{
+					SubscriptionID: "sub1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCloseMsg{
+					SubscriptionID: "sub1",
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub2",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub3",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub4",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCloseMsg{
+					SubscriptionID: "sub2",
+				},
+				&ClientCloseMsg{
+					SubscriptionID: "sub3",
+				},
+				&ClientReqMsg{
+					SubscriptionID: "sub5",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+			},
+			want: []ServerMsg{
+				NewServerEOSEMsg("sub1"),
+				NewServerEOSEMsg("sub1"),
+				NewServerEOSEMsg("sub2"),
+				NewServerEOSEMsg("sub3"),
+				NewServerNoticeMsg("too many req: max subscriptions is 3"),
+				NewServerEOSEMsg("sub5"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewMaxSubscriptionsFilterMiddleware(tt.maxSubs)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}

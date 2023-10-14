@@ -1058,3 +1058,74 @@ func (m *simpleEventCreatedAtFilterMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
 }
+
+type MaxSubscriptionsFilterMiddleware Middleware
+
+func NewMaxSubscriptionsFilterMiddleware(maxSubs int) MaxSubscriptionsFilterMiddleware {
+	return MaxSubscriptionsFilterMiddleware(
+		NewSimpleMiddleware(newSimpleMaxSubscriptionsFilterMiddleware(maxSubs)),
+	)
+}
+
+type maxSubscriptionsFilterMiddlewareKeyType struct{}
+
+var maxSubscriptionsFilterMiddlewareKey = maxSubscriptionsFilterMiddlewareKeyType{}
+
+var _ SimpleMiddlewareInterface = (*simpleMaxSubscriptionsFilterMiddleware)(nil)
+
+type simpleMaxSubscriptionsFilterMiddleware struct {
+	maxSubs int
+}
+
+func newSimpleMaxSubscriptionsFilterMiddleware(
+	maxSubs int,
+) *simpleMaxSubscriptionsFilterMiddleware {
+	if maxSubs < 1 {
+		panic(fmt.Sprintf("max subscriptions must be a positive integer but got %d", maxSubs))
+	}
+	return &simpleMaxSubscriptionsFilterMiddleware{maxSubs: maxSubs}
+}
+
+func (m *simpleMaxSubscriptionsFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, maxSubscriptionsFilterMiddlewareKey, make(map[string]bool))
+	r = r.WithContext(ctx)
+
+	return r, nil
+}
+
+func (m *simpleMaxSubscriptionsFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleMaxSubscriptionsFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientReqMsg:
+		mm := r.Context().Value(maxSubscriptionsFilterMiddlewareKey).(map[string]bool)
+		mm[msg.SubscriptionID] = true
+		if len(mm) > m.maxSubs {
+			delete(mm, msg.SubscriptionID)
+			notice := NewServerNoticeMsg(fmt.Sprintf("too many req: max subscriptions is %d", m.maxSubs))
+			return nil, newClosedBufCh[ServerMsg](notice), nil
+		}
+
+	case *ClientCloseMsg:
+		mm := r.Context().Value(maxSubscriptionsFilterMiddlewareKey).(map[string]bool)
+		delete(mm, msg.SubscriptionID)
+
+	}
+
+	return newClosedBufCh(msg), nil, nil
+}
+
+func (m *simpleMaxSubscriptionsFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh(msg), nil
+}
