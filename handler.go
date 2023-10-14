@@ -1313,3 +1313,62 @@ func (m *simpleMaxSubIDLengthMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
 }
+
+type MaxEventTagsMiddleware Middleware
+
+func NewMaxEventTagsMiddleware(maxEventTags int) MaxEventTagsMiddleware {
+	return MaxEventTagsMiddleware(
+		NewSimpleMiddleware(newSimpleMaxEventTagsMiddleware(maxEventTags)),
+	)
+}
+
+var _ SimpleMiddlewareInterface = (*simpleMaxEventTagsMiddleware)(nil)
+
+type simpleMaxEventTagsMiddleware struct {
+	maxEventTags int
+}
+
+func newSimpleMaxEventTagsMiddleware(
+	maxEventTags int,
+) *simpleMaxEventTagsMiddleware {
+	if maxEventTags < 1 {
+		panic(fmt.Sprintf("max event tags must be a positive integer but got %d", maxEventTags))
+	}
+	return &simpleMaxEventTagsMiddleware{maxEventTags: maxEventTags}
+}
+
+func (m *simpleMaxEventTagsMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleMaxEventTagsMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleMaxEventTagsMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		if len(msg.Event.Tags) > m.maxEventTags {
+			okMsg := NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				"",
+				fmt.Sprintf("too many event tags: max event tags is %d", m.maxEventTags),
+			)
+			return nil, newClosedBufCh[ServerMsg](okMsg), nil
+		}
+	}
+
+	return newClosedBufCh(msg), nil, nil
+}
+
+func (m *simpleMaxEventTagsMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh(msg), nil
+}

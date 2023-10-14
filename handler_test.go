@@ -1183,3 +1183,44 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestMaxEventTagsMiddleware(t *testing.T) {
+	tests := []struct {
+		name         string
+		maxEventTags int
+		input        []ClientMsg
+		want         []ServerMsg
+	}{
+		{
+			name:         "test",
+			maxEventTags: 3,
+			input: []ClientMsg{
+				&ClientEventMsg{
+					&Event{
+						ID:   "id1",
+						Tags: []Tag{{"e", "powa"}, {"e", "powa"}, {"e", "powa"}},
+					},
+				},
+				&ClientEventMsg{
+					&Event{
+						ID:   "id2",
+						Tags: []Tag{{"e", "powa"}, {"e", "powa"}, {"e", "powa"}, {"e", "powa"}},
+					},
+				},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+				NewServerOKMsg("id2", false, "", "too many event tags: max event tags is 3"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewMaxEventTagsMiddleware(tt.maxEventTags)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}
