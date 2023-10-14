@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/high-moctane/mocrelay"
@@ -14,6 +17,9 @@ import (
 
 func main() {
 	ctx := context.Background()
+
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGTERM)
+	defer cancel()
 
 	reg := prometheus.NewRegistry()
 
@@ -27,8 +33,31 @@ func main() {
 		SendLogger: slog.Default(),
 	})
 
-	http.Handle("/", r)
-	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
+	mux := http.NewServeMux()
+	mux.Handle("/", r)
+	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
 
-	slog.ErrorContext(ctx, "mocrelay terminated", http.ListenAndServe("localhost:8234", nil))
+	srv := &http.Server{
+		Addr:        "localhost:8234",
+		Handler:     mux,
+		BaseContext: func(_ net.Listener) context.Context { return ctx },
+	}
+
+	go func() {
+		<-ctx.Done()
+
+		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() {
+			r.Wait()
+			cancel()
+		}()
+
+		<-c.Done()
+		srv.Shutdown(c)
+	}()
+
+	err := srv.ListenAndServe()
+	slog.ErrorContext(ctx, "mocrelay terminated", "err", err)
 }

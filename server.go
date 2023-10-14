@@ -25,6 +25,8 @@ type Relay struct {
 
 	opt *RelayOption
 
+	wg sync.WaitGroup
+
 	logger     *slog.Logger
 	recvLogger *slog.Logger
 	sendLogger *slog.Logger
@@ -68,7 +70,12 @@ func NewRelay(handler Handler, option *RelayOption) *Relay {
 	return relay
 }
 
+func (relay *Relay) Wait() { relay.wg.Wait() }
+
 func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	relay.wg.Add(1)
+	defer relay.wg.Done()
+
 	ctx := r.Context()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -117,6 +124,8 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	<-ctx.Done()
+
+	conn.Write(ws.CompiledClose)
 	conn.Close()
 
 	wg.Wait()
