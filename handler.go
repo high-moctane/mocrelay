@@ -252,7 +252,7 @@ func (subs *subscribers) Subscribe(sub *subscriber) {
 
 func (subs *subscribers) Unsubscribe(reqID, subID string) {
 	m := <-subs.subs
-	mch, ok := m[subID]
+	mch, ok := m[reqID]
 	subs.subs <- m
 	if !ok {
 		return
