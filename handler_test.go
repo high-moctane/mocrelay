@@ -1057,3 +1057,74 @@ func TestMaxReqFiltersFilterMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestMaxReqFilterLimitFilterMiddleware(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxLimit int
+		input    []ClientMsg
+		want     []ServerMsg
+	}{
+		{
+			name:     "empty",
+			maxLimit: 2,
+			input:    nil,
+			want:     nil,
+		},
+		{
+			name:     "req",
+			maxLimit: 2,
+			input: []ClientMsg{
+				&ClientReqMsg{
+					SubscriptionID: "req1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "req2",
+					ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+				},
+				&ClientReqMsg{
+					SubscriptionID: "req3",
+					ReqFilters:     []*ReqFilter{{}, {}, {Limit: toPtr(int64(3))}},
+				},
+			},
+			want: []ServerMsg{
+				NewServerEOSEMsg("req1"),
+				NewServerEOSEMsg("req2"),
+				NewServerNoticeMsg("req3: too large limit: max limit is 2"),
+			},
+		},
+		{
+			name:     "count",
+			maxLimit: 2,
+			input: []ClientMsg{
+				&ClientCountMsg{
+					SubscriptionID: "count1",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+				&ClientCountMsg{
+					SubscriptionID: "count2",
+					ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+				},
+				&ClientCountMsg{
+					SubscriptionID: "count3",
+					ReqFilters:     []*ReqFilter{{}, {}, {Limit: toPtr(int64(3))}},
+				},
+			},
+			want: []ServerMsg{
+				NewServerCountMsg("count1", 0, nil),
+				NewServerCountMsg("count2", 0, nil),
+				NewServerNoticeMsg("count3: too large limit: max limit is 2"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewMaxReqFilterLimitFilterMiddleware(tt.maxLimit)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}

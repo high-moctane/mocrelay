@@ -1189,3 +1189,66 @@ func (m *simpleMaxReqFiltersFilterMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
 }
+
+type MaxReqFilterLimitFilterMiddleware Middleware
+
+func NewMaxReqFilterLimitFilterMiddleware(maxSubs int) MaxReqFilterLimitFilterMiddleware {
+	return MaxReqFilterLimitFilterMiddleware(
+		NewSimpleMiddleware(newSimpleMaxReqFilterLimitFilterMiddleware(maxSubs)),
+	)
+}
+
+var _ SimpleMiddlewareInterface = (*simpleMaxReqFilterLimitFilterMiddleware)(nil)
+
+type simpleMaxReqFilterLimitFilterMiddleware struct {
+	maxLimit int
+}
+
+func newSimpleMaxReqFilterLimitFilterMiddleware(
+	maxLimit int,
+) *simpleMaxReqFilterLimitFilterMiddleware {
+	if maxLimit < 1 {
+		panic(fmt.Sprintf("max limit must be a positive integer but got %d", maxLimit))
+	}
+	return &simpleMaxReqFilterLimitFilterMiddleware{maxLimit: maxLimit}
+}
+
+func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientReqMsg:
+		found := slices.ContainsFunc(msg.ReqFilters, func(f *ReqFilter) bool { return f.Limit != nil && *f.Limit > int64(m.maxLimit) })
+		if found {
+			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too large limit: max limit is %d", msg.SubscriptionID, m.maxLimit))
+			return nil, newClosedBufCh[ServerMsg](notice), nil
+		}
+
+	case *ClientCountMsg:
+		found := slices.ContainsFunc(msg.ReqFilters, func(f *ReqFilter) bool { return f.Limit != nil && *f.Limit > int64(m.maxLimit) })
+		if found {
+			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too large limit: max limit is %d", msg.SubscriptionID, m.maxLimit))
+			return nil, newClosedBufCh[ServerMsg](notice), nil
+		}
+	}
+
+	return newClosedBufCh(msg), nil, nil
+}
+
+func (m *simpleMaxReqFilterLimitFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh(msg), nil
+}
