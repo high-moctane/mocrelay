@@ -193,6 +193,11 @@ func (relay *Relay) serveRead(
 		)
 
 		if msg, ok := msg.(*ClientEventMsg); ok {
+			if !msg.Event.Valid() {
+				relay.logInfo(ctx, relay.recvLogger, "received invalid event")
+				continue
+			}
+
 			good, err := msg.Event.Verify()
 			if err != nil {
 				relay.logInfo(ctx, relay.recvLogger, "failed to verify event", "error", err)

@@ -758,22 +758,25 @@ func (ev *Event) EventType() EventType {
 	return EventTypeRegular
 }
 
-var hexRegexp = regexp.MustCompile(`^[0-9a-f]$`)
-
 func (ev *Event) Valid() bool {
 	if ev == nil {
+		fmt.Println("1")
 		return false
 	}
-	if len(ev.ID) != 32 || !hexRegexp.Match([]byte(ev.ID)) {
+	if len(ev.ID) != 64 || !validHexString(ev.ID) {
+		fmt.Println("2")
 		return false
 	}
-	if len(ev.Pubkey) != 32 || !hexRegexp.Match([]byte(ev.Pubkey)) {
+	if len(ev.Pubkey) != 64 || !validHexString(ev.Pubkey) {
+		fmt.Println("3")
 		return false
 	}
 	if ev.Kind < 0 || 65535 < ev.Kind {
+		fmt.Println("4")
 		return false
 	}
-	if len(ev.Sig) != 64 || !hexRegexp.Match([]byte(ev.Sig)) {
+	if len(ev.Sig) != 128 || !validHexString(ev.Sig) {
+		fmt.Println("5")
 		return false
 	}
 	return true

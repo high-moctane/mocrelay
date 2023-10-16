@@ -99,3 +99,16 @@ func newClosedBufCh[T any](items ...T) bufCh[T] {
 	close(ret)
 	return ret
 }
+
+func validHexString(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, r := range s {
+		if !(('0' <= r && r <= '9') || ('a' <= r && r <= 'f')) {
+			return false
+		}
+	}
+
+	return true
+}

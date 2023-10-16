@@ -1444,7 +1444,7 @@ func TestEvent_Valid(t *testing.T) {
 				Content: "powa",
 				Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
 			},
-			want: false,
+			want: true,
 		},
 		{
 			name: "ng: big",
