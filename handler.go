@@ -1586,9 +1586,13 @@ type RecvEventUniqueFilterMiddleware Middleware
 
 func NewRecvEventUniqueFilterMiddleware(size int) RecvEventUniqueFilterMiddleware {
 	return func(h Handler) Handler {
-		sm := newSimpleRecvEventUniqueFilterMiddleware(size)
-		m := NewSimpleMiddleware(sm)
-		return m(h)
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+				sm := newSimpleRecvEventUniqueFilterMiddleware(size)
+				m := NewSimpleMiddleware(sm)
+				return m(h).Handle(r, recv, send)
+			},
+		)
 	}
 }
 
@@ -1645,9 +1649,13 @@ type SendEventUniqueFilterMiddleware Middleware
 
 func NewSendEventUniqueFilterMiddleware(size int) SendEventUniqueFilterMiddleware {
 	return func(h Handler) Handler {
-		sm := newSimpleSendEventUniqueFilterMiddleware(size)
-		m := NewSimpleMiddleware(sm)
-		return m(h)
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+				sm := newSimpleSendEventUniqueFilterMiddleware(size)
+				m := NewSimpleMiddleware(sm)
+				return m(h).Handle(r, recv, send)
+			},
+		)
 	}
 }
 
