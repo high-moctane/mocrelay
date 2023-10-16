@@ -965,18 +965,25 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 					defer wg.Done()
 					defer cancel()
 
-					for smsg := range sCh {
-						smsgCh, err := m.HandleServerMsg(r, smsg)
-						if err != nil {
-							errs <- err
+					for {
+						select {
+						case <-ctx.Done():
+							errs <- ctx.Err()
 							return
-						}
-						if smsgCh == nil {
-							continue
-						}
 
-						for smsg := range smsgCh {
-							sendServerMsgCtx(ctx, send, smsg)
+						case smsg := <-sCh:
+							smsgCh, err := m.HandleServerMsg(r, smsg)
+							if err != nil {
+								errs <- err
+								return
+							}
+							if smsgCh == nil {
+								continue
+							}
+
+							for smsg := range smsgCh {
+								sendServerMsgCtx(ctx, send, smsg)
+							}
 						}
 					}
 				}()
@@ -984,7 +991,7 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					defer close(sCh)
+					defer cancel()
 					errs <- handler.Handle(r, rCh, sCh)
 				}()
 
