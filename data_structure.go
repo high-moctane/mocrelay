@@ -76,3 +76,38 @@ func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
 	}
 	return -1
 }
+
+type randCache[K comparable, V any] struct {
+	Cap int
+	c   map[K]V
+}
+
+func newRandCache[K comparable, V any](capacity int) *randCache[K, V] {
+	return &randCache[K, V]{
+		Cap: capacity,
+		c:   make(map[K]V, capacity),
+	}
+}
+
+func (c *randCache[K, V]) Get(key K) (v V, found bool) {
+	v, found = c.c[key]
+	return
+}
+
+func (c *randCache[K, V]) Set(key K, value V) (added bool) {
+	if _, ok := c.c[key]; ok {
+		return false
+	}
+
+	if len(c.c) >= c.Cap {
+		var k K
+		for k = range c.c {
+			break
+		}
+		delete(c.c, k)
+	}
+
+	c.c[key] = value
+
+	return true
+}

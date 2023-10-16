@@ -24,8 +24,12 @@ func main() {
 
 	reg := prometheus.NewRegistry()
 
-	h := mocrelay.NewMergeHandler(mocrelay.NewCacheHandler(100), mocrelay.NewRouterHandler(100))
+	h := mocrelay.NewMergeHandler(
+		mocrelay.NewCacheHandler(100),
+		mocrelay.NewSendEventUniqueFilterMiddleware(10)(mocrelay.NewRouterHandler(100)),
+	)
 	h = mocrelay.NewEventCreatedAtMiddleware(-5*time.Minute, 1*time.Minute)(h)
+	h = mocrelay.NewRecvEventUniqueFilterMiddleware(10)(h)
 	h = mocprom.NewPrometheusMiddleware(reg)(h)
 
 	relay := mocrelay.NewRelay(h, &mocrelay.RelayOption{

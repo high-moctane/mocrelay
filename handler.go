@@ -1581,3 +1581,115 @@ func (m *simpleCreatedAtUpperLimitMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
 }
+
+type RecvEventUniqueFilterMiddleware Middleware
+
+func NewRecvEventUniqueFilterMiddleware(size int) RecvEventUniqueFilterMiddleware {
+	return func(h Handler) Handler {
+		sm := newSimpleRecvEventUniqueFilterMiddleware(size)
+		m := NewSimpleMiddleware(sm)
+		return m(h)
+	}
+}
+
+var _ SimpleMiddlewareInterface = (*simpleRecvEventUniqueFilterMiddleware)(nil)
+
+type simpleRecvEventUniqueFilterMiddleware struct {
+	c *randCache[string, struct{}]
+}
+
+func newSimpleRecvEventUniqueFilterMiddleware(size int) *simpleRecvEventUniqueFilterMiddleware {
+	return &simpleRecvEventUniqueFilterMiddleware{
+		c: newRandCache[string, struct{}](size),
+	}
+}
+
+func (m *simpleRecvEventUniqueFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleRecvEventUniqueFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleRecvEventUniqueFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		if _, found := m.c.Get(msg.Event.ID); found {
+			okMsg := NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOKMsgPrefixDuplicate,
+				"the event already found",
+			)
+			return nil, newClosedBufCh[ServerMsg](okMsg), nil
+		}
+		m.c.Set(msg.Event.ID, struct{}{})
+	}
+
+	return newClosedBufCh[ClientMsg](msg), nil, nil
+}
+
+func (m *simpleRecvEventUniqueFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh[ServerMsg](msg), nil
+}
+
+type SendEventUniqueFilterMiddleware Middleware
+
+func NewSendEventUniqueFilterMiddleware(size int) SendEventUniqueFilterMiddleware {
+	return func(h Handler) Handler {
+		sm := newSimpleSendEventUniqueFilterMiddleware(size)
+		m := NewSimpleMiddleware(sm)
+		return m(h)
+	}
+}
+
+var _ SimpleMiddlewareInterface = (*simpleSendEventUniqueFilterMiddleware)(nil)
+
+type simpleSendEventUniqueFilterMiddleware struct {
+	c *randCache[string, struct{}]
+}
+
+func newSimpleSendEventUniqueFilterMiddleware(size int) *simpleSendEventUniqueFilterMiddleware {
+	return &simpleSendEventUniqueFilterMiddleware{
+		c: newRandCache[string, struct{}](size),
+	}
+}
+
+func (m *simpleSendEventUniqueFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleSendEventUniqueFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleSendEventUniqueFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	return newClosedBufCh[ClientMsg](msg), nil, nil
+}
+
+func (m *simpleSendEventUniqueFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	if msg, ok := msg.(*ServerEventMsg); ok {
+		if _, found := m.c.Get(msg.Event.ID); found {
+			return nil, nil
+		}
+		m.c.Set(msg.Event.ID, struct{}{})
+	}
+
+	return newClosedBufCh[ServerMsg](msg), nil
+}
