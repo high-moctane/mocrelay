@@ -1101,19 +1101,22 @@ func (m *simpleEventCreatedAtMiddleware) HandleServerMsg(
 type MaxSubscriptionsMiddleware Middleware
 
 func NewMaxSubscriptionsMiddleware(maxSubs int) MaxSubscriptionsMiddleware {
-	return MaxSubscriptionsMiddleware(
-		NewSimpleMiddleware(newSimpleMaxSubscriptionsMiddleware(maxSubs)),
-	)
+	return func(h Handler) Handler {
+		return HandlerFunc(
+			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+				sm := newSimpleMaxSubscriptionsMiddleware(maxSubs)
+				m := NewSimpleMiddleware(sm)
+				return m(h).Handle(r, recv, send)
+			},
+		)
+	}
 }
-
-type maxSubscriptionsMiddlewareKeyType struct{}
-
-var maxSubscriptionsMiddlewareKey = maxSubscriptionsMiddlewareKeyType{}
-
-var _ SimpleMiddlewareInterface = (*simpleMaxSubscriptionsMiddleware)(nil)
 
 type simpleMaxSubscriptionsMiddleware struct {
 	maxSubs int
+
+	// map[subID]exist
+	subs map[string]bool
 }
 
 func newSimpleMaxSubscriptionsMiddleware(
@@ -1122,16 +1125,15 @@ func newSimpleMaxSubscriptionsMiddleware(
 	if maxSubs < 1 {
 		panic(fmt.Sprintf("max subscriptions must be a positive integer but got %d", maxSubs))
 	}
-	return &simpleMaxSubscriptionsMiddleware{maxSubs: maxSubs}
+	return &simpleMaxSubscriptionsMiddleware{
+		maxSubs: maxSubs,
+		subs:    make(map[string]bool, maxSubs+1),
+	}
 }
 
 func (m *simpleMaxSubscriptionsMiddleware) HandleStart(
 	r *http.Request,
 ) (*http.Request, error) {
-	ctx := r.Context()
-	ctx = context.WithValue(ctx, maxSubscriptionsMiddlewareKey, make(map[string]bool))
-	r = r.WithContext(ctx)
-
 	return r, nil
 }
 
@@ -1145,17 +1147,15 @@ func (m *simpleMaxSubscriptionsMiddleware) HandleClientMsg(
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *ClientReqMsg:
-		mm := r.Context().Value(maxSubscriptionsMiddlewareKey).(map[string]bool)
-		mm[msg.SubscriptionID] = true
-		if len(mm) > m.maxSubs {
-			delete(mm, msg.SubscriptionID)
+		m.subs[msg.SubscriptionID] = true
+		if len(m.subs) > m.maxSubs {
+			delete(m.subs, msg.SubscriptionID)
 			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too many req: max subscriptions is %d", msg.SubscriptionID, m.maxSubs))
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 
 	case *ClientCloseMsg:
-		mm := r.Context().Value(maxSubscriptionsMiddlewareKey).(map[string]bool)
-		delete(mm, msg.SubscriptionID)
+		delete(m.subs, msg.SubscriptionID)
 	}
 
 	return newClosedBufCh(msg), nil, nil
