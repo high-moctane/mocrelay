@@ -121,7 +121,7 @@ type RouterHandler struct {
 
 func NewRouterHandler(buflen int) *RouterHandler {
 	if buflen <= 0 {
-		panic(fmt.Sprintf("router handler buflen must be a positive integer but got %d", buflen))
+		panicf("router handler buflen must be a positive integer but got %d", buflen)
 	}
 	return &RouterHandler{
 		buflen: buflen,
@@ -385,7 +385,7 @@ type MergeHandler struct {
 
 func NewMergeHandler(handlers ...Handler) Handler {
 	if len(handlers) < 2 {
-		panic(fmt.Sprintf("handlers must be two or more but got %d", len(handlers)))
+		panicf("handlers must be two or more but got %d", len(handlers))
 	}
 	return &MergeHandler{
 		hs: handlers,
@@ -721,7 +721,7 @@ func (stat *mergeHandlerSessionOKState) Ready(eventID string) bool {
 func (stat *mergeHandlerSessionOKState) Msg(eventID string) *ServerOKMsg {
 	msgs := stat.s[eventID]
 	if len(msgs) == 0 {
-		panic(fmt.Sprintf("invalid eventID %s", eventID))
+		panicf("invalid eventID %s", eventID)
 	}
 
 	var oks, ngs []*ServerOKMsg
@@ -1116,7 +1116,7 @@ func newSimpleMaxSubscriptionsMiddleware(
 	maxSubs int,
 ) *simpleMaxSubscriptionsMiddleware {
 	if maxSubs < 1 {
-		panic(fmt.Sprintf("max subscriptions must be a positive integer but got %d", maxSubs))
+		panicf("max subscriptions must be a positive integer but got %d", maxSubs)
 	}
 	return &simpleMaxSubscriptionsMiddleware{
 		maxSubs: maxSubs,
@@ -1179,7 +1179,7 @@ func newSimpleMaxReqFiltersMiddleware(
 	maxFilters int,
 ) *simpleMaxReqFiltersMiddleware {
 	if maxFilters < 1 {
-		panic(fmt.Sprintf("max subscriptions must be a positive integer but got %d", maxFilters))
+		panicf("max subscriptions must be a positive integer but got %d", maxFilters)
 	}
 	return &simpleMaxReqFiltersMiddleware{maxFilters: maxFilters}
 }
@@ -1240,7 +1240,7 @@ func newSimpleMaxLimitMiddleware(
 	maxLimit int,
 ) *simpleMaxLimitMiddleware {
 	if maxLimit < 1 {
-		panic(fmt.Sprintf("max limit must be a positive integer but got %d", maxLimit))
+		panicf("max limit must be a positive integer but got %d", maxLimit)
 	}
 	return &simpleMaxLimitMiddleware{maxLimit: maxLimit}
 }
@@ -1303,7 +1303,7 @@ func newSimpleMaxSubIDLengthMiddleware(
 	maxSubIDLength int,
 ) *simpleMaxSubIDLengthMiddleware {
 	if maxSubIDLength < 1 {
-		panic(fmt.Sprintf("max subid length must be a positive integer but got %d", maxSubIDLength))
+		panicf("max subid length must be a positive integer but got %d", maxSubIDLength)
 	}
 	return &simpleMaxSubIDLengthMiddleware{maxSubIDLength: maxSubIDLength}
 }
@@ -1364,7 +1364,7 @@ func newSimpleMaxEventTagsMiddleware(
 	maxEventTags int,
 ) *simpleMaxEventTagsMiddleware {
 	if maxEventTags < 1 {
-		panic(fmt.Sprintf("max event tags must be a positive integer but got %d", maxEventTags))
+		panicf("max event tags must be a positive integer but got %d", maxEventTags)
 	}
 	return &simpleMaxEventTagsMiddleware{maxEventTags: maxEventTags}
 }
@@ -1423,12 +1423,7 @@ func newSimpleMaxContentLengthMiddleware(
 	maxContentLength int,
 ) *simpleMaxContentLengthMiddleware {
 	if maxContentLength < 1 {
-		panic(
-			fmt.Sprintf(
-				"max content length must be a positive integer but got %d",
-				maxContentLength,
-			),
-		)
+		panicf("max content length must be a positive integer but got %d", maxContentLength)
 	}
 	return &simpleMaxContentLengthMiddleware{maxContentLength: maxContentLength}
 }

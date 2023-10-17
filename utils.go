@@ -2,8 +2,13 @@ package mocrelay
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
+
+func panicf(format string, a ...any) {
+	panic(fmt.Sprintf(format, a...))
+}
 
 func toPtr[T any](v T) *T { return &v }
 

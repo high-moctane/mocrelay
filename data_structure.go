@@ -1,7 +1,5 @@
 package mocrelay
 
-import "fmt"
-
 type ringBuffer[T any] struct {
 	Cap int
 
@@ -11,7 +9,7 @@ type ringBuffer[T any] struct {
 
 func newRingBuffer[T any](capacity int) *ringBuffer[T] {
 	if capacity <= 0 {
-		panic(fmt.Sprintf("capacity must be positive but got %d", capacity))
+		panicf("capacity must be positive but got %d", capacity)
 	}
 	return &ringBuffer[T]{
 		Cap:  capacity,
@@ -27,7 +25,7 @@ func (rb *ringBuffer[T]) mod(a int) int {
 
 func (rb *ringBuffer[T]) idx(i int) int {
 	if i < 0 || rb.Len() <= i {
-		panic(fmt.Sprintf("index out of range [%d]", i))
+		panicf("index out of range [%d]", i)
 	}
 	return rb.mod(rb.tail - 1 - i)
 }
