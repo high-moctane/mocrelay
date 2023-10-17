@@ -971,7 +971,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 				NewServerEOSEMsg("sub1"),
 				NewServerEOSEMsg("sub2"),
 				NewServerEOSEMsg("sub3"),
-				NewServerNoticeMsg("sub4: too many req: max subscriptions is 3"),
+				NewServerNoticeMsg("too many req: sub4: max subscriptions is 3"),
 				NewServerEOSEMsg("sub5"),
 			},
 		},
@@ -1020,7 +1020,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 			want: []ServerMsg{
 				NewServerEOSEMsg("req1"),
 				NewServerEOSEMsg("req2"),
-				NewServerNoticeMsg("req3: too many req filters: max filters is 2"),
+				NewServerNoticeMsg("too many req filters: req3: max filters is 2"),
 			},
 		},
 		{
@@ -1043,7 +1043,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 			want: []ServerMsg{
 				NewServerCountMsg("count1", 0, nil),
 				NewServerCountMsg("count2", 0, nil),
-				NewServerNoticeMsg("count3: too many count filters: max filters is 2"),
+				NewServerNoticeMsg("too many count filters: count3: max filters is 2"),
 			},
 		},
 	}
@@ -1091,7 +1091,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 			want: []ServerMsg{
 				NewServerEOSEMsg("req1"),
 				NewServerEOSEMsg("req2"),
-				NewServerNoticeMsg("req3: too large limit: max limit is 2"),
+				NewServerNoticeMsg("too large limit: req3: max limit is 2"),
 			},
 		},
 		{
@@ -1114,7 +1114,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 			want: []ServerMsg{
 				NewServerCountMsg("count1", 0, nil),
 				NewServerCountMsg("count2", 0, nil),
-				NewServerNoticeMsg("count3: too large limit: max limit is 2"),
+				NewServerNoticeMsg("too large limit: count3: max limit is 2"),
 			},
 		},
 	}
@@ -1151,7 +1151,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 			},
 			want: []ServerMsg{
 				NewServerEOSEMsg("12345"),
-				NewServerNoticeMsg("123456: too long subid: max subid length is 5"),
+				NewServerNoticeMsg("too long subid: 123456: max subid length is 5"),
 			},
 		},
 		{
@@ -1169,7 +1169,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 			},
 			want: []ServerMsg{
 				NewServerCountMsg("1234", 0, nil),
-				NewServerNoticeMsg("12345: too long subid: max subid length is 4"),
+				NewServerNoticeMsg("too long subid: 12345: max subid length is 4"),
 			},
 		},
 	}

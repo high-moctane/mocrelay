@@ -484,6 +484,12 @@ func NewServerNoticeMsg(message string) *ServerNoticeMsg {
 	}
 }
 
+func NewServerNoticeMsgf(format string, a ...any) *ServerNoticeMsg {
+	return &ServerNoticeMsg{
+		Message: fmt.Sprintf(format, a...),
+	}
+}
+
 func (*ServerNoticeMsg) ServerMsg() {}
 
 var ErrMarshalServerNoticeMsg = errors.New("failed to marshal server notice msg")

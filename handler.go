@@ -1143,7 +1143,7 @@ func (m *simpleMaxSubscriptionsMiddleware) HandleClientMsg(
 		m.subs[msg.SubscriptionID] = true
 		if len(m.subs) > m.maxSubs {
 			delete(m.subs, msg.SubscriptionID)
-			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too many req: max subscriptions is %d", msg.SubscriptionID, m.maxSubs))
+			notice := NewServerNoticeMsgf("too many req: %s: max subscriptions is %d", msg.SubscriptionID, m.maxSubs)
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 
@@ -1201,13 +1201,13 @@ func (m *simpleMaxReqFiltersMiddleware) HandleClientMsg(
 	switch msg := msg.(type) {
 	case *ClientReqMsg:
 		if len(msg.ReqFilters) > m.maxFilters {
-			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too many req filters: max filters is %d", msg.SubscriptionID, m.maxFilters))
+			notice := NewServerNoticeMsgf("too many req filters: %s: max filters is %d", msg.SubscriptionID, m.maxFilters)
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 
 	case *ClientCountMsg:
 		if len(msg.ReqFilters) > m.maxFilters {
-			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too many count filters: max filters is %d", msg.SubscriptionID, m.maxFilters))
+			notice := NewServerNoticeMsgf("too many count filters: %s: max filters is %d", msg.SubscriptionID, m.maxFilters)
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 	}
@@ -1263,14 +1263,14 @@ func (m *simpleMaxLimitMiddleware) HandleClientMsg(
 	case *ClientReqMsg:
 		found := slices.ContainsFunc(msg.ReqFilters, func(f *ReqFilter) bool { return f.Limit != nil && *f.Limit > int64(m.maxLimit) })
 		if found {
-			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too large limit: max limit is %d", msg.SubscriptionID, m.maxLimit))
+			notice := NewServerNoticeMsgf("too large limit: %s: max limit is %d", msg.SubscriptionID, m.maxLimit)
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 
 	case *ClientCountMsg:
 		found := slices.ContainsFunc(msg.ReqFilters, func(f *ReqFilter) bool { return f.Limit != nil && *f.Limit > int64(m.maxLimit) })
 		if found {
-			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too large limit: max limit is %d", msg.SubscriptionID, m.maxLimit))
+			notice := NewServerNoticeMsgf("too large limit: %s: max limit is %d", msg.SubscriptionID, m.maxLimit)
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 	}
@@ -1325,13 +1325,13 @@ func (m *simpleMaxSubIDLengthMiddleware) HandleClientMsg(
 	switch msg := msg.(type) {
 	case *ClientReqMsg:
 		if len(msg.SubscriptionID) > m.maxSubIDLength {
-			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too long subid: max subid length is %d", msg.SubscriptionID, m.maxSubIDLength))
+			notice := NewServerNoticeMsgf("too long subid: %s: max subid length is %d", msg.SubscriptionID, m.maxSubIDLength)
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 
 	case *ClientCountMsg:
 		if len(msg.SubscriptionID) > m.maxSubIDLength {
-			notice := NewServerNoticeMsg(fmt.Sprintf("%s: too long subid: max subid length is %d", msg.SubscriptionID, m.maxSubIDLength))
+			notice := NewServerNoticeMsgf("too long subid: %s: max subid length is %d", msg.SubscriptionID, m.maxSubIDLength)
 			return nil, newClosedBufCh[ServerMsg](notice), nil
 		}
 	}
