@@ -348,15 +348,13 @@ func (h *simpleCacheHandler) HandleClientMsg(
 			}
 		}
 
-		smsgCh := make(chan ServerMsg, 1)
-		defer close(smsgCh)
-
+		var okMsg ServerMsg
 		if h.c.Add(ev) {
-			smsgCh <- NewServerOKMsg(msg.Event.ID, true, "", "")
+			okMsg = NewServerOKMsg(msg.Event.ID, true, "", "")
 		} else {
-			smsgCh <- NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
+			okMsg = NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
 		}
-		return smsgCh, nil
+		return newClosedBufCh(okMsg), nil
 
 	case *ClientReqMsg:
 		h.sema <- struct{}{}
@@ -374,11 +372,8 @@ func (h *simpleCacheHandler) HandleClientMsg(
 		return smsgCh, nil
 
 	case *ClientCountMsg:
-		smsgCh := make(chan ServerMsg, 1)
-		defer close(smsgCh)
-
-		smsgCh <- NewServerCountMsg(msg.SubscriptionID, 0, nil)
-		return smsgCh, nil
+		ret := NewServerCountMsg(msg.SubscriptionID, 0, nil)
+		return newClosedBufCh[ServerMsg](ret), nil
 
 	default:
 		return nil, nil
