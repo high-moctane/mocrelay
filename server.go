@@ -272,7 +272,11 @@ func (relay *Relay) readWebsocket(r *wsutil.Reader) ([]byte, error) {
 		return payload, err
 	}
 	if len(payload) != n {
-		return payload, fmt.Errorf("invalid length of payload: %d", len(payload))
+		return payload, fmt.Errorf(
+			"invalid length of payload: hdr.Length is %d but got %d",
+			hdr.Length,
+			n,
+		)
 	}
 
 	return payload, nil
