@@ -88,7 +88,10 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(
 		w,
 		r,
-		&websocket.AcceptOptions{CompressionMode: websocket.CompressionContextTakeover},
+		&websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+			CompressionMode:    websocket.CompressionContextTakeover,
+		},
 	)
 	if err != nil {
 		relay.logInfo(ctx, relay.logger, "failed to upgrade http", "err", err)
