@@ -90,7 +90,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r,
 		&websocket.AcceptOptions{
 			InsecureSkipVerify: true,
-			CompressionMode:    websocket.CompressionContextTakeover,
+			CompressionMode:    websocket.CompressionDisabled,
 		},
 	)
 	if err != nil {
