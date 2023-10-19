@@ -172,6 +172,23 @@ func (relay *Relay) serveRead(
 				sendServerMsgCtx(ctx, send, notice)
 				continue
 			}
+
+			var shortReadErr *WebsocketShortReadError
+			if errors.As(err, &shortReadErr) {
+				relay.logInfo(
+					ctx,
+					relay.recvLogger,
+					fmt.Sprintf(
+						"failed to read entire websocket message: header len is %d but got %d",
+						shortReadErr.HeaderLen,
+						shortReadErr.ReadLen,
+					),
+				)
+				notice := NewServerNoticeMsg("failed to read entire websocket message")
+				sendServerMsgCtx(ctx, send, notice)
+				continue
+			}
+
 			return fmt.Errorf("failed to read websocket: %w", err)
 		}
 		if payload == nil {
@@ -238,6 +255,15 @@ func (relay *Relay) serveRead(
 
 var ErrWebsocketMessageTooLong = errors.New("too long websocket message")
 
+type WebsocketShortReadError struct {
+	HeaderLen int64
+	ReadLen   int64
+}
+
+func (e *WebsocketShortReadError) Error() string {
+	return fmt.Sprintf("read too short: header len is %d but read %d", e.HeaderLen, e.ReadLen)
+}
+
 func (relay *Relay) readWebsocket(r *wsutil.Reader) ([]byte, error) {
 	hdr, err := r.NextFrame()
 	if err != nil {
@@ -272,11 +298,8 @@ func (relay *Relay) readWebsocket(r *wsutil.Reader) ([]byte, error) {
 		return payload, err
 	}
 	if len(payload) != n {
-		return payload, fmt.Errorf(
-			"invalid length of payload: hdr.Length is %d but got %d",
-			hdr.Length,
-			n,
-		)
+		err := &WebsocketShortReadError{hdr.Length, int64(n)}
+		return payload, err
 	}
 
 	return payload, nil
