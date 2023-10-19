@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
+	"nhooyr.io/websocket"
 )
 
 var (
@@ -87,11 +85,17 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	errs := make(chan error, 3)
 
-	conn, _, _, err := ws.UpgradeHTTP(r, w)
+	conn, err := websocket.Accept(
+		w,
+		r,
+		&websocket.AcceptOptions{CompressionMode: websocket.CompressionContextTakeover},
+	)
 	if err != nil {
 		relay.logInfo(ctx, relay.logger, "failed to upgrade http", "err", err)
 		return
 	}
+	defer conn.Close(websocket.StatusInternalError, "")
+	conn.SetReadLimit(relay.opt.maxMessageLength())
 
 	recv := make(chan ClientMsg)
 	send := make(chan ServerMsg)
@@ -125,9 +129,6 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	<-ctx.Done()
 
-	conn.Write(ws.CompiledClose)
-	conn.Close()
-
 	wg.Wait()
 
 	close(errs)
@@ -145,53 +146,21 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (relay *Relay) serveRead(
 	ctx context.Context,
-	conn net.Conn,
+	conn *websocket.Conn,
 	recv chan<- ClientMsg,
 	send chan ServerMsg,
 ) error {
 	l := newRateLimiter(relay.recvRateLimitRate, relay.recvRateLimitBurst)
 	defer l.Stop()
 
-	r := wsutil.NewServerSideReader(conn)
-	r.OnContinuation = wsutil.ControlFrameHandler(conn, ws.StateServerSide)
-	r.OnIntermediate = wsutil.ControlFrameHandler(conn, ws.StateServerSide)
-
 	for {
-		payload, err := relay.readWebsocket(r)
+		typ, payload, err := conn.Read(ctx)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return io.EOF
-			}
-			if errors.Is(err, ErrWebsocketMessageTooLong) {
-				notice := NewServerNoticeMsg(
-					fmt.Sprintf(
-						"too long websocket message: limit is %d",
-						relay.opt.maxMessageLength(),
-					),
-				)
-				sendServerMsgCtx(ctx, send, notice)
-				continue
-			}
-
-			var shortReadErr *WebsocketShortReadError
-			if errors.As(err, &shortReadErr) {
-				relay.logInfo(
-					ctx,
-					relay.recvLogger,
-					fmt.Sprintf(
-						"failed to read entire websocket message: header len is %d but got %d",
-						shortReadErr.HeaderLen,
-						shortReadErr.ReadLen,
-					),
-				)
-				notice := NewServerNoticeMsg("failed to read entire websocket message")
-				sendServerMsgCtx(ctx, send, notice)
-				continue
-			}
-
 			return fmt.Errorf("failed to read websocket: %w", err)
 		}
-		if payload == nil {
+		if typ != websocket.MessageText {
+			notice := NewServerNoticeMsgf("binary websocket message type is not allowed")
+			sendServerMsgCtx(ctx, send, notice)
 			continue
 		}
 
@@ -253,61 +222,9 @@ func (relay *Relay) serveRead(
 	}
 }
 
-var ErrWebsocketMessageTooLong = errors.New("too long websocket message")
-
-type WebsocketShortReadError struct {
-	HeaderLen int64
-	ReadLen   int64
-}
-
-func (e *WebsocketShortReadError) Error() string {
-	return fmt.Sprintf("read too short: header len is %d but read %d", e.HeaderLen, e.ReadLen)
-}
-
-func (relay *Relay) readWebsocket(r *wsutil.Reader) ([]byte, error) {
-	hdr, err := r.NextFrame()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read websocket header: %w", err)
-	}
-
-	if hdr.Length > relay.opt.maxMessageLength() {
-		if err := r.Discard(); err != nil {
-			return nil, fmt.Errorf("failed to discard unread websocket: %w", err)
-		}
-		return nil, ErrWebsocketMessageTooLong
-	}
-	if hdr.OpCode == ws.OpClose {
-		if err := r.Discard(); err != nil {
-			return nil, fmt.Errorf("failed to discard unread websocket: %w", err)
-		}
-		return nil, io.EOF
-	}
-	if hdr.OpCode != ws.OpText {
-		if err := r.Discard(); err != nil {
-			return nil, fmt.Errorf("failed to discard unread websocket: %w", err)
-		}
-		return nil, nil
-	}
-
-	payload := make([]byte, hdr.Length)
-	n, err := r.Read(payload)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return payload, nil
-		}
-		return payload, err
-	}
-	if len(payload) != n {
-		err := &WebsocketShortReadError{hdr.Length, int64(n)}
-		return payload, err
-	}
-
-	return payload, nil
-}
-
 func (relay *Relay) serveWrite(
 	ctx context.Context,
-	conn net.Conn,
+	conn *websocket.Conn,
 	send <-chan ServerMsg,
 ) error {
 	l := newRateLimiter(relay.sendRateLimitRate, 0)
@@ -319,10 +236,11 @@ func (relay *Relay) serveWrite(
 	for {
 		select {
 		case <-ctx.Done():
+			conn.Close(websocket.StatusNormalClosure, "")
 			return fmt.Errorf("serverWrite terminated by ctx: %w", ctx.Err())
 
 		case <-pingTicker.C:
-			if _, err := conn.Write(ws.CompiledPing); err != nil {
+			if err := conn.Ping(ctx); err != nil {
 				return fmt.Errorf("failed to send ping: %w", err)
 			}
 
@@ -334,7 +252,7 @@ func (relay *Relay) serveWrite(
 				return fmt.Errorf("failed to marshal server msg: %w", err)
 			}
 
-			if err := wsutil.WriteServerText(conn, jsonMsg); err != nil {
+			if err := conn.Write(ctx, websocket.MessageText, jsonMsg); err != nil {
 				return fmt.Errorf("failed to write websocket: %w", err)
 			}
 
