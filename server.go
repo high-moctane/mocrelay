@@ -79,6 +79,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	ctx = ctxWithRealIP(ctx, r)
 	ctx = ctxWithRequestID(ctx)
+	ctx = ctxWithHTTPHeader(ctx, r)
 	r = r.WithContext(ctx)
 
 	relay.logInfo(ctx, relay.logger, "mocrelay session start")

@@ -22,8 +22,9 @@ func (h *slogMocrelayHandler) Enabled(ctx context.Context, level slog.Level) boo
 func (h *slogMocrelayHandler) Handle(ctx context.Context, record slog.Record) error {
 	id := GetRequestID(ctx)
 	ip := GetRealIP(ctx)
+	header := GetHTTPHeader(ctx)
 	return h.h.WithGroup("mocrelay").
-		WithAttrs([]slog.Attr{slog.String("requestID", id), slog.String("realIP", ip)}).
+		WithAttrs([]slog.Attr{slog.String("requestID", id), slog.String("realIP", ip), slog.Any("httpHeader", header)}).
 		Handle(ctx, record)
 }
 

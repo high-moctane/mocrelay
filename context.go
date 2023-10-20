@@ -39,3 +39,19 @@ func GetRealIP(ctx context.Context) string {
 	}
 	return ip
 }
+
+type httpHeaderKeyType struct{}
+
+var httpHeaderKey = httpHeaderKeyType{}
+
+func ctxWithHTTPHeader(ctx context.Context, r *http.Request) context.Context {
+	return context.WithValue(ctx, httpHeaderKey, r.Header)
+}
+
+func GetHTTPHeader(ctx context.Context) http.Header {
+	header, ok := ctx.Value(httpHeaderKey).(http.Header)
+	if !ok {
+		return nil
+	}
+	return header
+}
