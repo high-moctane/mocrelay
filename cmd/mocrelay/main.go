@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -44,20 +43,14 @@ func main() {
 		Software:    "https://github.com/high-moctane/mocrelay",
 	}
 
+	relayMux := &mocrelay.ServeMux{
+		Relay:  relay,
+		NIP11:  nip11,
+		Logger: slog.Default(),
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Upgrade") != "" {
-			relay.ServeHTTP(w, r)
-			return
-		}
-
-		if r.Header.Get("Accept") == "application/nostr+json" {
-			nip11.ServeHTTP(w, r)
-			return
-		}
-
-		io.WriteString(w, "Hello Mocrelay (｀･ω･´)！")
-	})
+	mux.Handle("/", relayMux)
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
 
 	srv := &http.Server{
