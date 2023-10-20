@@ -94,7 +94,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		relay.logInfo(ctx, relay.logger, "failed to upgrade http", "err", err)
+		relay.logWarn(ctx, relay.logger, "failed to upgrade http", "err", err)
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "")
@@ -143,7 +143,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, io.EOF) {
 		relay.logInfo(ctx, relay.logger, "mocrelay session end")
 	} else {
-		relay.logInfo(ctx, relay.logger, "mocrelay session end with error", "err", err)
+		relay.logWarn(ctx, relay.logger, "mocrelay session end with error", "err", err)
 	}
 }
 
@@ -169,7 +169,7 @@ func (relay *Relay) serveRead(
 
 		msg, err := ParseClientMsg(payload)
 		if err != nil {
-			relay.logInfo(ctx, relay.recvLogger, "failed to parse client msg", "error", err)
+			relay.logWarn(ctx, relay.recvLogger, "failed to parse client msg", "error", err)
 			continue
 		}
 
@@ -183,17 +183,23 @@ func (relay *Relay) serveRead(
 
 		if msg, ok := msg.(*ClientEventMsg); ok {
 			if !msg.Event.Valid() {
-				relay.logInfo(ctx, relay.recvLogger, "received invalid event")
+				relay.logWarn(ctx, relay.recvLogger, "received invalid event")
+				notice := NewServerNoticeMsg("received invalid event msg")
+				sendServerMsgCtx(ctx, send, notice)
 				continue
 			}
 
 			good, err := msg.Event.Verify()
 			if err != nil {
-				relay.logInfo(ctx, relay.recvLogger, "failed to verify event", "error", err)
+				relay.logWarn(ctx, relay.recvLogger, "failed to verify event", "error", err)
+				notice := NewServerNoticeMsg("internal error")
+				sendServerMsgCtx(ctx, send, notice)
 				continue
 			}
 			if !good {
-				relay.logInfo(ctx, relay.recvLogger, "invalid signature")
+				relay.logWarn(ctx, relay.recvLogger, "invalid signature")
+				notice := NewServerNoticeMsg("received invalid signature event msg")
+				sendServerMsgCtx(ctx, send, notice)
 				continue
 			}
 		}
@@ -291,6 +297,13 @@ func (relay *Relay) logInfo(ctx context.Context, logger *slog.Logger, msg string
 		return
 	}
 	logger.InfoContext(ctx, msg, args...)
+}
+
+func (relay *Relay) logWarn(ctx context.Context, logger *slog.Logger, msg string, args ...any) {
+	if logger == nil {
+		return
+	}
+	logger.WarnContext(ctx, msg, args...)
 }
 
 func (relay *Relay) prepareRateLimitOpts() {
