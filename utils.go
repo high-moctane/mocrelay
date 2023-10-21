@@ -17,6 +17,23 @@ type rateLimiter struct {
 	cancel context.CancelFunc
 }
 
+func anySliceAs[T any](sli []any) ([]T, bool) {
+	if sli == nil {
+		return nil, true
+	}
+
+	ret := make([]T, len(sli))
+	for i, v := range sli {
+		vv, ok := v.(T)
+		if !ok {
+			return nil, false
+		}
+		ret[i] = vv
+	}
+
+	return ret, true
+}
+
 func newRateLimiter(rate time.Duration, burst int) *rateLimiter {
 	c := make(chan struct{}, burst)
 	if rate == 0 {

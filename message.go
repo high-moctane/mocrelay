@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"regexp"
 	"time"
-	"unicode/utf8"
 
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -28,19 +27,6 @@ func IsNilClientMsg(msg ClientMsg) bool {
 var clientMsgRegexp = regexp.MustCompile(`^\[\s*"(\w*)"`)
 
 func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidClientMsg)
-		}
-	}()
-
-	if !utf8.Valid(b) {
-		return nil, errors.New("not a utf8 string")
-	}
-	if !json.Valid(b) {
-		return nil, errors.New("not a valid json")
-	}
-
 	match := clientMsgRegexp.FindSubmatch(b)
 	if len(match) == 0 {
 		return nil, errors.New("not a client msg")
@@ -48,67 +34,81 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 
 	switch string(match[1]) {
 	case "EVENT":
-		return ParseClientEventMsg(b)
+		var ret ClientEventMsg
+		if err := json.Unmarshal(b, &ret); err != nil {
+			return nil, fmt.Errorf("failed to parse client msg: %w", err)
+		}
+		return &ret, nil
 
 	case "REQ":
-		return ParseClientReqMsg(b)
+		var ret ClientReqMsg
+		if err := json.Unmarshal(b, &ret); err != nil {
+			return nil, fmt.Errorf("failed to parse client msg: %w", err)
+		}
+		return &ret, nil
 
 	case "CLOSE":
-		return ParseClientCloseMsg(b)
+		var ret ClientCloseMsg
+		if err := json.Unmarshal(b, &ret); err != nil {
+			return nil, fmt.Errorf("failed to parse client msg: %w", err)
+		}
+		return &ret, nil
 
 	case "AUTH":
-		return ParseClientAuthMsg(b)
+		var ret ClientAuthMsg
+		if err := json.Unmarshal(b, &ret); err != nil {
+			return nil, fmt.Errorf("failed to parse client msg: %w", err)
+		}
+		return &ret, nil
 
 	case "COUNT":
-		return ParseClientCountMsg(b)
+		var ret ClientCountMsg
+		if err := json.Unmarshal(b, &ret); err != nil {
+			return nil, fmt.Errorf("failed to parse client msg: %w", err)
+		}
+		return &ret, nil
 
 	default:
-		return ParseClientUnknownMsg(b)
+		var ret ClientUnknownMsg
+		if err := json.Unmarshal(b, &ret); err != nil {
+			return nil, fmt.Errorf("failed to parse client msg: %w", err)
+		}
+		return &ret, nil
 	}
 }
 
 var _ ClientMsg = (*ClientUnknownMsg)(nil)
 
 type ClientUnknownMsg struct {
-	MsgTypeStr string
-	Msg        []interface{}
-}
-
-var ErrInvalidClientUnknownMsg = errors.New("invalid client message")
-
-func ParseClientUnknownMsg(b []byte) (msg *ClientUnknownMsg, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidClientUnknownMsg)
-		}
-	}()
-
-	var arr []interface{}
-
-	if err = json.Unmarshal(b, &arr); err != nil {
-		return
-	}
-
-	if len(arr) < 1 {
-		err = fmt.Errorf("too short client message: len=%d", len(arr))
-		return
-	}
-
-	s, ok := arr[0].(string)
-	if !ok {
-		err = errors.New("message json array[0] must be a string")
-		return
-	}
-
-	msg = &ClientUnknownMsg{
-		MsgTypeStr: s,
-		Msg:        arr,
-	}
-
-	return
+	Label string
+	Msg   []interface{}
 }
 
 func (*ClientUnknownMsg) ClientMsg() {}
+
+func (msg *ClientUnknownMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, []byte("null")) {
+		return nil
+	}
+
+	var elems []any
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) == 0 {
+		return fmt.Errorf("empty json array")
+	}
+
+	label, ok := elems[0].(string)
+	if !ok {
+		return fmt.Errorf("label is not a string")
+	}
+
+	msg.Label = label
+	msg.Msg = elems[1:]
+
+	return nil
+}
 
 var _ ClientMsg = (*ClientEventMsg)(nil)
 
@@ -116,36 +116,38 @@ type ClientEventMsg struct {
 	Event *Event
 }
 
-var ErrInvalidClientEventMsg = errors.New("invalid client event msg")
-
-func ParseClientEventMsg(b []byte) (msg *ClientEventMsg, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidClientEventMsg)
-		}
-	}()
-
-	var arr []json.RawMessage
-	if err = json.Unmarshal(b, &arr); err != nil {
-		return
-	}
-	if len(arr) != 2 {
-		err = fmt.Errorf("client event msg len must be 2 but %d", len(arr))
-		return
-	}
-
-	ev, err := ParseEvent(arr[1])
-	if err != nil {
-		return
-	}
-
-	msg = &ClientEventMsg{
-		Event: ev,
-	}
-	return
-}
-
 func (*ClientEventMsg) ClientMsg() {}
+
+func (msg *ClientEventMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, []byte("null")) {
+		return nil
+	}
+
+	var elems []json.RawMessage
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 2 {
+		return fmt.Errorf("client event msg length must be 3 but got %d", len(elems))
+	}
+
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label must be string: %w", err)
+	}
+	if label != "EVENT" {
+		return fmt.Errorf(`client event msg label is must be "EVENT" but got %q`, label)
+	}
+
+	var event Event
+	if err := json.Unmarshal(elems[1], &event); err != nil {
+		return fmt.Errorf("failed to unmarshal event json: %w", err)
+	}
+
+	msg.Event = &event
+
+	return nil
+}
 
 var _ ClientMsg = (*ClientReqMsg)(nil)
 
@@ -154,81 +156,76 @@ type ClientReqMsg struct {
 	ReqFilters     []*ReqFilter
 }
 
-var ErrInvalidClientReqMsg = errors.New("invalid client req message")
-
-func ParseClientReqMsg(b []byte) (msg *ClientReqMsg, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidClientReqMsg)
-		}
-	}()
-
-	var arr []json.RawMessage
-	if err = json.Unmarshal(b, &arr); err != nil {
-		return
-	}
-	if len(arr) < 3 {
-		err = fmt.Errorf("too short client req message array: len=%d", len(arr))
-		return
-	}
-
-	var subID string
-	if err = json.Unmarshal(arr[1], &subID); err != nil {
-		return
-	}
-
-	filters := make([]*ReqFilter, 0, len(arr)-2)
-
-	for i := 2; i < len(arr); i++ {
-		var filter *ReqFilter
-		filter, err = ParseReqFilter(arr[i])
-		if err != nil {
-			return
-		}
-		filters = append(filters, filter)
-	}
-
-	msg = &ClientReqMsg{
-		SubscriptionID: subID,
-		ReqFilters:     filters,
-	}
-
-	return
-}
-
 func (*ClientReqMsg) ClientMsg() {}
 
-var _ ClientMsg = (*ClientCloseMsg)(nil)
+func (msg *ClientReqMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, []byte("null")) {
+		return nil
+	}
 
-var ErrInvalidClientCloseMsg = errors.New("invalid client close msg")
+	var elems []json.RawMessage
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) < 3 {
+		return fmt.Errorf("client req msg length must be 3 or more but got %d", len(elems))
+	}
+
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label is not a json string: %w", err)
+	}
+	if label != "REQ" {
+		return fmt.Errorf(`client req msg labes must be "REQ" but got %q`, label)
+	}
+
+	var ret ClientReqMsg
+
+	if err := json.Unmarshal(elems[1], &ret.SubscriptionID); err != nil {
+		return fmt.Errorf("subscription id is not a json string: %w", err)
+	}
+
+	ret.ReqFilters = make([]*ReqFilter, len(elems)-2)
+	for i := 0; i < len(elems)-2; i++ {
+		if err := json.Unmarshal(elems[i+2], &ret.ReqFilters[i]); err != nil {
+			return fmt.Errorf("failed to unmarshal filter: %w", err)
+		}
+	}
+
+	*msg = ret
+
+	return nil
+}
+
+var _ ClientMsg = (*ClientCloseMsg)(nil)
 
 type ClientCloseMsg struct {
 	SubscriptionID string
 }
 
-func ParseClientCloseMsg(b []byte) (msg *ClientCloseMsg, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidClientCloseMsg)
-		}
-	}()
-
-	var arr []string
-	if err = json.Unmarshal(b, &arr); err != nil {
-		return
-	}
-	if len(arr) != 2 {
-		err = fmt.Errorf("client close msg len must be 2 but %d", len(arr))
-		return
-	}
-
-	msg = &ClientCloseMsg{
-		SubscriptionID: arr[1],
-	}
-	return
-}
-
 func (*ClientCloseMsg) ClientMsg() {}
+
+func (msg *ClientCloseMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, []byte("null")) {
+		return nil
+	}
+
+	var elems []string
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 2 {
+		return fmt.Errorf("client close msg length must be 2 but got %d", len(elems))
+	}
+
+	if elems[0] != "CLOSE" {
+		return fmt.Errorf(`client close msg label must be "CLOSE" but got %q`, elems[0])
+	}
+
+	msg.SubscriptionID = elems[1]
+
+	return nil
+}
 
 var _ ClientMsg = (*ClientAuthMsg)(nil)
 
@@ -236,32 +233,29 @@ type ClientAuthMsg struct {
 	Challenge string
 }
 
-var ErrInvalidClientAuthMsg = errors.New("invalid client auth msg")
-
-func ParseClientAuthMsg(b []byte) (msg *ClientAuthMsg, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidClientAuthMsg)
-		}
-	}()
-
-	var arr []string
-	if err = json.Unmarshal(b, &arr); err != nil {
-		return
-	}
-	if len(arr) != 2 {
-		err = fmt.Errorf("client auth msg len must be 2 but %d", len(arr))
-		return
-	}
-
-	msg = &ClientAuthMsg{
-		Challenge: arr[1],
-	}
-
-	return
-}
-
 func (*ClientAuthMsg) ClientMsg() {}
+
+func (msg *ClientAuthMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, []byte("null")) {
+		return nil
+	}
+
+	var elems []string
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 2 {
+		return fmt.Errorf("client auth msg length must be 2 but got %d", len(elems))
+	}
+
+	if elems[0] != "AUTH" {
+		return fmt.Errorf(`client auth msg label must be "AUTH" but got %q`, elems[0])
+	}
+
+	msg.Challenge = elems[1]
+
+	return nil
+}
 
 var _ ClientMsg = (*ClientCountMsg)(nil)
 
@@ -270,44 +264,46 @@ type ClientCountMsg struct {
 	ReqFilters     []*ReqFilter
 }
 
-var ErrInvalidClientCountMsg = errors.New("invalid client count msg")
-
-func ParseClientCountMsg(b []byte) (msg *ClientCountMsg, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidClientCountMsg)
-		}
-	}()
-
-	var arr []json.RawMessage
-	if err = json.Unmarshal(b, &arr); err != nil {
-		return
-	}
-
-	var subID string
-	if err = json.Unmarshal(arr[1], &subID); err != nil {
-		return
-	}
-
-	filters := make([]*ReqFilter, 0, len(arr)-2)
-	for i := 2; i < len(arr); i++ {
-		var filter *ReqFilter
-		filter, err = ParseReqFilter(arr[i])
-		if err != nil {
-			return
-		}
-		filters = append(filters, filter)
-	}
-
-	msg = &ClientCountMsg{
-		SubscriptionID: subID,
-		ReqFilters:     filters,
-	}
-
-	return
-}
-
 func (*ClientCountMsg) ClientMsg() {}
+
+func (msg *ClientCountMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, []byte("null")) {
+		return nil
+	}
+
+	var elems []json.RawMessage
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) < 3 {
+		return fmt.Errorf("client count msg length must be 3 or more but got %d", len(elems))
+	}
+
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label is not a json string: %w", err)
+	}
+	if label != "COUNT" {
+		return fmt.Errorf(`client count msg labes must be "COUNT" but got %q`, label)
+	}
+
+	var ret ClientCountMsg
+
+	if err := json.Unmarshal(elems[1], &ret.SubscriptionID); err != nil {
+		return fmt.Errorf("subscription id is not a json string: %w", err)
+	}
+
+	ret.ReqFilters = make([]*ReqFilter, len(elems)-2)
+	for i := 0; i < len(elems)-2; i++ {
+		if err := json.Unmarshal(elems[i+2], &ret.ReqFilters[i]); err != nil {
+			return fmt.Errorf("failed to unmarshal filter: %w", err)
+		}
+	}
+
+	*msg = ret
+
+	return nil
+}
 
 type ReqFilter struct {
 	IDs     *[]string
@@ -319,91 +315,122 @@ type ReqFilter struct {
 	Limit   *int64
 }
 
-var ErrInvalidReqFilter = errors.New("invalid filter")
-
-var filterKeys = func() []string {
-	var ret []string
-
-	for r := 'A'; r <= 'Z'; r++ {
-		ret = append(ret, string([]rune{'#', r}))
-	}
-	for r := 'a'; r <= 'z'; r++ {
-		ret = append(ret, string([]rune{'#', r}))
+func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, []byte("null")) {
+		return nil
 	}
 
-	return ret
-}()
+	dec := json.NewDecoder(bytes.NewBuffer(b))
+	dec.UseNumber()
 
-func ParseReqFilter(b []byte) (fil *ReqFilter, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidReqFilter)
-		}
-	}()
-
-	var obj map[string]json.RawMessage
-	if err = json.Unmarshal(b, &obj); err != nil {
-		return
+	var obj map[string]any
+	if err := dec.Decode(&obj); err != nil {
+		return fmt.Errorf("not a json object: %w", err)
 	}
 
 	var ret ReqFilter
-	var v json.RawMessage
-	var ok bool
 
-	if v, ok = obj["ids"]; ok {
-		if err = json.Unmarshal(v, &ret.IDs); err != nil {
-			return
-		}
-	}
-
-	if v, ok = obj["authors"]; ok {
-		if err = json.Unmarshal(v, &ret.Authors); err != nil {
-			return
-		}
-	}
-
-	if v, ok = obj["kinds"]; ok {
-		if err = json.Unmarshal(v, &ret.Kinds); err != nil {
-			return
-		}
-	}
-
-	for _, k := range filterKeys {
-		if v, ok = obj[k]; ok {
-			var vals []string
-			if err = json.Unmarshal(v, &vals); err != nil {
-				return
+	for k, v := range obj {
+		switch {
+		case k == "ids":
+			sli, ok := v.([]any)
+			if !ok {
+				return errors.New("ids is not a json array")
 			}
+			ids, ok := anySliceAs[string](sli)
+			if !ok {
+				return errors.New("ids is not a string json array")
+			}
+			ret.IDs = &ids
+
+		case k == "authors":
+			sli, ok := v.([]any)
+			if !ok {
+				return errors.New("authors is not a json array")
+			}
+			authors, ok := anySliceAs[string](sli)
+			if !ok {
+				return errors.New("authors is not a string json array")
+			}
+			ret.Authors = &authors
+
+		case k == "kinds":
+			sli, ok := v.([]any)
+			if !ok {
+				return errors.New("kinds is not a json array")
+			}
+			numKinds, ok := anySliceAs[json.Number](sli)
+			if !ok {
+				return errors.New("kinds is not a number array")
+			}
+
+			kinds := make([]int64, len(numKinds))
+			for i, num := range numKinds {
+				kind, err := num.Int64()
+				if err != nil {
+					return fmt.Errorf("kind is not integer: %w", err)
+				}
+				kinds[i] = kind
+			}
+			ret.Kinds = &kinds
+
+		case len(k) == 2 && k[0] == '#' && ('A' <= k[1] && k[1] <= 'Z' || 'a' <= k[1] && k[1] <= 'z'):
+			// tags
 			if ret.Tags == nil {
-				m := make(map[string][]string)
-				ret.Tags = &m
+				ret.Tags = toPtr(make(map[string][]string))
 			}
 
-			(*ret.Tags)[k] = vals
+			sli, ok := v.([]any)
+			if !ok {
+				return fmt.Errorf("%s is not a json array", k)
+			}
+			vs, ok := anySliceAs[string](sli)
+			if !ok {
+				return fmt.Errorf("%s is not a string json array", k)
+			}
+			(*ret.Tags)[k] = vs
+
+		case k == "since":
+			numSince, ok := v.(json.Number)
+			if !ok {
+				return errors.New("since is not a json number")
+			}
+			since, err := numSince.Int64()
+			if err != nil {
+				return fmt.Errorf("since is not integer: %w", err)
+			}
+			ret.Since = toPtr(since)
+
+		case k == "until":
+			numUntil, ok := v.(json.Number)
+			if !ok {
+				return errors.New("until is not a json number")
+			}
+			until, err := numUntil.Int64()
+			if err != nil {
+				return fmt.Errorf("until is not integer: %w", err)
+			}
+			ret.Until = toPtr(until)
+
+		case k == "limit":
+			numLimit, ok := v.(json.Number)
+			if !ok {
+				return errors.New("limit is not a json number")
+			}
+			limit, err := numLimit.Int64()
+			if err != nil {
+				return fmt.Errorf("limit is not integer: %w", err)
+			}
+			ret.Limit = toPtr(limit)
+
+		default:
+			return fmt.Errorf("contains invalid member: (%s, %v)", k, v)
 		}
 	}
 
-	if v, ok = obj["since"]; ok {
-		if err = json.Unmarshal(v, &ret.Since); err != nil {
-			return
-		}
-	}
+	*fil = ret
 
-	if v, ok = obj["until"]; ok {
-		if err = json.Unmarshal(v, &ret.Until); err != nil {
-			return
-		}
-	}
-
-	if v, ok = obj["limit"]; ok {
-		if err = json.Unmarshal(v, &ret.Limit); err != nil {
-			return
-		}
-	}
-
-	fil = &ret
-
-	return
+	return nil
 }
 
 type ServerMsg interface {
@@ -649,95 +676,6 @@ type Event struct {
 	Sig       string `json:"sig"`
 }
 
-var (
-	ErrInvalidEvent = errors.New("invalid event")
-	ErrNilEvent     = errors.New("nil event")
-)
-
-func ParseEvent(b []byte) (ev *Event, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, ErrInvalidEvent)
-		}
-	}()
-
-	var obj map[string]json.RawMessage
-	if err = json.Unmarshal(b, &obj); err != nil {
-		return
-	}
-
-	var ret Event
-	var v json.RawMessage
-	var ok bool
-
-	v, ok = obj["id"]
-	if !ok {
-		err = errors.New("id not found")
-		return
-	}
-	if err = json.Unmarshal(v, &ret.ID); err != nil {
-		return
-	}
-
-	v, ok = obj["pubkey"]
-	if !ok {
-		err = errors.New("pubkey not found")
-		return
-	}
-	if err = json.Unmarshal(v, &ret.Pubkey); err != nil {
-		return
-	}
-
-	v, ok = obj["created_at"]
-	if !ok {
-		err = errors.New("created_at not found")
-		return
-	}
-	if err = json.Unmarshal(v, &ret.CreatedAt); err != nil {
-		return
-	}
-
-	v, ok = obj["kind"]
-	if !ok {
-		err = errors.New("kind not found")
-		return
-	}
-	if err = json.Unmarshal(v, &ret.Kind); err != nil {
-		return
-	}
-
-	v, ok = obj["tags"]
-	if !ok {
-		err = errors.New("tags not found")
-		return
-	}
-	if err = json.Unmarshal(v, &ret.Tags); err != nil {
-		return
-	}
-
-	v, ok = obj["content"]
-	if !ok {
-		err = errors.New("content not found")
-		return
-	}
-	if err = json.Unmarshal(v, &ret.Content); err != nil {
-		return
-	}
-
-	v, ok = obj["sig"]
-	if !ok {
-		err = errors.New("sig not found")
-		return
-	}
-	if err = json.Unmarshal(v, &ret.Sig); err != nil {
-		return
-	}
-
-	ev = &ret
-
-	return
-}
-
 var ErrMarshalEvent = errors.New("failed to marshal event")
 
 func (ev *Event) MarshalJSON() ([]byte, error) {
@@ -751,6 +689,118 @@ func (ev *Event) MarshalJSON() ([]byte, error) {
 		err = errors.Join(err, ErrMarshalEvent)
 	}
 	return ret, err
+}
+
+func (ev *Event) UnmarshalJSON(b []byte) error {
+	dec := json.NewDecoder(bytes.NewBuffer(b))
+	dec.UseNumber()
+
+	var obj map[string]interface{}
+	if err := dec.Decode(&obj); err != nil {
+		return fmt.Errorf("not a json object: %w", err)
+	}
+	if len(obj) != 7 {
+		return errors.New("contains some extra fields")
+	}
+
+	var ret Event
+	var tmp any
+	var tmpnum json.Number
+	var ok bool
+	var err error
+
+	// id
+	tmp, ok = obj["id"]
+	if !ok {
+		return errors.New("id not found")
+	}
+	ret.ID, ok = tmp.(string)
+	if !ok {
+		return errors.New("id is not a json string")
+	}
+
+	// pubkey
+	tmp, ok = obj["pubkey"]
+	if !ok {
+		return errors.New("pubkey not found")
+	}
+	ret.Pubkey, ok = tmp.(string)
+	if !ok {
+		return errors.New("pubkey is not a json string")
+	}
+
+	// Created_at
+	tmp, ok = obj["created_at"]
+	if !ok {
+		return errors.New("created_at not found")
+	}
+	tmpnum, ok = tmp.(json.Number)
+	if !ok {
+		return errors.New("created_at is not a json number")
+	}
+	ret.CreatedAt, err = tmpnum.Int64()
+	if err != nil {
+		return fmt.Errorf("created_at is not an integer: %w", err)
+	}
+
+	// kind
+	tmp, ok = obj["kind"]
+	if !ok {
+		return errors.New("kind not found")
+	}
+	tmpnum, ok = tmp.(json.Number)
+	if !ok {
+		return errors.New("kind is not a json number")
+	}
+	ret.Kind, err = tmpnum.Int64()
+	if err != nil {
+		return fmt.Errorf("kind is not an integer: %w", err)
+	}
+
+	// tags
+	tmp, ok = obj["tags"]
+	if !ok {
+		return errors.New("tags not found")
+	}
+	tmpSli, ok := tmp.([]any)
+	if !ok {
+		return errors.New("tags is not a json array")
+	}
+	slisli, ok := anySliceAs[[]any](tmpSli)
+	if !ok {
+		return errors.New("tags is not a array of json array")
+	}
+	ret.Tags = make([]Tag, len(slisli))
+	for i, sli := range slisli {
+		ret.Tags[i], ok = anySliceAs[string](sli)
+		if !ok {
+			return errors.New("tags is not string arrays of json array")
+		}
+	}
+
+	// content
+	tmp, ok = obj["content"]
+	if !ok {
+		return errors.New("content not found")
+	}
+	ret.Content, ok = tmp.(string)
+	if !ok {
+		return errors.New("content is not a json string")
+	}
+
+	// sig
+	tmp, ok = obj["sig"]
+	if !ok {
+		return errors.New("sig not found")
+	}
+	ret.Sig, ok = tmp.(string)
+	if !ok {
+		return errors.New("sig is not a json string")
+	}
+
+	*ev = ret
+
+	return nil
 }
 
 func (ev *Event) EventType() EventType {
@@ -797,7 +847,7 @@ func (ev *Event) Serialize() ([]byte, error) {
 
 func (ev *Event) Verify() (bool, error) {
 	if ev == nil {
-		return false, ErrNilEvent
+		return false, errors.New("nil event")
 	}
 
 	// Verify ID

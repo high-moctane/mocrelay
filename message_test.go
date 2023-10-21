@@ -10,7 +10,7 @@ import (
 func TestParseClientMsg(t *testing.T) {
 	type Expect struct {
 		MsgType ClientMsg
-		Err     error
+		IsErr   bool
 	}
 
 	tests := []struct {
@@ -19,19 +19,11 @@ func TestParseClientMsg(t *testing.T) {
 		Expect Expect
 	}{
 		{
-			Name:  "ng: invalid utf8",
-			Input: []byte{'[', '"', 0xf0, 0x28, 0x8c, 0xbc, '"', ']'},
-			Expect: Expect{
-				MsgType: new(ClientUnknownMsg),
-				Err:     ErrInvalidClientMsg,
-			},
-		},
-		{
 			Name:  "ng: empty string",
 			Input: []byte(""),
 			Expect: Expect{
 				MsgType: new(ClientUnknownMsg),
-				Err:     ErrInvalidClientMsg,
+				IsErr:   true,
 			},
 		},
 		{
@@ -39,7 +31,7 @@ func TestParseClientMsg(t *testing.T) {
 			Input: []byte(`["POWA","value"]`),
 			Expect: Expect{
 				MsgType: new(ClientUnknownMsg),
-				Err:     nil,
+				IsErr:   false,
 			},
 		},
 		{
@@ -47,7 +39,7 @@ func TestParseClientMsg(t *testing.T) {
 			Input: []byte(`["CLOSE","sub_id"]`),
 			Expect: Expect{
 				MsgType: new(ClientCloseMsg),
-				Err:     nil,
+				IsErr:   false,
 			},
 		},
 		{
@@ -55,7 +47,7 @@ func TestParseClientMsg(t *testing.T) {
 			Input: []byte(`[` + "\n" + `  "CLOSE",` + "\n" + `  "sub_id"` + "\n" + `]`),
 			Expect: Expect{
 				MsgType: new(ClientCloseMsg),
-				Err:     nil,
+				IsErr:   false,
 			},
 		},
 		{
@@ -83,7 +75,7 @@ func TestParseClientMsg(t *testing.T) {
 				`}]`),
 			Expect: Expect{
 				MsgType: new(ClientEventMsg),
-				Err:     nil,
+				IsErr:   false,
 			},
 		},
 		{
@@ -93,7 +85,7 @@ func TestParseClientMsg(t *testing.T) {
 			),
 			Expect: Expect{
 				MsgType: new(ClientReqMsg),
-				Err:     nil,
+				IsErr:   false,
 			},
 		},
 		{
@@ -101,7 +93,7 @@ func TestParseClientMsg(t *testing.T) {
 			Input: []byte(`["AUTH","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4"]`),
 			Expect: Expect{
 				MsgType: new(ClientAuthMsg),
-				Err:     nil,
+				IsErr:   false,
 			},
 		},
 		{
@@ -111,7 +103,7 @@ func TestParseClientMsg(t *testing.T) {
 			),
 			Expect: Expect{
 				MsgType: new(ClientCountMsg),
-				Err:     nil,
+				IsErr:   false,
 			},
 		},
 	}
@@ -119,8 +111,11 @@ func TestParseClientMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 			msg, err := ParseClientMsg(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			if err != nil {
 				return
 			}
 			if msg == nil {
@@ -242,10 +237,10 @@ func BenchmarkParseClientMsg_Count(b *testing.B) {
 	}
 }
 
-func TestParseClientUnknownMsg(t *testing.T) {
+func TestClientUnknownMsg_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
-		Msg *ClientUnknownMsg
-		Err error
+		Msg   ClientUnknownMsg
+		IsErr bool
 	}
 
 	tests := []struct {
@@ -257,49 +252,47 @@ func TestParseClientUnknownMsg(t *testing.T) {
 			Name:  "ok: json array",
 			Input: []byte(`["POWA","meu",{"moyasu":29}]`),
 			Expect: Expect{
-				Msg: &ClientUnknownMsg{
-					MsgTypeStr: "POWA",
+				Msg: ClientUnknownMsg{
+					Label: "POWA",
 					Msg: []interface{}{
-						"POWA",
 						"meu",
 						map[string]interface{}{
 							"moyasu": float64(29),
 						},
 					},
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
 			Name:  "ng: not a json array",
 			Input: []byte(`{"moyasu":29}`),
 			Expect: Expect{
-				Msg: nil,
-				Err: ErrInvalidClientUnknownMsg,
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := ParseClientUnknownMsg(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var msg ClientUnknownMsg
+			err := msg.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected err: %v", err)
 				return
 			}
-			if msg == nil {
-				t.Errorf("expected non-nil msg but got nil")
+			if err != nil {
 				return
 			}
-			assert.EqualExportedValues(t, *tt.Expect.Msg, *msg)
+			assert.EqualExportedValues(t, tt.Expect.Msg, msg)
 		})
 	}
 }
 
-func TestParseClientEventMsg(t *testing.T) {
+func TestClientEventMsg_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		Event Event
-		Err   error
+		IsErr bool
 	}
 
 	tests := []struct {
@@ -330,46 +323,46 @@ func TestParseClientEventMsg(t *testing.T) {
 					Content:   "ぽわ〜",
 					Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
 			Name:  "ng: client event message invalid type",
 			Input: []byte(`["EVENT",3000]`),
 			Expect: Expect{
-				Err: ErrInvalidClientEventMsg,
+				IsErr: true,
 			},
 		},
 		{
 			Name:  "ng: client event message invalid length",
 			Input: []byte(`["EVENT"]`),
 			Expect: Expect{
-				Err: ErrInvalidClientEventMsg,
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := ParseClientEventMsg(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var msg ClientEventMsg
+			err := msg.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			if msg == nil {
-				t.Errorf("expected non-nil msg but got nil")
+			if err != nil {
 				return
 			}
-			assert.EqualExportedValues(t, tt.Expect.Event, *msg.Event)
+			assert.EqualExportedValues(t, tt.Expect.Event, *(msg.Event))
 		})
 	}
 }
 
-func TestParseClientReqMsg(t *testing.T) {
+func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
 		ReqFilters     []*ReqFilter
-		Err            error
+		IsErr          bool
 	}
 
 	tests := []struct {
@@ -408,7 +401,7 @@ func TestParseClientReqMsg(t *testing.T) {
 						Limit: toPtr(int64(144)),
 					},
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
@@ -427,27 +420,27 @@ func TestParseClientReqMsg(t *testing.T) {
 						Limit:   nil,
 					},
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
 			Name:  "ng: client REQ message invalid",
 			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":1}]`),
 			Expect: Expect{
-				Err: ErrInvalidClientReqMsg,
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := ParseClientReqMsg(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var msg ClientReqMsg
+			err := msg.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			if msg == nil {
-				t.Errorf("expected non-nil msg but got nil")
+			if err != nil {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
@@ -459,10 +452,10 @@ func TestParseClientReqMsg(t *testing.T) {
 	}
 }
 
-func TestParseClientCloseMsg(t *testing.T) {
+func TestClientCloseMsg_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
-		Err            error
+		IsErr          bool
 	}
 
 	tests := []struct {
@@ -475,7 +468,7 @@ func TestParseClientCloseMsg(t *testing.T) {
 			Input: []byte(`["CLOSE","sub_id"]`),
 			Expect: Expect{
 				SubscriptionID: "sub_id",
-				Err:            nil,
+				IsErr:          false,
 			},
 		},
 		{
@@ -483,27 +476,27 @@ func TestParseClientCloseMsg(t *testing.T) {
 			Input: []byte(`[` + "\n" + `  "CLOSE",` + "\n" + `  "sub_id"` + "\n" + `]`),
 			Expect: Expect{
 				SubscriptionID: "sub_id",
-				Err:            nil,
+				IsErr:          false,
 			},
 		},
 		{
 			Name:  "ng: client close message invalid type",
 			Input: []byte(`["CLOSE",3000]`),
 			Expect: Expect{
-				Err: ErrInvalidClientCloseMsg,
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := ParseClientCloseMsg(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var msg ClientCloseMsg
+			err := msg.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			if msg == nil {
-				t.Errorf("expected non-nil msg but got nil")
+			if err != nil {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
@@ -511,10 +504,10 @@ func TestParseClientCloseMsg(t *testing.T) {
 	}
 }
 
-func TestParseClientAuthMsg(t *testing.T) {
+func TestClientAuthMsg_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		Challenge string
-		Err       error
+		IsErr     bool
 	}
 
 	tests := []struct {
@@ -527,7 +520,7 @@ func TestParseClientAuthMsg(t *testing.T) {
 			Input: []byte(`["AUTH","challenge"]`),
 			Expect: Expect{
 				Challenge: "challenge",
-				Err:       nil,
+				IsErr:     false,
 			},
 		},
 		{
@@ -535,27 +528,27 @@ func TestParseClientAuthMsg(t *testing.T) {
 			Input: []byte(`[` + "\n" + `  "AUTH",` + "\n" + `  "challenge"` + "\n" + `]`),
 			Expect: Expect{
 				Challenge: "challenge",
-				Err:       nil,
+				IsErr:     false,
 			},
 		},
 		{
 			Name:  "ng: client auth message invalid type",
 			Input: []byte(`["AUTH",3000]`),
 			Expect: Expect{
-				Err: ErrInvalidClientAuthMsg,
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := ParseClientAuthMsg(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var msg ClientAuthMsg
+			err := msg.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			if msg == nil {
-				t.Errorf("expected non-nil msg but got nil")
+			if err != nil {
 				return
 			}
 			assert.Equal(t, tt.Expect.Challenge, msg.Challenge)
@@ -563,11 +556,11 @@ func TestParseClientAuthMsg(t *testing.T) {
 	}
 }
 
-func TestParseClientCountMsg(t *testing.T) {
+func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
 		ReqFilters     []*ReqFilter
-		Err            error
+		IsErr          bool
 	}
 
 	tests := []struct {
@@ -606,7 +599,7 @@ func TestParseClientCountMsg(t *testing.T) {
 						Limit: toPtr(int64(144)),
 					},
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
@@ -625,27 +618,27 @@ func TestParseClientCountMsg(t *testing.T) {
 						Limit:   nil,
 					},
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
 			Name:  "ng: client COUNT message invalid",
 			Input: []byte(`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":1}]`),
 			Expect: Expect{
-				Err: ErrInvalidClientCountMsg,
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			msg, err := ParseClientCountMsg(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var msg ClientCountMsg
+			err := msg.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			if msg == nil {
-				t.Errorf("expected non-nil msg but got nil")
+			if err == nil {
 				return
 			}
 			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
@@ -657,10 +650,10 @@ func TestParseClientCountMsg(t *testing.T) {
 	}
 }
 
-func TestParseReqFilter(t *testing.T) {
+func TestReqFilter_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		ReqFilter ReqFilter
-		Err       error
+		IsErr     bool
 	}
 
 	tests := []struct {
@@ -673,7 +666,7 @@ func TestParseReqFilter(t *testing.T) {
 			Input: []byte("{}"),
 			Expect: Expect{
 				ReqFilter: ReqFilter{},
-				Err:       nil,
+				IsErr:     false,
 			},
 		},
 		{
@@ -693,7 +686,7 @@ func TestParseReqFilter(t *testing.T) {
 					Until: toPtr(int64(184838)),
 					Limit: toPtr(int64(143)),
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
@@ -712,23 +705,32 @@ func TestParseReqFilter(t *testing.T) {
 					Until: toPtr(int64(184838)),
 					Limit: toPtr(int64(143)),
 				},
-				Err: nil,
+				IsErr: false,
+			},
+		},
+		{
+			Name: "ng: contains some extra fields",
+			Input: []byte(
+				`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143,"powa":"meu"}`,
+			),
+			Expect: Expect{
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			fil, err := ParseReqFilter(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var fil ReqFilter
+			err := fil.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			if fil == nil {
-				t.Errorf("expect non-nil filter but got nil")
+			if err != nil {
 				return
 			}
-			assert.EqualExportedValues(t, tt.Expect.ReqFilter, *fil)
+			assert.EqualExportedValues(t, tt.Expect.ReqFilter, fil)
 		})
 	}
 }
@@ -1271,10 +1273,10 @@ func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
 	}
 }
 
-func TestParseEvent(t *testing.T) {
+func TestEvent_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		Event *Event
-		Err   error
+		IsErr bool
 	}
 
 	tests := []struct {
@@ -1303,7 +1305,7 @@ func TestParseEvent(t *testing.T) {
 					Content:   "ぽわ〜",
 					Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
@@ -1347,7 +1349,7 @@ func TestParseEvent(t *testing.T) {
 					Content: "powa",
 					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
 				},
-				Err: nil,
+				IsErr: false,
 			},
 		},
 		{
@@ -1373,19 +1375,50 @@ func TestParseEvent(t *testing.T) {
 				`}`),
 			Expect: Expect{
 				Event: nil,
-				Err:   ErrInvalidEvent,
+				IsErr: true,
+			},
+		},
+		{
+			Name: "ng: contains some extra fields",
+			Input: []byte(`{` +
+				`  "powa":"meu",` +
+				`  "kind": 1,` +
+				`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
+				`  "created_at": 1693157791,` +
+				`  "tags": [` +
+				`    [` +
+				`      "e",` +
+				`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
+				`      "",` +
+				`      "root"` +
+				`    ],` +
+				`    [` +
+				`      "p",` +
+				`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
+				`    ]` +
+				`  ],` +
+				`  "content": "powa",` +
+				`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
+				`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
+				`}`),
+			Expect: Expect{
+				IsErr: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			event, err := ParseEvent(tt.Input)
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
+			var event Event
+			err := event.UnmarshalJSON(tt.Input)
+			if (err != nil) != tt.Expect.IsErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			assert.EqualExportedValues(t, *tt.Expect.Event, *event)
+			if err != nil {
+				return
+			}
+			assert.EqualExportedValues(t, *tt.Expect.Event, event)
 		})
 	}
 }
@@ -1412,9 +1445,10 @@ func BenchmarkParseEvent(b *testing.B) {
 		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
 		`}`)
 
+	var event Event
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseEvent(input)
+		event.UnmarshalJSON(input)
 	}
 }
 
@@ -1559,10 +1593,10 @@ func TestEvent_Serialize(t *testing.T) {
 
 func TestEvent_VerifyID(t *testing.T) {
 	tests := []struct {
-		name string
-		in   *Event
-		want bool
-		err  error
+		name  string
+		in    *Event
+		want  bool
+		isErr bool
 	}{
 		{
 			name: "ok",
@@ -1584,8 +1618,8 @@ func TestEvent_VerifyID(t *testing.T) {
 				Content: "powa",
 				Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
 			},
-			want: true,
-			err:  nil,
+			want:  true,
+			isErr: false,
 		},
 		{
 			name: "ng",
@@ -1607,22 +1641,22 @@ func TestEvent_VerifyID(t *testing.T) {
 				Content: "powa",
 				Sig:     "695e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
 			},
-			want: false,
-			err:  nil,
+			want:  false,
+			isErr: false,
 		},
 		{
-			name: "ng: nil",
-			in:   nil,
-			want: false,
-			err:  ErrNilEvent,
+			name:  "ng: nil",
+			in:    nil,
+			want:  false,
+			isErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.in.Verify()
-			if err != nil || tt.err != nil {
-				assert.ErrorIs(t, err, tt.err)
+			if (err != nil) != tt.isErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
 			assert.Equal(t, tt.want, got)
