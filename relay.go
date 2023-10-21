@@ -188,27 +188,18 @@ func (relay *Relay) serveRead(
 			json.RawMessage(payload),
 		)
 
-		if msg, ok := msg.(*ClientEventMsg); ok {
-			if !msg.Event.Valid() {
-				relay.logWarn(ctx, relay.recvLogger, "received invalid event")
-				notice := NewServerNoticeMsg("received invalid event msg")
-				sendServerMsgCtx(ctx, send, notice)
-				continue
-			}
-
-			good, err := msg.Event.Verify()
-			if err != nil {
-				relay.logWarn(ctx, relay.recvLogger, "failed to verify event", "error", err)
-				notice := NewServerNoticeMsg("internal error")
-				sendServerMsgCtx(ctx, send, notice)
-				continue
-			}
-			if !good {
-				relay.logWarn(ctx, relay.recvLogger, "invalid signature")
-				notice := NewServerNoticeMsg("received invalid signature event msg")
-				sendServerMsgCtx(ctx, send, notice)
-				continue
-			}
+		ok, err := CheckClientMsg(msg)
+		if err != nil {
+			relay.logWarn(ctx, relay.recvLogger, "failed to verify client msg", "error", err)
+			notice := NewServerNoticeMsgf("internal error")
+			sendServerMsgCtx(ctx, send, notice)
+			continue
+		}
+		if !ok {
+			relay.logWarn(ctx, relay.recvLogger, "invalid client msg", "error", err)
+			notice := NewServerNoticeMsgf("invalid client msg: %s", payload)
+			sendServerMsgCtx(ctx, send, notice)
+			continue
 		}
 
 		select {

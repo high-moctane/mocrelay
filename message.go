@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -77,6 +79,39 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 	}
 }
 
+func CheckClientMsg(msg ClientMsg) (bool, error) {
+	if msg == nil {
+		return false, nil
+	}
+
+	switch msg := msg.(type) {
+	case *ClientEventMsg:
+		if !msg.Valid() {
+			return false, nil
+		}
+		ok, err := msg.Event.Verify()
+		if err != nil {
+			return false, fmt.Errorf("failed to verify event: %w", err)
+		}
+		return ok, nil
+
+	case *ClientReqMsg:
+		return msg.Valid(), nil
+
+	case *ClientCloseMsg:
+		return msg.Valid(), nil
+
+	case *ClientAuthMsg:
+		return msg.Valid(), nil
+
+	case *ClientCountMsg:
+		return msg.Valid(), nil
+
+	default:
+		return false, nil
+	}
+}
+
 var _ ClientMsg = (*ClientUnknownMsg)(nil)
 
 type ClientUnknownMsg struct {
@@ -108,6 +143,10 @@ func (msg *ClientUnknownMsg) UnmarshalJSON(b []byte) error {
 	msg.Msg = elems[1:]
 
 	return nil
+}
+
+func (msg *ClientUnknownMsg) Valid() bool {
+	return msg != nil && msg.Msg != nil
 }
 
 var _ ClientMsg = (*ClientEventMsg)(nil)
@@ -147,6 +186,10 @@ func (msg *ClientEventMsg) UnmarshalJSON(b []byte) error {
 	msg.Event = &event
 
 	return nil
+}
+
+func (msg *ClientEventMsg) Valid() bool {
+	return msg != nil && msg.Event.Valid()
 }
 
 var _ ClientMsg = (*ClientReqMsg)(nil)
@@ -197,6 +240,23 @@ func (msg *ClientReqMsg) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (msg *ClientReqMsg) Valid() (ok bool) {
+	if msg == nil {
+		return
+	}
+
+	if len(msg.ReqFilters) == 0 {
+		return
+	}
+
+	if !sliceAllFunc(msg.ReqFilters, func(f *ReqFilter) bool { return f.Valid() }) {
+		return
+	}
+
+	ok = true
+	return
+}
+
 var _ ClientMsg = (*ClientCloseMsg)(nil)
 
 type ClientCloseMsg struct {
@@ -227,6 +287,8 @@ func (msg *ClientCloseMsg) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (msg *ClientCloseMsg) Valid() bool { return msg != nil }
+
 var _ ClientMsg = (*ClientAuthMsg)(nil)
 
 type ClientAuthMsg struct {
@@ -256,6 +318,8 @@ func (msg *ClientAuthMsg) UnmarshalJSON(b []byte) error {
 
 	return nil
 }
+
+func (msg *ClientAuthMsg) Valid() bool { return msg != nil }
 
 var _ ClientMsg = (*ClientCountMsg)(nil)
 
@@ -303,6 +367,23 @@ func (msg *ClientCountMsg) UnmarshalJSON(b []byte) error {
 	*msg = ret
 
 	return nil
+}
+
+func (msg *ClientCountMsg) Valid() (ok bool) {
+	if msg == nil {
+		return
+	}
+
+	if len(msg.ReqFilters) == 0 {
+		return
+	}
+
+	if !sliceAllFunc(msg.ReqFilters, func(f *ReqFilter) bool { return f.Valid() }) {
+		return
+	}
+
+	ok = true
+	return
 }
 
 type ReqFilter struct {
@@ -431,6 +512,86 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 	*fil = ret
 
 	return nil
+}
+
+func (fil *ReqFilter) Valid() (ok bool) {
+	if fil == nil {
+		return
+	}
+
+	if fil.IDs != nil {
+		if !sliceAllFunc(*fil.IDs, validID) {
+			return
+		}
+	}
+
+	if fil.Authors != nil {
+		if !sliceAllFunc(*fil.Authors, validPubkey) {
+			return
+		}
+	}
+
+	if fil.Kinds != nil {
+		if !sliceAllFunc(*fil.Kinds, validKind) {
+			return
+		}
+	}
+
+	if fil.Tags != nil {
+		for tag, vals := range *fil.Tags {
+			if len(tag) != 2 || tag[0] != '#' ||
+				!('A' <= tag[1] && tag[1] <= 'Z' || 'a' <= tag[1] && tag[1] <= 'z') {
+				return
+			}
+			if vals == nil {
+				return
+			}
+
+			switch tag {
+			case "#e":
+				if !sliceAllFunc(vals, validID) {
+					return
+				}
+
+			case "#p":
+				if !sliceAllFunc(vals, validPubkey) {
+					return
+				}
+
+			case "#a":
+				if !sliceAllFunc(vals, validNaddr) {
+					return
+				}
+			}
+		}
+	}
+
+	if fil.Since != nil {
+		if *fil.Since < 0 {
+			return
+		}
+	}
+
+	if fil.Until != nil {
+		if *fil.Until < 0 {
+			return
+		}
+	}
+
+	if fil.Since != nil && fil.Until != nil {
+		if *fil.Since > *fil.Until {
+			return
+		}
+	}
+
+	if fil.Limit != nil {
+		if *fil.Limit < 0 {
+			return
+		}
+	}
+
+	ok = true
+	return
 }
 
 type ServerMsg interface {
@@ -819,6 +980,8 @@ func (ev *Event) Valid() bool {
 		validID(ev.ID) &&
 		validPubkey(ev.Pubkey) &&
 		validKind(ev.Kind) &&
+		ev.Tags != nil &&
+		sliceAllFunc(ev.Tags, validTag) &&
 		validSig(ev.Sig)
 }
 
@@ -921,5 +1084,29 @@ func validID(id string) bool { return len(id) == 64 && validHexString(id) }
 func validPubkey(pubkey string) bool { return len(pubkey) == 64 && validHexString(pubkey) }
 
 func validKind(kind int64) bool { return 0 <= kind || kind <= 65535 }
+
+func validTag(tag Tag) bool { return len(tag) >= 1 && tag[0] != "" }
+
+func validNaddr(naddr string) (ok bool) {
+	elems := strings.Split(naddr, ":")
+	if len(elems) != 3 {
+		return
+	}
+
+	kind, err := strconv.ParseInt(elems[0], 10, 64)
+	if err != nil {
+		return
+	}
+	if !validKind(kind) {
+		return
+	}
+
+	if !validPubkey(elems[1]) {
+		return
+	}
+
+	ok = true
+	return
+}
 
 func validSig(sig string) bool { return len(sig) == 128 && validHexString(sig) }

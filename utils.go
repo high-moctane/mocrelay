@@ -3,6 +3,7 @@ package mocrelay
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -32,6 +33,10 @@ func anySliceAs[T any](sli []any) ([]T, bool) {
 	}
 
 	return ret, true
+}
+
+func sliceAllFunc[T any](vs []T, f func(v T) bool) bool {
+	return !slices.ContainsFunc(vs, func(v T) bool { return !f(v) })
 }
 
 func newRateLimiter(rate time.Duration, burst int) *rateLimiter {
