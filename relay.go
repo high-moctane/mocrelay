@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"nhooyr.io/websocket"
 )
@@ -164,6 +165,11 @@ func (relay *Relay) serveRead(
 		}
 		if typ != websocket.MessageText {
 			notice := NewServerNoticeMsgf("binary websocket message type is not allowed")
+			sendServerMsgCtx(ctx, send, notice)
+			continue
+		}
+		if !utf8.Valid(payload) || !json.Valid(payload) {
+			notice := NewServerNoticeMsgf("invalid json msg")
 			sendServerMsgCtx(ctx, send, notice)
 			continue
 		}
