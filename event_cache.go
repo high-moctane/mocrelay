@@ -117,7 +117,10 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 
 func (c *eventCache) Find(matcher EventCountMatcher) []*Event {
 	var ret []*Event
-	newBuf := newTypedHeap[*Event](c.buf.LessFunc)
+	newBuf := typedHeap[*Event]{
+		S:        make([]*Event, 0, c.buf.Len()),
+		LessFunc: c.buf.LessFunc,
+	}
 
 	for c.buf.Len() > 0 {
 		ev := heap.Pop(&c.buf).(*Event)
