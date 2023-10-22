@@ -1070,12 +1070,20 @@ func (m *simpleEventCreatedAtMiddleware) HandleClientMsg(
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
 		sub := time.Until(msg.Event.CreatedAtTime())
-		if sub < m.from || m.to < -sub {
+		if sub < m.from {
 			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
 				msg.Event.ID,
 				false,
 				ServerOKMsgPrefixNoPrefix,
 				"too old created_at",
+			))
+			return nil, smsgCh, nil
+		} else if m.to < sub {
+			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOKMsgPrefixNoPrefix,
+				"too far off created_at",
 			))
 			return nil, smsgCh, nil
 		}
