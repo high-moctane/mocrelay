@@ -75,33 +75,6 @@ func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
 	return -1
 }
 
-type typedHeap[T any] struct {
-	S        []T
-	LessFunc func(T, T) bool
-}
-
-func newTypedHeap[T any](less func(T, T) bool) typedHeap[T] {
-	return typedHeap[T]{LessFunc: less}
-}
-
-func (h typedHeap[T]) Len() int { return len(h.S) }
-
-func (h typedHeap[T]) Less(i, j int) bool { return h.LessFunc(h.S[i], h.S[j]) }
-
-func (h typedHeap[T]) Swap(i, j int) { h.S[i], h.S[j] = h.S[j], h.S[i] }
-
-func (h *typedHeap[T]) Push(x any) { h.PushT(x.(T)) }
-
-func (h *typedHeap[T]) PushT(x T) { h.S = append(h.S, x) }
-
-func (h *typedHeap[T]) Pop() any { return h.PopT() }
-
-func (h *typedHeap[T]) PopT() T {
-	ret := h.S[len(h.S)-1]
-	h.S = h.S[:len(h.S)-1]
-	return ret
-}
-
 type randCache[K comparable, V any] struct {
 	Cap int
 	c   map[K]V
