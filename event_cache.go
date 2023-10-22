@@ -1,21 +1,26 @@
 package mocrelay
 
 import (
+	"container/heap"
 	"fmt"
 	"slices"
 )
 
 type eventCache struct {
-	rb   *ringBuffer[*Event]
+	size int
+	buf  typedHeap[*Event]
 	ids  map[string]*Event
 	keys map[string]*Event
 }
 
-func newEventCache(capacity int) *eventCache {
+func newEventCache(size int) *eventCache {
 	return &eventCache{
-		rb:   newRingBuffer[*Event](capacity),
-		ids:  make(map[string]*Event, capacity),
-		keys: make(map[string]*Event, capacity),
+		size: size,
+		buf: newTypedHeap[*Event](func(a, b *Event) bool {
+			return a.CreatedAt < b.CreatedAt
+		}),
+		ids:  make(map[string]*Event, size),
+		keys: make(map[string]*Event, size),
 	}
 }
 
@@ -67,28 +72,21 @@ func (c *eventCache) Add(event *Event) (added bool) {
 		return
 	}
 
-	idx := c.rb.IdxFunc(func(v *Event) bool {
-		return v.CreatedAt < event.CreatedAt
-	})
-	if c.rb.Len() == c.rb.Cap && idx < 0 {
-		return
-	}
-
 	c.ids[event.ID] = event
 	c.keys[key] = event
 
-	if c.rb.Len() == c.rb.Cap {
-		old := c.rb.Dequeue()
-		if k, _ := c.eventKey(old); c.keys[k] == old {
-			delete(c.keys, k)
-		}
-		delete(c.ids, old.ID)
-	}
-	c.rb.Enqueue(event)
+	if c.buf.Len() < c.size {
+		heap.Push(&c.buf, event)
+	} else {
+		old := c.buf.S[0]
+		if old.CreatedAt < event.CreatedAt {
+			if k, _ := c.eventKey(old); c.keys[k] == old {
+				delete(c.keys, k)
+			}
+			delete(c.ids, old.ID)
 
-	for i := 0; i+1 < c.rb.Len(); i++ {
-		if c.rb.At(i).CreatedAt < c.rb.At(i+1).CreatedAt {
-			c.rb.Swap(i, i+1)
+			c.buf.S[0] = event
+			heap.Fix(&c.buf, 0)
 		}
 	}
 
@@ -119,9 +117,10 @@ func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
 
 func (c *eventCache) Find(matcher EventCountMatcher) []*Event {
 	var ret []*Event
+	newBuf := newTypedHeap[*Event](c.buf.LessFunc)
 
-	for i := 0; i < c.rb.Len(); i++ {
-		ev := c.rb.At(i)
+	for c.buf.Len() > 0 {
+		ev := heap.Pop(&c.buf).(*Event)
 
 		if c.ids[ev.ID] == nil {
 			continue
@@ -130,13 +129,20 @@ func (c *eventCache) Find(matcher EventCountMatcher) []*Event {
 			continue
 		}
 
+		newBuf.PushT(ev)
+	}
+
+	for i := newBuf.Len() - 1; i >= 0; i-- {
 		if matcher.Done() {
 			break
 		}
-		if matcher.CountMatch(ev) {
-			ret = append(ret, ev)
+		if matcher.CountMatch(newBuf.S[i]) {
+			ret = append(ret, newBuf.S[i])
 		}
 	}
 
+	heap.Init(&newBuf)
+
+	c.buf = newBuf
 	return ret
 }
