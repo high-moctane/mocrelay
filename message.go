@@ -387,10 +387,10 @@ func (msg *ClientCountMsg) Valid() (ok bool) {
 }
 
 type ReqFilter struct {
-	IDs     *[]string
-	Authors *[]string
-	Kinds   *[]int64
-	Tags    *map[string][]string
+	IDs     []string
+	Authors []string
+	Kinds   []int64
+	Tags    map[string][]string
 	Since   *int64
 	Until   *int64
 	Limit   *int64
@@ -418,22 +418,20 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 			if !ok {
 				return errors.New("ids is not a json array")
 			}
-			ids, ok := anySliceAs[string](sli)
+			ret.IDs, ok = anySliceAs[string](sli)
 			if !ok {
 				return errors.New("ids is not a string json array")
 			}
-			ret.IDs = &ids
 
 		case k == "authors":
 			sli, ok := v.([]any)
 			if !ok {
 				return errors.New("authors is not a json array")
 			}
-			authors, ok := anySliceAs[string](sli)
+			ret.Authors, ok = anySliceAs[string](sli)
 			if !ok {
 				return errors.New("authors is not a string json array")
 			}
-			ret.Authors = &authors
 
 		case k == "kinds":
 			sli, ok := v.([]any)
@@ -453,12 +451,12 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 				}
 				kinds[i] = kind
 			}
-			ret.Kinds = &kinds
+			ret.Kinds = kinds
 
 		case len(k) == 2 && k[0] == '#' && ('A' <= k[1] && k[1] <= 'Z' || 'a' <= k[1] && k[1] <= 'z'):
 			// tags
 			if ret.Tags == nil {
-				ret.Tags = toPtr(make(map[string][]string))
+				ret.Tags = make(map[string][]string)
 			}
 
 			sli, ok := v.([]any)
@@ -469,7 +467,7 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 			if !ok {
 				return fmt.Errorf("%s is not a string json array", k)
 			}
-			(*ret.Tags)[k] = vs
+			ret.Tags[k] = vs
 
 		case k == "since":
 			numSince, ok := v.(json.Number)
@@ -520,25 +518,25 @@ func (fil *ReqFilter) Valid() (ok bool) {
 	}
 
 	if fil.IDs != nil {
-		if !sliceAllFunc(*fil.IDs, validID) {
+		if !sliceAllFunc(fil.IDs, validID) {
 			return
 		}
 	}
 
 	if fil.Authors != nil {
-		if !sliceAllFunc(*fil.Authors, validPubkey) {
+		if !sliceAllFunc(fil.Authors, validPubkey) {
 			return
 		}
 	}
 
 	if fil.Kinds != nil {
-		if !sliceAllFunc(*fil.Kinds, validKind) {
+		if !sliceAllFunc(fil.Kinds, validKind) {
 			return
 		}
 	}
 
 	if fil.Tags != nil {
-		for tag, vals := range *fil.Tags {
+		for tag, vals := range fil.Tags {
 			if len(tag) != 2 || tag[0] != '#' ||
 				!('A' <= tag[1] && tag[1] <= 'Z' || 'a' <= tag[1] && tag[1] <= 'z') {
 				return

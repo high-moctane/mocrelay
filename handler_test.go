@@ -194,11 +194,9 @@ func TestRouterHandler_Handle(t *testing.T) {
 					SubscriptionID: "sub_id_with_filter",
 					ReqFilters: []*ReqFilter{
 						{
-							IDs: toPtr(
-								[]string{
-									"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
-								},
-							),
+							IDs: []string{
+								"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+							},
 						},
 					},
 				},

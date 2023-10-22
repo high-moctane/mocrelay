@@ -60,28 +60,28 @@ func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterEventMatcher {
 
 	if filter.IDs != nil {
 		ret.f.IDs = make(map[string]bool)
-		for _, id := range *filter.IDs {
+		for _, id := range filter.IDs {
 			ret.f.IDs[id] = true
 		}
 	}
 
 	if filter.Authors != nil {
 		ret.f.Authors = make(map[string]bool)
-		for _, author := range *filter.Authors {
+		for _, author := range filter.Authors {
 			ret.f.Authors[author] = true
 		}
 	}
 
 	if filter.Kinds != nil {
 		ret.f.Kinds = make(map[int64]bool)
-		for _, kind := range *filter.Kinds {
+		for _, kind := range filter.Kinds {
 			ret.f.Kinds[kind] = true
 		}
 	}
 
 	if filter.Tags != nil {
 		ret.f.Tags = make(map[string]map[string]bool)
-		for tag, vals := range *filter.Tags {
+		for tag, vals := range filter.Tags {
 			m := make(map[string]bool)
 			for _, val := range vals {
 				m[val] = true
