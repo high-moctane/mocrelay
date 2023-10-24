@@ -184,7 +184,7 @@ func TestSkipList_Find(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := newSkipList[int, int](10, tt.cmp)
+			l := newSkipList[int, int](tt.cmp)
 
 			for _, item := range tt.input {
 				l.Add(item.k, item.v)
@@ -280,7 +280,7 @@ func TestSkipList_Add(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := newSkipList[int, int](10, tt.cmp)
+			l := newSkipList[int, int](tt.cmp)
 
 			for _, item := range tt.input {
 				l.Add(item.k, item.v)
@@ -359,7 +359,7 @@ func TestSkipList_Delete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := newSkipList[int, int](10, tt.cmp)
+			l := newSkipList[int, int](tt.cmp)
 
 			for _, item := range tt.input {
 				l.Add(item.k, item.v)

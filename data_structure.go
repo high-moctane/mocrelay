@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"math/bits"
 	"math/rand"
 	"sync"
 )
@@ -80,25 +81,25 @@ func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
 	return -1
 }
 
+const skipListMaxHeight = 16
+
 type skipList[K any, V any] struct {
-	Cmp       func(K, K) int
-	Head      *skipListNode[K, V]
-	MaxHeight int
-	rnd       *rand.Rand
+	Cmp  func(K, K) int
+	Head *skipListNode[K, V]
+	rnd  *rand.Rand
 }
 
-func newSkipList[K any, V any](height int, cmp func(K, K) int) *skipList[K, V] {
+func newSkipList[K any, V any](cmp func(K, K) int) *skipList[K, V] {
 	return &skipList[K, V]{
-		Cmp:       cmp,
-		Head:      &skipListNode[K, V]{Nexts: make([]*skipListNode[K, V], height)},
-		MaxHeight: height,
-		rnd:       rand.New(rand.NewSource(rand.Int63())),
+		Cmp:  cmp,
+		Head: &skipListNode[K, V]{Nexts: make([]*skipListNode[K, V], skipListMaxHeight)},
+		rnd:  rand.New(rand.NewSource(rand.Int63())),
 	}
 }
 
 func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 	node := l.Head
-	for h := l.MaxHeight - 1; h >= 0; h-- {
+	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) <= 0 {
 			node = node.Nexts[h]
 		}
@@ -114,10 +115,10 @@ func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 }
 
 func (l *skipList[K, V]) Add(k K, v V) (added bool) {
-	switched := make([]*skipListNode[K, V], l.MaxHeight)
+	switched := make([]*skipListNode[K, V], skipListMaxHeight)
 
 	node := l.Head
-	for h := l.MaxHeight - 1; h >= 0; h-- {
+	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) < 0 {
 			node = node.Nexts[h]
 		}
@@ -130,7 +131,7 @@ func (l *skipList[K, V]) Add(k K, v V) (added bool) {
 	newNode := skipListNode[K, V]{
 		K:     k,
 		V:     v,
-		Nexts: make([]*skipListNode[K, V], l.rnd.Intn(l.MaxHeight)+1),
+		Nexts: make([]*skipListNode[K, V], l.newHeight()+1),
 	}
 
 	for h := 0; h < len(newNode.Nexts); h++ {
@@ -141,9 +142,14 @@ func (l *skipList[K, V]) Add(k K, v V) (added bool) {
 	return true
 }
 
+func (l *skipList[K, V]) newHeight() int {
+	n := l.rnd.Uint32()
+	return min(bits.LeadingZeros16(uint16(n))+1, skipListMaxHeight)
+}
+
 func (l *skipList[K, V]) Delete(k K) (removed bool) {
 	node := l.Head
-	for h := l.MaxHeight - 1; h >= 0; h-- {
+	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) < 0 {
 			node = node.Nexts[h]
 		}
