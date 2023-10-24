@@ -1,5 +1,10 @@
 package mocrelay
 
+import (
+	"math/rand"
+	"sync"
+)
+
 type ringBuffer[T any] struct {
 	Cap int
 
@@ -73,6 +78,88 @@ func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
 		}
 	}
 	return -1
+}
+
+type skipList[K any, V any] struct {
+	Cmp       func(K, K) int
+	Head      *skipListNode[K, V]
+	MaxHeight int
+	rnd       *rand.Rand
+}
+
+func newSkipList[K any, V any](height int, cmp func(K, K) int) *skipList[K, V] {
+	return &skipList[K, V]{
+		Cmp:       cmp,
+		Head:      &skipListNode[K, V]{Nexts: make([]*skipListNode[K, V], height)},
+		MaxHeight: height,
+		rnd:       rand.New(rand.NewSource(rand.Int63())),
+	}
+}
+
+func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
+	node := l.Head
+	for h := l.MaxHeight - 1; h >= 0; h-- {
+		for node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) <= 0 {
+			node = node.Nexts[h]
+		}
+		if l.Cmp(node.K, k) == 0 {
+			if node == l.Head {
+				return
+			}
+			return node.V, true
+		}
+	}
+
+	return
+}
+
+func (l *skipList[K, V]) Add(k K, v V) (added bool) {
+	switched := make([]*skipListNode[K, V], l.MaxHeight)
+
+	node := l.Head
+	for h := l.MaxHeight - 1; h >= 0; h-- {
+		for node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) < 0 {
+			node = node.Nexts[h]
+		}
+		if node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) == 0 {
+			return
+		}
+		switched[h] = node
+	}
+
+	newNode := skipListNode[K, V]{
+		K:     k,
+		V:     v,
+		Nexts: make([]*skipListNode[K, V], l.rnd.Intn(l.MaxHeight)+1),
+	}
+
+	for h := 0; h < len(newNode.Nexts); h++ {
+		newNode.Nexts[h] = switched[h].Nexts[h]
+		switched[h].Nexts[h] = &newNode
+	}
+
+	return true
+}
+
+func (l *skipList[K, V]) Delete(k K) (removed bool) {
+	node := l.Head
+	for h := l.MaxHeight - 1; h >= 0; h-- {
+		for node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) < 0 {
+			node = node.Nexts[h]
+		}
+		if node.Nexts[h] != nil && l.Cmp(node.Nexts[h].K, k) == 0 {
+			removed = true
+			node.Nexts[h] = node.Nexts[h].Nexts[h]
+		}
+	}
+	return
+}
+
+type skipListNode[K any, V any] struct {
+	Mu    sync.RWMutex
+	K     K
+	V     V
+	Nexts []*skipListNode[K, V]
 }
 
 type randCache[K comparable, V any] struct {
