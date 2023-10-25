@@ -292,6 +292,7 @@ func TestSkipList_Add(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.want, got)
+			assert.Equal(t, len(tt.input), l.Len)
 		})
 	}
 }
@@ -374,6 +375,20 @@ func TestSkipList_Delete(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.want, got)
+			assert.Equal(t, len(tt.want), l.Len)
 		})
 	}
+}
+
+func TestSkipList_newHeight(t *testing.T) {
+	l := newSkipList[int, int](cmp.Compare[int])
+
+	small, large := 17, -1
+	for i := 0; i < 100000; i++ {
+		n := l.newHeight()
+		small = min(small, n)
+		large = max(large, n)
+	}
+	assert.Equal(t, 1, small)
+	assert.Equal(t, 16, large)
 }

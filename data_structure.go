@@ -84,6 +84,7 @@ func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
 const skipListMaxHeight = 16
 
 type skipList[K any, V any] struct {
+	Len  int
 	Cmp  func(K, K) int
 	Head *skipListNode[K, V]
 	rnd  *rand.Rand
@@ -131,7 +132,7 @@ func (l *skipList[K, V]) Add(k K, v V) (added bool) {
 	newNode := skipListNode[K, V]{
 		K:     k,
 		V:     v,
-		Nexts: make([]*skipListNode[K, V], l.newHeight()+1),
+		Nexts: make([]*skipListNode[K, V], l.newHeight()),
 	}
 
 	for h := 0; h < len(newNode.Nexts); h++ {
@@ -139,12 +140,13 @@ func (l *skipList[K, V]) Add(k K, v V) (added bool) {
 		switched[h].Nexts[h] = &newNode
 	}
 
+	l.Len++
 	return true
 }
 
 func (l *skipList[K, V]) newHeight() int {
 	n := l.rnd.Uint32()
-	return min(bits.LeadingZeros16(uint16(n))+1, skipListMaxHeight)
+	return bits.LeadingZeros16(uint16(n|1)) + 1
 }
 
 func (l *skipList[K, V]) Delete(k K) (removed bool) {
@@ -157,6 +159,10 @@ func (l *skipList[K, V]) Delete(k K) (removed bool) {
 			removed = true
 			node.Nexts[h] = node.Nexts[h].Nexts[h]
 		}
+	}
+
+	if removed {
+		l.Len--
 	}
 	return
 }
