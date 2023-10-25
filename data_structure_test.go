@@ -392,3 +392,19 @@ func TestSkipList_newHeight(t *testing.T) {
 	assert.Equal(t, 1, small)
 	assert.Equal(t, 16, large)
 }
+
+func BenchmarkSkipList(b *testing.B) {
+	const length = 10000
+
+	l := newSkipList[int, int](func(a, b int) int { return -cmp.Compare(a, b) })
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if i > length {
+			l.Delete(i - length)
+		}
+
+		n := i/100*100 + (99 - (i % 100))
+		l.Add(n, n)
+	}
+}
