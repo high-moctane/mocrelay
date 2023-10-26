@@ -135,8 +135,8 @@ func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 }
 
 type skipListStackEntry[K, V any] struct {
-	node  *skipListNode[K, V]
-	nexts []*skipListNode[K, V]
+	node *skipListNode[K, V]
+	next *skipListNode[K, V]
 }
 
 func (l *skipList[K, V]) Add(k K, v V) (added bool) {
@@ -157,15 +157,12 @@ func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
 	switched := make([]skipListStackEntry[K, V], skipListMaxHeight)
 
 	var next *skipListNode[K, V]
-	var nexts []*skipListNode[K, V]
 	node := l.Head
 	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for {
 			node.NextsMu.RLock()
-			nexts = append([]*skipListNode[K, V](nil), node.Nexts...)
+			next = node.Nexts[h]
 			node.NextsMu.RUnlock()
-
-			next = nexts[h]
 
 			if next == nil || l.Cmp(next.K, k) >= 0 {
 				break
@@ -178,8 +175,8 @@ func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
 		}
 
 		switched[h] = skipListStackEntry[K, V]{
-			node:  node,
-			nexts: nexts,
+			node: node,
+			next: next,
 		}
 	}
 
@@ -204,7 +201,7 @@ func (l *skipList[K, V]) tryAddInsert(
 			defer node.NextsMu.Unlock()
 		}
 
-		if !slices.Equal(node.Nexts, switched[h].nexts) {
+		if node.Nexts[h] != switched[h].next {
 			return
 		}
 	}
@@ -242,15 +239,12 @@ func (l *skipList[K, V]) tryDelete(k K) (added, ok bool) {
 	switched := make([]skipListStackEntry[K, V], skipListMaxHeight)
 
 	var next *skipListNode[K, V]
-	var nexts []*skipListNode[K, V]
 	node := l.Head
 	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for {
 			node.NextsMu.RLock()
-			nexts = append([]*skipListNode[K, V](nil), node.Nexts...)
+			next = node.Nexts[h]
 			node.NextsMu.RUnlock()
-
-			next = nexts[h]
 
 			if next == nil || l.Cmp(next.K, k) >= 0 {
 				break
@@ -260,8 +254,8 @@ func (l *skipList[K, V]) tryDelete(k K) (added, ok bool) {
 
 		if next != nil && l.Cmp(next.K, k) == 0 {
 			switched[h] = skipListStackEntry[K, V]{
-				node:  node,
-				nexts: nexts,
+				node: node,
+				next: next,
 			}
 		}
 	}
@@ -288,7 +282,7 @@ func (l *skipList[K, V]) tryDeleteRemove(switched []skipListStackEntry[K, V]) (o
 			defer node.NextsMu.Unlock()
 		}
 
-		if !slices.Equal(node.Nexts, switched[h].nexts) {
+		if node.Nexts[h] != switched[h].next {
 			return
 		}
 	}
