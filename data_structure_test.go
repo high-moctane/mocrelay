@@ -383,14 +383,14 @@ func TestSkipList_Delete(t *testing.T) {
 func TestSkipList_newHeight(t *testing.T) {
 	l := newSkipList[int, int](cmp.Compare[int])
 
-	small, large := 17, -1
+	small, large := 100, -1
 	for i := 0; i < 100000; i++ {
 		n := l.newHeight()
 		small = min(small, n)
 		large = max(large, n)
 	}
 	assert.Equal(t, 1, small)
-	assert.Equal(t, 16, large)
+	assert.Equal(t, 17, large)
 }
 
 func BenchmarkSkipList(b *testing.B) {

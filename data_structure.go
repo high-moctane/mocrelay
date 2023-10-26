@@ -82,7 +82,7 @@ func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
 	return -1
 }
 
-const skipListMaxHeight = 16
+const skipListMaxHeight = 16 + 1
 
 type skipList[K any, V any] struct {
 	Cmp  func(K, K) int
@@ -218,7 +218,7 @@ func (l *skipList[K, V]) newHeight() int {
 	l.rndMu.Lock()
 	n := l.rnd.Uint32()
 	l.rndMu.Unlock()
-	return bits.LeadingZeros16(uint16(n|1)) + 1
+	return bits.LeadingZeros16(uint16(n)) + 1
 }
 
 func (l *skipList[K, V]) Delete(k K) (deleted bool) {
