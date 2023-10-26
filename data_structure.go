@@ -97,9 +97,12 @@ type skipList[K any, V any] struct {
 
 func newSkipList[K any, V any](cmp func(K, K) int) *skipList[K, V] {
 	return &skipList[K, V]{
-		Cmp:  cmp,
-		Head: &skipListNode[K, V]{Nexts: make([]*skipListNode[K, V], skipListMaxHeight)},
-		rnd:  rand.New(rand.NewSource(rand.Int63())),
+		Cmp: cmp,
+		Head: &skipListNode[K, V]{
+			Nexts:  make([]*skipListNode[K, V], skipListMaxHeight),
+			Height: skipListMaxHeight,
+		},
+		rnd: rand.New(rand.NewSource(rand.Int63())),
 	}
 }
 
@@ -180,10 +183,12 @@ func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
 		}
 	}
 
+	height := l.newHeight()
 	newNode := skipListNode[K, V]{
-		K:     k,
-		V:     v,
-		Nexts: make([]*skipListNode[K, V], l.newHeight()),
+		K:      k,
+		V:      v,
+		Nexts:  make([]*skipListNode[K, V], height),
+		Height: height,
 	}
 
 	return true, l.tryAddInsert(&newNode, switched)
@@ -193,10 +198,10 @@ func (l *skipList[K, V]) tryAddInsert(
 	newNode *skipListNode[K, V],
 	switched []skipListStackEntry[K, V],
 ) (ok bool) {
-	for h := len(newNode.Nexts) - 1; h >= 0; h-- {
+	for h := newNode.Height - 1; h >= 0; h-- {
 		node := switched[h].node
 
-		if h == len(newNode.Nexts)-1 || node != switched[h+1].node {
+		if h == newNode.Height-1 || node != switched[h+1].node {
 			node.NextsMu.Lock()
 			defer node.NextsMu.Unlock()
 		}
@@ -206,7 +211,7 @@ func (l *skipList[K, V]) tryAddInsert(
 		}
 	}
 
-	for h := len(newNode.Nexts) - 1; h >= 0; h-- {
+	for h := newNode.Height - 1; h >= 0; h-- {
 		newNode.Nexts[h] = switched[h].node.Nexts[h]
 		switched[h].node.Nexts[h] = newNode
 	}
@@ -301,6 +306,8 @@ func (l *skipList[K, V]) tryDeleteRemove(switched []skipListStackEntry[K, V]) (o
 type skipListNode[K any, V any] struct {
 	K K
 	V V
+
+	Height int
 
 	NextsMu sync.RWMutex
 	Nexts   []*skipListNode[K, V]
