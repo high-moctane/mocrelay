@@ -95,14 +95,11 @@ type skipList[K any, V any] struct {
 	rnd   *rand.Rand
 }
 
-func newSkipList[K any, V any](cmp func(K, K) int) *skipList[K, V] {
+func newSkipList[K, V any](cmp func(K, K) int) *skipList[K, V] {
 	return &skipList[K, V]{
-		Cmp: cmp,
-		Head: &skipListNode[K, V]{
-			Nexts:  make([]*skipListNode[K, V], skipListMaxHeight),
-			Height: skipListMaxHeight,
-		},
-		rnd: rand.New(rand.NewSource(rand.Int63())),
+		Cmp:  cmp,
+		Head: &skipListNode[K, V]{Height: skipListMaxHeight},
+		rnd:  rand.New(rand.NewSource(rand.Int63())),
 	}
 }
 
@@ -157,7 +154,7 @@ func (l *skipList[K, V]) Add(k K, v V) (added bool) {
 }
 
 func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
-	switched := make([]skipListStackEntry[K, V], skipListMaxHeight)
+	var switched [skipListMaxHeight]skipListStackEntry[K, V]
 
 	var next *skipListNode[K, V]
 	node := l.Head
@@ -187,7 +184,6 @@ func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
 	newNode := skipListNode[K, V]{
 		K:      k,
 		V:      v,
-		Nexts:  make([]*skipListNode[K, V], height),
 		Height: height,
 	}
 
@@ -196,7 +192,7 @@ func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
 
 func (l *skipList[K, V]) tryAddInsert(
 	newNode *skipListNode[K, V],
-	switched []skipListStackEntry[K, V],
+	switched [skipListMaxHeight]skipListStackEntry[K, V],
 ) (ok bool) {
 	for h := newNode.Height - 1; h >= 0; h-- {
 		node := switched[h].node
@@ -303,14 +299,14 @@ func (l *skipList[K, V]) tryDeleteRemove(switched []skipListStackEntry[K, V]) (o
 	return true
 }
 
-type skipListNode[K any, V any] struct {
+type skipListNode[K, V any] struct {
 	K K
 	V V
 
 	Height int
 
 	NextsMu sync.RWMutex
-	Nexts   []*skipListNode[K, V]
+	Nexts   [skipListMaxHeight]*skipListNode[K, V]
 }
 
 type randCache[K comparable, V any] struct {
