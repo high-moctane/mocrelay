@@ -45,6 +45,8 @@ type RelayOption struct {
 	SendRateLimitRate  time.Duration
 
 	MaxMessageLength int64
+
+	PingDuration time.Duration
 }
 
 func (opt *RelayOption) maxMessageLength() int64 {
@@ -112,16 +114,16 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
 		defer cancel()
 		defer close(recv)
-		err := relay.serveRead(ctx, conn, recv, send)
-		errs <- fmt.Errorf("serveRead terminated: %w", err)
+		err := relay.serveReadLoop(ctx, conn, recv, send)
+		errs <- fmt.Errorf("serveReadLoop terminated: %w", err)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		err := relay.serveWrite(ctx, conn, send)
-		errs <- fmt.Errorf("serveWrite terminated: %w", err)
+		err := relay.serveWriteLoop(ctx, conn, send)
+		errs <- fmt.Errorf("serveWriteLoop terminated: %w", err)
 	}()
 
 	wg.Add(1)
@@ -151,7 +153,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (relay *Relay) serveRead(
+func (relay *Relay) serveReadLoop(
 	ctx context.Context,
 	conn *websocket.Conn,
 	recv chan<- ClientMsg,
@@ -161,77 +163,82 @@ func (relay *Relay) serveRead(
 	defer l.Stop()
 
 	for {
-		typ, payload, err := conn.Read(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to read websocket: %w", err)
-		}
-		if typ != websocket.MessageText {
-			notice := NewServerNoticeMsgf("binary websocket message type is not allowed")
-			sendServerMsgCtx(ctx, send, notice)
-			continue
-		}
-		if !utf8.Valid(payload) || !json.Valid(payload) {
-			notice := NewServerNoticeMsgf("invalid json msg")
-			sendServerMsgCtx(ctx, send, notice)
-			continue
-		}
-
-		msg, err := ParseClientMsg(payload)
-		if err != nil {
-			relay.logWarn(ctx, relay.recvLogger, "failed to parse client msg", "error", err)
-			continue
-		}
-
-		relay.logInfo(
-			ctx,
-			relay.recvLogger,
-			"recv client msg",
-			"clientMsg",
-			json.RawMessage(payload),
-		)
-
-		ok, err := CheckClientMsg(msg)
-		if err != nil {
-			relay.logWarn(ctx, relay.recvLogger, "failed to verify client msg", "error", err)
-			notice := NewServerNoticeMsgf("internal error")
-			sendServerMsgCtx(ctx, send, notice)
-			continue
-		}
-		if !ok {
-			relay.logWarn(ctx, relay.recvLogger, "invalid client msg", "error", err)
-			notice := NewServerNoticeMsgf("invalid client msg: %s", payload)
-			sendServerMsgCtx(ctx, send, notice)
-			continue
-		}
-
-		select {
-		case <-l.C:
-			sendCtx(ctx, recv, msg)
-
-		default:
-			if m, ok := msg.(*ClientEventMsg); ok {
-				sendCtx(
-					ctx,
-					send,
-					ServerMsg(
-						NewServerOKMsg(
-							m.Event.ID,
-							false,
-							ServerOkMsgPrefixRateLimited,
-							"slow down",
-						),
-					),
-				)
-				<-l.C
-			} else {
-				<-l.C
-				sendCtx(ctx, recv, msg)
-			}
+		if err := relay.serveRead(ctx, conn, recv, send, l); err != nil {
+			return err
 		}
 	}
 }
 
-func (relay *Relay) serveWrite(
+func (relay *Relay) serveRead(
+	ctx context.Context,
+	conn *websocket.Conn,
+	recv chan<- ClientMsg,
+	send chan ServerMsg,
+	limiter *rateLimiter,
+) error {
+	typ, payload, err := conn.Read(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to read websocket: %w", err)
+	}
+	if typ != websocket.MessageText {
+		relay.logWarn(ctx, relay.recvLogger, "received binary websocket message")
+		notice := NewServerNoticeMsgf("binary websocket message type is not allowed")
+		sendServerMsgCtx(ctx, send, notice)
+		return nil
+	}
+	if !utf8.Valid(payload) || !json.Valid(payload) {
+		relay.logWarn(ctx, relay.recvLogger, "received invalid json message")
+		notice := NewServerNoticeMsgf("invalid json msg")
+		sendServerMsgCtx(ctx, send, notice)
+		return nil
+	}
+
+	msg, err := ParseClientMsg(payload)
+	if err != nil {
+		relay.logWarn(ctx, relay.recvLogger, "failed to parse client msg", "error", err)
+		notice := NewServerNoticeMsgf("invalid client msg")
+		sendServerMsgCtx(ctx, send, notice)
+		return nil
+	}
+
+	relay.logInfo(
+		ctx,
+		relay.recvLogger,
+		"recv client msg",
+		"clientMsg",
+		json.RawMessage(payload),
+	)
+
+	if ok := ValidClientMsg(msg); !ok {
+		relay.logWarn(ctx, relay.recvLogger, "invalid client msg", "error", err)
+		notice := NewServerNoticeMsgf("invalid client msg: %s", payload)
+		sendServerMsgCtx(ctx, send, notice)
+		return nil
+	}
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		valid, err := msg.Event.Verify()
+		if err != nil {
+			relay.logWarn(ctx, relay.recvLogger, "failed to verify event msg", "error", err)
+			notice := NewServerNoticeMsg("internal error")
+			sendServerMsgCtx(ctx, send, notice)
+			return nil
+		}
+		if !valid {
+			relay.logWarn(ctx, relay.recvLogger, "received invalid sig event", "clientMsg", msg)
+			notice := NewServerNoticeMsgf("invalid sig event: %s", msg.Event.ID)
+			sendServerMsgCtx(ctx, send, notice)
+			return nil
+		}
+	}
+
+	<-limiter.C
+
+	sendCtx(ctx, recv, msg)
+
+	return nil
+}
+
+func (relay *Relay) serveWriteLoop(
 	ctx context.Context,
 	conn *websocket.Conn,
 	send <-chan ServerMsg,
@@ -239,15 +246,20 @@ func (relay *Relay) serveWrite(
 	l := newRateLimiter(relay.sendRateLimitRate, 0)
 	defer l.cancel()
 
-	pingTicker := time.NewTicker(10 * time.Second)
-	defer pingTicker.Stop()
+	var pingTickCh <-chan time.Time
+	if relay.opt.PingDuration != 0 {
+		pingTicker := time.NewTicker(relay.opt.PingDuration)
+		defer pingTicker.Stop()
+
+		pingTickCh = pingTicker.C
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("serverWrite terminated by ctx: %w", ctx.Err())
 
-		case <-pingTicker.C:
+		case <-pingTickCh:
 			if err := conn.Ping(ctx); err != nil {
 				return fmt.Errorf("failed to send ping: %w", err)
 			}

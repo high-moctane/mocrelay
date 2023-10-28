@@ -79,36 +79,29 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 	}
 }
 
-func CheckClientMsg(msg ClientMsg) (bool, error) {
+func ValidClientMsg(msg ClientMsg) bool {
 	if msg == nil {
-		return false, nil
+		return false
 	}
 
 	switch msg := msg.(type) {
 	case *ClientEventMsg:
-		if !msg.Valid() {
-			return false, nil
-		}
-		ok, err := msg.Event.Verify()
-		if err != nil {
-			return false, fmt.Errorf("failed to verify event: %w", err)
-		}
-		return ok, nil
+		return msg.Valid()
 
 	case *ClientReqMsg:
-		return msg.Valid(), nil
+		return msg.Valid()
 
 	case *ClientCloseMsg:
-		return msg.Valid(), nil
+		return msg.Valid()
 
 	case *ClientAuthMsg:
-		return msg.Valid(), nil
+		return msg.Valid()
 
 	case *ClientCountMsg:
-		return msg.Valid(), nil
+		return msg.Valid()
 
 	default:
-		return false, nil
+		return false
 	}
 }
 
