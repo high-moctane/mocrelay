@@ -134,6 +134,8 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	<-ctx.Done()
 
+	conn.Close(websocket.StatusNormalClosure, "")
+
 	wg.Wait()
 
 	close(errs)
@@ -243,7 +245,6 @@ func (relay *Relay) serveWrite(
 	for {
 		select {
 		case <-ctx.Done():
-			conn.Close(websocket.StatusNormalClosure, "")
 			return fmt.Errorf("serverWrite terminated by ctx: %w", ctx.Err())
 
 		case <-pingTicker.C:
