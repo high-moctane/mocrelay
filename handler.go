@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -298,14 +297,12 @@ func NewCacheHandler(size int) CacheHandler {
 }
 
 type simpleCacheHandler struct {
-	sema chan struct{}
-	c    *eventCache
+	c *eventCache
 }
 
 func newSimpleCacheHandler(size int) *simpleCacheHandler {
 	return &simpleCacheHandler{
-		sema: make(chan struct{}, runtime.GOMAXPROCS(0)),
-		c:    newEventCache(size),
+		c: newEventCache(size),
 	}
 }
 
@@ -323,15 +320,6 @@ func (h *simpleCacheHandler) HandleClientMsg(
 ) (<-chan ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *ClientEventMsg:
-		for i := 0; i < cap(h.sema); i++ {
-			h.sema <- struct{}{}
-		}
-		defer func() {
-			for i := 0; i < cap(h.sema); i++ {
-				<-h.sema
-			}
-		}()
-
 		ev := msg.Event
 		if ev.Kind == 5 {
 			for _, tag := range ev.Tags {
@@ -356,9 +344,6 @@ func (h *simpleCacheHandler) HandleClientMsg(
 		return newClosedBufCh(okMsg), nil
 
 	case *ClientReqMsg:
-		h.sema <- struct{}{}
-		defer func() { <-h.sema }()
-
 		evs := h.c.Find(NewReqFiltersEventMatchers(msg.ReqFilters))
 
 		smsgCh := make(chan ServerMsg, len(evs)+1)
