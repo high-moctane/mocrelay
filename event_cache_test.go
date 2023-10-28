@@ -1,6 +1,8 @@
 package mocrelay
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -126,4 +128,27 @@ func TestEventCache(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Benchmark_eventCache_Add(b *testing.B) {
+	c := newEventCache(10000)
+
+	genKey := func() string {
+		buf := make([]byte, 32)
+		rand.Read(buf)
+		return hex.EncodeToString(buf)
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(b *testing.PB) {
+		for i := 0; b.Next(); i++ {
+			ev := Event{
+				ID:        genKey(),
+				Kind:      1,
+				CreatedAt: int64(i + 4 - i%5),
+			}
+
+			c.Add(&ev)
+		}
+	})
 }

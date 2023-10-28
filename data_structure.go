@@ -309,6 +309,16 @@ type skipListNode[K, V any] struct {
 	Nexts   [skipListMaxHeight]*skipListNode[K, V]
 }
 
+func (nd *skipListNode[K, V]) Next() *skipListNode[K, V] {
+	if nd == nil {
+		return nil
+	}
+
+	nd.NextsMu.RLock()
+	defer nd.NextsMu.RUnlock()
+	return nd.Nexts[0]
+}
+
 type randCache[K comparable, V any] struct {
 	Cap int
 	c   map[K]V

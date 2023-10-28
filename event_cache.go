@@ -1,21 +1,37 @@
 package mocrelay
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 )
 
 type eventCache struct {
-	rb   *ringBuffer[*Event]
-	ids  map[string]*Event
-	keys map[string]*Event
+	capacity int
+	latest   *skipList[*Event, *Event]
+	oldest   *skipList[*Event, *Event]
+	ids      *skipList[string, *Event]
+	keys     *skipList[string, *Event]
 }
 
 func newEventCache(capacity int) *eventCache {
+	cmpFunc := func(a, b *Event) int {
+		res := -cmp.Compare(a.CreatedAt, b.CreatedAt)
+		if res != 0 {
+			return res
+		}
+
+		return -cmp.Compare(a.ID, b.ID)
+	}
+
+	revCmpFunc := func(a, b *Event) int { return cmpFunc(b, a) }
+
 	return &eventCache{
-		rb:   newRingBuffer[*Event](capacity),
-		ids:  make(map[string]*Event, capacity),
-		keys: make(map[string]*Event, capacity),
+		capacity: capacity,
+		latest:   newSkipList[*Event, *Event](cmpFunc),
+		oldest:   newSkipList[*Event, *Event](revCmpFunc),
+		ids:      newSkipList[string, *Event](cmp.Compare),
+		keys:     newSkipList[string, *Event](cmp.Compare),
 	}
 }
 
@@ -56,40 +72,37 @@ func (c *eventCache) eventKey(event *Event) (key string, ok bool) {
 }
 
 func (c *eventCache) Add(event *Event) (added bool) {
-	if c.ids[event.ID] != nil {
+	if _, ok := c.ids.Find(event.ID); ok {
 		return
 	}
 	key, ok := c.eventKey(event)
 	if !ok {
 		return
 	}
-	if old, ok := c.keys[key]; ok && old.CreatedAt > event.CreatedAt {
+	if old, ok := c.keys.Find(key); ok && old.CreatedAt > event.CreatedAt {
 		return
 	}
 
-	idx := c.rb.IdxFunc(func(v *Event) bool {
-		return v.CreatedAt < event.CreatedAt
-	})
-	if c.rb.Len() == c.rb.Cap && idx < 0 {
-		return
-	}
+	c.ids.Add(event.ID, event)
+	c.keys.Delete(key)
+	c.keys.Add(key, event)
+	c.latest.Add(event, event)
+	c.oldest.Add(event, event)
 
-	c.ids[event.ID] = event
-	c.keys[key] = event
+	if c.latest.Len() > c.capacity {
+		c.oldest.Head.NextsMu.RLock()
+		head := c.oldest.Head.Nexts[0]
+		c.oldest.Head.NextsMu.RUnlock()
+		old := head.V
 
-	if c.rb.Len() == c.rb.Cap {
-		old := c.rb.Dequeue()
-		if k, _ := c.eventKey(old); c.keys[k] == old {
-			delete(c.keys, k)
+		k, _ := c.eventKey(old)
+		if ev, ok := c.keys.Find(k); ok && ev == old {
+			c.keys.Delete(k)
 		}
-		delete(c.ids, old.ID)
-	}
-	c.rb.Enqueue(event)
+		c.ids.Delete(old.ID)
 
-	for i := 0; i+1 < c.rb.Len(); i++ {
-		if c.rb.At(i).CreatedAt < c.rb.At(i+1).CreatedAt {
-			c.rb.Swap(i, i+1)
-		}
+		c.latest.Delete(old)
+		c.oldest.Delete(old)
 	}
 
 	added = true
@@ -97,36 +110,38 @@ func (c *eventCache) Add(event *Event) (added bool) {
 }
 
 func (c *eventCache) DeleteID(id, pubkey string) {
-	event := c.ids[id]
-	if event == nil || event.Pubkey != pubkey {
+	event, ok := c.ids.Find(id)
+	if !ok || event.Pubkey != pubkey {
 		return
 	}
 
-	if k, _ := c.eventKey(event); c.keys[k] == event {
-		delete(c.keys, k)
+	k, _ := c.eventKey(event)
+	if ev, ok := c.keys.Find(k); ok && ev == event {
+		c.keys.Delete(k)
 	}
-	delete(c.ids, id)
+	c.ids.Delete(id)
 }
 
 func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
-	event := c.keys[naddr]
-	if event == nil || event.Pubkey != pubkey {
+	event, ok := c.keys.Find(naddr)
+	if !ok || event.Pubkey != pubkey {
 		return
 	}
-	delete(c.ids, event.ID)
-	delete(c.keys, naddr)
+	c.ids.Delete(event.ID)
+	c.keys.Delete(naddr)
 }
 
 func (c *eventCache) Find(matcher EventCountMatcher) []*Event {
 	var ret []*Event
 
-	for i := 0; i < c.rb.Len(); i++ {
-		ev := c.rb.At(i)
+	for node := c.latest.Head.Next(); node != nil; node = node.Next() {
+		ev := node.V
 
-		if c.ids[ev.ID] == nil {
+		if _, ok := c.ids.Find(ev.ID); !ok {
 			continue
 		}
-		if k, _ := c.eventKey(ev); c.keys[k] != ev {
+		k, _ := c.eventKey(ev)
+		if e, ok := c.keys.Find(k); !ok || e.ID != ev.ID {
 			continue
 		}
 
