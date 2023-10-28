@@ -394,7 +394,7 @@ func TestSkipList_newHeight(t *testing.T) {
 }
 
 func BenchmarkSkipList(b *testing.B) {
-	const length = 10000
+	const length = 1000000
 
 	l := newSkipList[int, int](func(a, b int) int { return -cmp.Compare(a, b) })
 

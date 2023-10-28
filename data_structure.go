@@ -3,7 +3,6 @@ package mocrelay
 import (
 	"math/bits"
 	"math/rand"
-	"slices"
 	"sync"
 )
 
@@ -194,12 +193,14 @@ func (l *skipList[K, V]) tryAddInsert(
 	newNode *skipListNode[K, V],
 	switched [skipListMaxHeight]skipListStackEntry[K, V],
 ) (ok bool) {
+	var pre *skipListNode[K, V]
 	for h := newNode.Height - 1; h >= 0; h-- {
 		node := switched[h].node
 
-		if h == newNode.Height-1 || node != switched[h+1].node {
+		if node != pre {
 			node.NextsMu.Lock()
 			defer node.NextsMu.Unlock()
+			pre = node
 		}
 
 		if node.Nexts[h] != switched[h].next {
@@ -236,8 +237,10 @@ func (l *skipList[K, V]) Delete(k K) (deleted bool) {
 	}
 }
 
-func (l *skipList[K, V]) tryDelete(k K) (added, ok bool) {
-	switched := make([]skipListStackEntry[K, V], skipListMaxHeight)
+func (l *skipList[K, V]) tryDelete(k K) (deleted, ok bool) {
+	var switched [skipListMaxHeight]skipListStackEntry[K, V]
+	switchedH := -1
+	var willDelete bool
 
 	var next *skipListNode[K, V]
 	node := l.Head
@@ -253,34 +256,39 @@ func (l *skipList[K, V]) tryDelete(k K) (added, ok bool) {
 			node = next
 		}
 
-		if next != nil && l.Cmp(next.K, k) == 0 {
-			switched[h] = skipListStackEntry[K, V]{
-				node: node,
-				next: next,
-			}
+		if node == nil {
+			return false, true
+		}
+
+		switched[h] = skipListStackEntry[K, V]{
+			node: node,
+			next: next,
+		}
+		if next != nil {
+			switchedH = max(switchedH, h)
+			willDelete = willDelete || l.Cmp(next.K, k) == 0
 		}
 	}
 
-	if slices.ContainsFunc(
-		switched,
-		func(v skipListStackEntry[K, V]) bool { return v.node != nil },
-	) {
-		return true, l.tryDeleteRemove(switched)
+	if willDelete {
+		return true, l.tryDeleteRemove(switched, switchedH)
 	}
 
 	return false, true
 }
 
-func (l *skipList[K, V]) tryDeleteRemove(switched []skipListStackEntry[K, V]) (ok bool) {
-	for h := len(switched) - 1; h >= 0; h-- {
+func (l *skipList[K, V]) tryDeleteRemove(
+	switched [skipListMaxHeight]skipListStackEntry[K, V],
+	switchedH int,
+) (ok bool) {
+	var pre *skipListNode[K, V]
+	for h := switchedH; h >= 0; h-- {
 		node := switched[h].node
-		if node == nil {
-			continue
-		}
 
-		if h == len(switched)-1 || node != switched[h+1].node {
+		if node != pre {
 			node.NextsMu.Lock()
 			defer node.NextsMu.Unlock()
+			pre = node
 		}
 
 		if node.Nexts[h] != switched[h].next {
@@ -288,8 +296,8 @@ func (l *skipList[K, V]) tryDeleteRemove(switched []skipListStackEntry[K, V]) (o
 		}
 	}
 
-	for h := len(switched) - 1; h >= 0; h-- {
-		if switched[h].node == nil {
+	for h := switchedH; h >= 0; h-- {
+		if switched[h].next == nil {
 			continue
 		}
 
