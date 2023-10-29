@@ -211,83 +211,43 @@ func (sub *subscriber) SendIfMatch(event *Event) {
 
 type subscribers struct {
 	// map[reqID]map[subID]*subscriber
-	subs chan map[string]chan map[string]chan *subscriber
+	subs *safeMap[string, *safeMap[string, *subscriber]]
 }
 
 func newSubscribers() *subscribers {
-	subs := make(chan map[string]chan map[string]chan *subscriber, 1)
-	subs <- make(map[string]chan map[string]chan *subscriber)
 	return &subscribers{
-		subs: subs,
+		subs: newSafeMap[string, *safeMap[string, *subscriber]](),
 	}
 }
 
 func (subs *subscribers) Subscribe(sub *subscriber) {
-	m := <-subs.subs
-	mch, ok := m[sub.ReqID]
-	if ok {
-		subs.subs <- m
-	} else {
-		mch = make(chan map[string]chan *subscriber, 1)
-		m[sub.ReqID] = mch
-		subs.subs <- m
-		mch <- make(map[string]chan *subscriber)
+	m, ok := subs.subs.TryGet(sub.ReqID)
+	if !ok {
+		m = newSafeMap[string, *subscriber]()
+		subs.subs.Add(sub.ReqID, m)
 	}
 
-	mm := <-mch
-	mmch, ok := mm[sub.SubscriptionID]
-	if ok {
-		mch <- mm
-		<-mmch
-	} else {
-		mmch = make(chan *subscriber, 1)
-		mm[sub.SubscriptionID] = mmch
-		mch <- mm
-	}
-
-	mmch <- sub
+	m.Add(sub.SubscriptionID, sub)
 }
 
 func (subs *subscribers) Unsubscribe(reqID, subID string) {
-	m := <-subs.subs
-	mch, ok := m[reqID]
-	subs.subs <- m
+	m, ok := subs.subs.TryGet(reqID)
 	if !ok {
 		return
 	}
-	mm := <-mch
-	delete(mm, subID)
-	mch <- mm
+	m.Delete(subID)
 }
 
 func (subs *subscribers) UnsubscribeAll(reqID string) {
-	m := <-subs.subs
-	delete(m, reqID)
-	subs.subs <- m
+	subs.subs.Delete(reqID)
 }
 
 func (subs *subscribers) Publish(event *Event) {
-	m := <-subs.subs
-	mchs := make([]chan map[string]chan *subscriber, 0, len(m))
-	for _, mch := range m {
-		mchs = append(mchs, mch)
-	}
-	subs.subs <- m
-
-	var mmchs []chan *subscriber
-	for _, mch := range mchs {
-		mm := <-mch
-		for _, mmch := range mm {
-			mmchs = append(mmchs, mmch)
-		}
-		mch <- mm
-	}
-
-	for _, mmch := range mmchs {
-		s := <-mmch
-		s.SendIfMatch(event)
-		mmch <- s
-	}
+	subs.subs.Loop(func(_ string, m *safeMap[string, *subscriber]) {
+		m.Loop(func(_ string, mm *subscriber) {
+			mm.SendIfMatch(event)
+		})
+	})
 }
 
 type CacheHandler SimpleHandler

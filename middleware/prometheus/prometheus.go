@@ -3,6 +3,7 @@ package prometheus
 import (
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/high-moctane/mocrelay"
 	"github.com/prometheus/client_golang/prometheus"
@@ -167,67 +168,96 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 }
 
 type reqCounter struct {
-	// chan map[reqID]chan map[subID]exist
-	c chan map[string]chan map[string]bool
+	// map[reqID]map[subID]exist
+	c *safeMap[string, *safeMap[string, bool]]
 }
 
 func newReqCounter() *reqCounter {
-	c := &reqCounter{
-		c: make(chan map[string]chan map[string]bool, 1),
+	return &reqCounter{
+		c: newSafeMap[string, *safeMap[string, bool]](),
 	}
-	c.c <- make(map[string]chan map[string]bool)
-	return c
 }
 
 func (c *reqCounter) AddReqID(reqID string) {
-	cc := make(chan map[string]bool, 1)
-	cc <- make(map[string]bool)
-	m := <-c.c
-	m[reqID] = cc
-	c.c <- m
+	c.c.Add(reqID, newSafeMap[string, bool]())
 }
 
 func (c *reqCounter) DeleteReqID(reqID string) {
-	m := <-c.c
-	delete(m, reqID)
-	c.c <- m
+	c.c.Delete(reqID)
 }
 
 func (c *reqCounter) AddSubID(reqID, subID string) {
-	m := <-c.c
-	cc := m[reqID]
-	c.c <- m
-
-	mm := <-cc
-	mm[subID] = true
-	cc <- mm
+	m, ok := c.c.TryGet(reqID)
+	if !ok {
+		return
+	}
+	m.Add(subID, true)
 }
 
 func (c *reqCounter) DeleteSubID(reqID, subID string) {
-	m := <-c.c
-	cc := m[reqID]
-	c.c <- m
+	m, ok := c.c.TryGet(reqID)
+	if !ok {
+		return
+	}
 
-	mm := <-cc
-	delete(mm, subID)
-	cc <- mm
+	m.Delete(subID)
 }
 
 func (c *reqCounter) Count() int {
 	ret := 0
 
-	m := <-c.c
-	var ccs []chan map[string]bool
-	for _, cc := range m {
-		ccs = append(ccs, cc)
-	}
-	c.c <- m
-
-	for _, cc := range ccs {
-		mm := <-cc
-		ret += len(mm)
-		cc <- mm
-	}
+	c.c.Loop(func(_ string, m *safeMap[string, bool]) {
+		ret += m.Len()
+	})
 
 	return ret
+}
+
+type safeMap[K comparable, V any] struct {
+	mu sync.RWMutex
+	m  map[K]V
+}
+
+func newSafeMap[K comparable, V any]() *safeMap[K, V] {
+	return &safeMap[K, V]{m: make(map[K]V)}
+}
+
+func (m *safeMap[K, V]) Len() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.m)
+}
+
+func (m *safeMap[K, V]) Get(k K) V {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.m[k]
+}
+
+func (m *safeMap[K, V]) TryGet(k K) (V, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	v, ok := m.m[k]
+	return v, ok
+}
+
+func (m *safeMap[K, V]) Add(k K, v V) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.m[k] = v
+}
+
+func (m *safeMap[K, V]) Delete(k K) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.m, k)
+}
+
+func (m *safeMap[K, V]) Loop(f func(k K, v V)) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for key, val := range m.m {
+		f(key, val)
+	}
 }
