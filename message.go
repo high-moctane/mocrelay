@@ -37,42 +37,42 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 	switch string(match[1]) {
 	case "EVENT":
 		var ret ClientEventMsg
-		if err := json.Unmarshal(b, &ret); err != nil {
+		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
 	case "REQ":
 		var ret ClientReqMsg
-		if err := json.Unmarshal(b, &ret); err != nil {
+		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
 	case "CLOSE":
 		var ret ClientCloseMsg
-		if err := json.Unmarshal(b, &ret); err != nil {
+		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
 	case "AUTH":
 		var ret ClientAuthMsg
-		if err := json.Unmarshal(b, &ret); err != nil {
+		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
 	case "COUNT":
 		var ret ClientCountMsg
-		if err := json.Unmarshal(b, &ret); err != nil {
+		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
 	default:
 		var ret ClientUnknownMsg
-		if err := json.Unmarshal(b, &ret); err != nil {
+		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
@@ -172,7 +172,7 @@ func (msg *ClientEventMsg) UnmarshalJSON(b []byte) error {
 	}
 
 	var event Event
-	if err := json.Unmarshal(elems[1], &event); err != nil {
+	if err := event.UnmarshalJSON(elems[1]); err != nil {
 		return fmt.Errorf("failed to unmarshal event json: %w", err)
 	}
 
@@ -223,9 +223,11 @@ func (msg *ClientReqMsg) UnmarshalJSON(b []byte) error {
 
 	ret.ReqFilters = make([]*ReqFilter, len(elems)-2)
 	for i := 0; i < len(elems)-2; i++ {
-		if err := json.Unmarshal(elems[i+2], &ret.ReqFilters[i]); err != nil {
+		f := new(ReqFilter)
+		if err := f.UnmarshalJSON(elems[i+2]); err != nil {
 			return fmt.Errorf("failed to unmarshal filter: %w", err)
 		}
+		ret.ReqFilters[i] = f
 	}
 
 	*msg = ret
@@ -352,9 +354,11 @@ func (msg *ClientCountMsg) UnmarshalJSON(b []byte) error {
 
 	ret.ReqFilters = make([]*ReqFilter, len(elems)-2)
 	for i := 0; i < len(elems)-2; i++ {
-		if err := json.Unmarshal(elems[i+2], &ret.ReqFilters[i]); err != nil {
+		f := new(ReqFilter)
+		if err := f.UnmarshalJSON(elems[i+2]); err != nil {
 			return fmt.Errorf("failed to unmarshal filter: %w", err)
 		}
+		ret.ReqFilters[i] = f
 	}
 
 	*msg = ret
