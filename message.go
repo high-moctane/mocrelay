@@ -832,21 +832,6 @@ type Event struct {
 	Sig       string `json:"sig"`
 }
 
-var ErrMarshalEvent = errors.New("failed to marshal event")
-
-func (ev *Event) MarshalJSON() ([]byte, error) {
-	if ev == nil {
-		return nil, ErrMarshalEvent
-	}
-
-	type alias Event
-	ret, err := json.Marshal(alias(*ev))
-	if err != nil {
-		err = errors.Join(err, ErrMarshalEvent)
-	}
-	return ret, err
-}
-
 func (ev *Event) UnmarshalJSON(b []byte) error {
 	dec := json.NewDecoder(bytes.NewBuffer(b))
 	dec.UseNumber()
