@@ -59,13 +59,8 @@ func newRateLimiter(rate time.Duration, burst int) *rateLimiter {
 		t := time.NewTicker(rate)
 		defer t.Stop()
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				c <- struct{}{}
-			}
+		for range recvCtx(ctx, t.C) {
+			sendCtx(ctx, c, struct{}{})
 		}
 	}()
 
@@ -109,6 +104,31 @@ func sendServerMsgCtx(ctx context.Context, ch chan<- ServerMsg, msg ServerMsg) (
 		return
 	}
 	return sendCtx(ctx, ch, msg)
+}
+
+func recvCtx[T any](ctx context.Context, ch <-chan T) <-chan T {
+	ret := make(chan T)
+
+	go func() {
+		defer close(ret)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case v, ok := <-ch:
+				if !ok {
+					return
+				}
+				if !sendCtx(ctx, ret, v) {
+					return
+				}
+			}
+		}
+	}()
+
+	return ret
 }
 
 type bufCh[T any] chan T

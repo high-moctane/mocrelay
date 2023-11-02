@@ -64,26 +64,21 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 				defer close(smsgChCh)
 
 				errs <- func() error {
-					for {
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-
-						case cmsg, ok := <-recv:
-							if !ok {
-								return ErrRecvClosed
-							}
-
-							smsgCh, err := h.HandleClientMsg(r, cmsg)
-							if err != nil {
-								return err
-							}
-							if smsgCh == nil {
-								continue
-							}
-							sendCtx(ctx, smsgChCh, smsgCh)
+					for cmsg := range recvCtx(ctx, recv) {
+						smsgCh, err := h.HandleClientMsg(r, cmsg)
+						if err != nil {
+							return err
 						}
+						if smsgCh == nil {
+							continue
+						}
+						sendCtx(ctx, smsgChCh, smsgCh)
 					}
+
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					return ErrRecvClosed
 				}()
 			}()
 
@@ -92,8 +87,8 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 				defer wg.Done()
 				defer cancel()
 
-				for smsgCh := range smsgChCh {
-					for smsg := range smsgCh {
+				for smsgCh := range recvCtx(ctx, smsgChCh) {
+					for smsg := range recvCtx(ctx, smsgCh) {
 						sendServerMsgCtx(ctx, send, smsg)
 					}
 				}
@@ -141,22 +136,31 @@ func (router *RouterHandler) Handle(
 
 	subCh := make(chan ServerMsg, router.buflen)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.Join(ErrRouterHandlerStop, ctx.Err())
+	var wg sync.WaitGroup
 
-		case msg, ok := <-recv:
-			if !ok {
-				return errors.Join(ErrRouterHandlerStop, ErrRecvClosed)
-			}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer cancel()
+
+		for msg := range recvCtx(ctx, recv) {
 			m := router.recv(ctx, reqID, msg, subCh)
 			sendServerMsgCtx(ctx, send, m)
+		}
+	}()
 
-		case msg := <-subCh:
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer cancel()
+
+		for msg := range recvCtx(ctx, subCh) {
 			sendCtx(ctx, send, msg)
 		}
-	}
+	}()
+
+	wg.Wait()
+	return errors.Join(ErrRouterHandlerStop, ctx.Err())
 }
 
 func (router *RouterHandler) recv(
@@ -451,13 +455,8 @@ func (ss *mergeHandlerSession) mergeSend(ctx context.Context, sends []chan Serve
 
 	go ss.mergeSend(ctx, sends[:idx])
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg := <-sends[idx]:
-			sendCtx(ctx, ss.preSendCh, newMergeHandlerSessionSendMsg(idx, msg))
-		}
+	for msg := range recvCtx(ctx, sends[idx]) {
+		sendCtx(ctx, ss.preSendCh, newMergeHandlerSessionSendMsg(idx, msg))
 	}
 }
 
@@ -468,7 +467,7 @@ func (ss *mergeHandlerSession) closeRecvs() {
 }
 
 func (ss *mergeHandlerSession) handleRecv(ctx context.Context, recv <-chan ClientMsg) {
-	for msg := range recv {
+	for msg := range recvCtx(ctx, recv) {
 		msg = ss.handleRecvMsg(msg)
 		ss.broadcastRecvs(ctx, msg)
 	}
@@ -536,15 +535,9 @@ func newMergeHandlerSessionSendMsg(idx int, msg ServerMsg) *mergeHandlerSessionS
 }
 
 func (ss *mergeHandlerSession) handleSend(ctx context.Context, send chan<- ServerMsg) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-
-		case msg := <-ss.preSendCh:
-			m := ss.handleSendMsg(msg)
-			sendServerMsgCtx(ctx, send, m)
-		}
+	for msg := range recvCtx(ctx, ss.preSendCh) {
+		m := ss.handleSendMsg(msg)
+		sendServerMsgCtx(ctx, send, m)
 	}
 }
 
@@ -869,32 +862,27 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 					defer close(rCh)
 
 					errs <- func() error {
-						for {
-							select {
-							case <-ctx.Done():
-								return ctx.Err()
-
-							case cmsg, ok := <-recv:
-								if !ok {
-									return ErrRecvClosed
+						for cmsg := range recvCtx(ctx, recv) {
+							cmsgCh, smsgCh, err := m.HandleClientMsg(r, cmsg)
+							if err != nil {
+								return err
+							}
+							if cmsgCh != nil {
+								for cmsg := range recvCtx(ctx, cmsgCh) {
+									sendClientMsgCtx(ctx, rCh, cmsg)
 								}
-
-								cmsgCh, smsgCh, err := m.HandleClientMsg(r, cmsg)
-								if err != nil {
-									return err
-								}
-								if cmsgCh != nil {
-									for cmsg := range cmsgCh {
-										sendClientMsgCtx(ctx, rCh, cmsg)
-									}
-								}
-								if smsgCh != nil {
-									for smsg := range smsgCh {
-										sendServerMsgCtx(ctx, send, smsg)
-									}
+							}
+							if smsgCh != nil {
+								for smsg := range recvCtx(ctx, smsgCh) {
+									sendServerMsgCtx(ctx, send, smsg)
 								}
 							}
 						}
+
+						if err := ctx.Err(); err != nil {
+							return err
+						}
+						return ErrRecvClosed
 					}()
 				}()
 
@@ -904,25 +892,21 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 					defer cancel()
 
 					errs <- func() error {
-						for {
-							select {
-							case <-ctx.Done():
-								return ctx.Err()
+						for smsg := range recvCtx(ctx, sCh) {
+							smsgCh, err := m.HandleServerMsg(r, smsg)
+							if err != nil {
+								return err
+							}
+							if smsgCh == nil {
+								continue
+							}
 
-							case smsg := <-sCh:
-								smsgCh, err := m.HandleServerMsg(r, smsg)
-								if err != nil {
-									return err
-								}
-								if smsgCh == nil {
-									continue
-								}
-
-								for smsg := range smsgCh {
-									sendServerMsgCtx(ctx, send, smsg)
-								}
+							for smsg := range recvCtx(ctx, smsgCh) {
+								sendServerMsgCtx(ctx, send, smsg)
 							}
 						}
+
+						return ctx.Err()
 					}()
 				}()
 
