@@ -881,114 +881,275 @@ func TestMergeHandler(t *testing.T) {
 	}
 }
 
+type testSimpleMiddlewareInterfaceEntry struct {
+	input     any
+	wantCmsgs []ClientMsg
+	wantSmsgs []ServerMsg
+}
+
+func helperTestSimpleMiddlewareInterface(
+	t *testing.T,
+	m SimpleMiddlewareInterface,
+	entries []testSimpleMiddlewareInterfaceEntry,
+) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
+
+	r, err := m.HandleStart(r)
+	assert.NoError(t, err)
+
+	for i, entry := range entries {
+		switch msg := entry.input.(type) {
+		case ClientMsg:
+			cmsgCh, sMsgCh, err := m.HandleClientMsg(r, msg)
+			assert.NoError(t, err)
+
+			var smsgs []ServerMsg
+			if sMsgCh != nil {
+				for smsg := range recvCtx(ctx, sMsgCh) {
+					smsgs = append(smsgs, smsg)
+				}
+			}
+			assert.EqualValuesf(t, entry.wantSmsgs, smsgs, "at %d", i)
+
+			var cmsgs []ClientMsg
+			if cmsgCh != nil {
+				for cmsg := range recvCtx(ctx, cmsgCh) {
+					cmsgs = append(cmsgs, cmsg)
+				}
+			}
+			assert.EqualValuesf(t, entry.wantCmsgs, cmsgs, "at %d", i)
+
+		case ServerMsg:
+			sMsgCh, err := m.HandleServerMsg(r, msg)
+			assert.NoError(t, err)
+
+			var smsgs []ServerMsg
+			for smsg := range recvCtx(ctx, sMsgCh) {
+				smsgs = append(smsgs, smsg)
+			}
+
+			assert.EqualValuesf(t, entry.wantSmsgs, smsgs, "at %d", i)
+
+		default:
+			panicf("[%d]: invalid msg type", i)
+		}
+	}
+
+	err = m.HandleStop(r)
+	assert.NoError(t, err)
+}
+
 func TestMaxSubscriptionsMiddleware(t *testing.T) {
 	tests := []struct {
 		name    string
 		maxSubs int
-		input   []ClientMsg
-		want    []ServerMsg
+		entries []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
-			name:    "empty",
-			maxSubs: 2,
-			input:   nil,
-			want:    nil,
+			name:    "req only",
+			maxSubs: 3,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub1",
+						ReqFilters:     []*ReqFilter{{}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub1",
+							ReqFilters:     []*ReqFilter{{}},
+						},
+					},
+				},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub2",
+						ReqFilters:     []*ReqFilter{{}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub2",
+							ReqFilters:     []*ReqFilter{{}, {}},
+						},
+					},
+				},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub3",
+						ReqFilters:     []*ReqFilter{{}, {}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub3",
+							ReqFilters:     []*ReqFilter{{}, {}, {}},
+						},
+					},
+				},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub4",
+						ReqFilters:     []*ReqFilter{{}, {}, {}, {}},
+					},
+					wantSmsgs: []ServerMsg{
+						&ServerNoticeMsg{"too many req: sub4: max subscriptions is 3"},
+					},
+				},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub5",
+						ReqFilters:     []*ReqFilter{{}, {}, {}, {}, {}},
+					},
+					wantSmsgs: []ServerMsg{
+						&ServerNoticeMsg{"too many req: sub5: max subscriptions is 3"},
+					},
+				},
+			},
 		},
 		{
-			name:    "less",
+			name:    "with close",
 			maxSubs: 3,
-			input: []ClientMsg{
-				&ClientReqMsg{
-					SubscriptionID: "sub1",
-					ReqFilters:     []*ReqFilter{{}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub1",
+						ReqFilters:     []*ReqFilter{{}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub1",
+							ReqFilters:     []*ReqFilter{{}},
+						},
+					},
 				},
-				&ClientCloseMsg{
-					SubscriptionID: "sub1",
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub2",
+						ReqFilters:     []*ReqFilter{{}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub2",
+							ReqFilters:     []*ReqFilter{{}, {}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "sub1",
-					ReqFilters:     []*ReqFilter{{}},
+				{
+					input: &ClientCloseMsg{
+						SubscriptionID: "sub1",
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientCloseMsg{
+							SubscriptionID: "sub1",
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "sub2",
-					ReqFilters:     []*ReqFilter{{}},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub3",
+						ReqFilters:     []*ReqFilter{{}, {}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub3",
+							ReqFilters:     []*ReqFilter{{}, {}, {}},
+						},
+					},
 				},
-				&ClientCloseMsg{
-					SubscriptionID: "sub1",
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub4",
+						ReqFilters:     []*ReqFilter{{}, {}, {}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub4",
+							ReqFilters:     []*ReqFilter{{}, {}, {}, {}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "sub3",
-					ReqFilters:     []*ReqFilter{{}},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub5",
+						ReqFilters:     []*ReqFilter{{}, {}, {}, {}, {}},
+					},
+					wantSmsgs: []ServerMsg{
+						&ServerNoticeMsg{"too many req: sub5: max subscriptions is 3"},
+					},
 				},
-				&ClientCloseMsg{
-					SubscriptionID: "sub2",
-				},
-				&ClientCloseMsg{
-					SubscriptionID: "sub3",
-				},
-			},
-			want: []ServerMsg{
-				NewServerEOSEMsg("sub1"),
-				NewServerEOSEMsg("sub1"),
-				NewServerEOSEMsg("sub2"),
-				NewServerEOSEMsg("sub3"),
 			},
 		},
 		{
-			name:    "more",
+			name:    "with duplication",
 			maxSubs: 3,
-			input: []ClientMsg{
-				&ClientReqMsg{
-					SubscriptionID: "sub1",
-					ReqFilters:     []*ReqFilter{{}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub1",
+						ReqFilters:     []*ReqFilter{{}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub1",
+							ReqFilters:     []*ReqFilter{{}},
+						},
+					},
 				},
-				&ClientCloseMsg{
-					SubscriptionID: "sub1",
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub2",
+						ReqFilters:     []*ReqFilter{{}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub2",
+							ReqFilters:     []*ReqFilter{{}, {}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "sub1",
-					ReqFilters:     []*ReqFilter{{}},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub1",
+						ReqFilters:     []*ReqFilter{{}, {}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub1",
+							ReqFilters:     []*ReqFilter{{}, {}, {}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "sub2",
-					ReqFilters:     []*ReqFilter{{}},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub3",
+						ReqFilters:     []*ReqFilter{{}, {}, {}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "sub3",
+							ReqFilters:     []*ReqFilter{{}, {}, {}, {}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "sub3",
-					ReqFilters:     []*ReqFilter{{}},
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "sub4",
+						ReqFilters:     []*ReqFilter{{}, {}, {}, {}, {}},
+					},
+					wantSmsgs: []ServerMsg{
+						&ServerNoticeMsg{"too many req: sub4: max subscriptions is 3"},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "sub4",
-					ReqFilters:     []*ReqFilter{{}},
-				},
-				&ClientCloseMsg{
-					SubscriptionID: "sub2",
-				},
-				&ClientCloseMsg{
-					SubscriptionID: "sub3",
-				},
-				&ClientReqMsg{
-					SubscriptionID: "sub5",
-					ReqFilters:     []*ReqFilter{{}},
-				},
-			},
-			want: []ServerMsg{
-				NewServerEOSEMsg("sub1"),
-				NewServerEOSEMsg("sub1"),
-				NewServerEOSEMsg("sub2"),
-				NewServerEOSEMsg("sub3"),
-				NewServerNoticeMsg("too many req: sub4: max subscriptions is 3"),
-				NewServerEOSEMsg("sub5"),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewMaxSubscriptionsMiddleware(tt.maxSubs)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleMaxSubscriptionsMiddleware(tt.maxSubs)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -997,69 +1158,80 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 	tests := []struct {
 		name       string
 		maxFilters int
-		input      []ClientMsg
-		want       []ServerMsg
+		entries    []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
-			name:       "empty",
+			name:       "req: ok",
 			maxFilters: 2,
-			input:      nil,
-			want:       nil,
-		},
-		{
-			name:       "req",
-			maxFilters: 2,
-			input: []ClientMsg{
-				&ClientReqMsg{
-					SubscriptionID: "req1",
-					ReqFilters:     []*ReqFilter{{}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "req1",
+						ReqFilters:     []*ReqFilter{{}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "req1",
+							ReqFilters:     []*ReqFilter{{}, {}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "req2",
-					ReqFilters:     []*ReqFilter{{}, {}},
-				},
-				&ClientReqMsg{
-					SubscriptionID: "req3",
-					ReqFilters:     []*ReqFilter{{}, {}, {}},
-				},
-			},
-			want: []ServerMsg{
-				NewServerEOSEMsg("req1"),
-				NewServerEOSEMsg("req2"),
-				NewServerNoticeMsg("too many req filters: req3: max filters is 2"),
 			},
 		},
 		{
-			name:       "count",
+			name:       "req: ng",
 			maxFilters: 2,
-			input: []ClientMsg{
-				&ClientCountMsg{
-					SubscriptionID: "count1",
-					ReqFilters:     []*ReqFilter{{}},
-				},
-				&ClientCountMsg{
-					SubscriptionID: "count2",
-					ReqFilters:     []*ReqFilter{{}, {}},
-				},
-				&ClientCountMsg{
-					SubscriptionID: "count3",
-					ReqFilters:     []*ReqFilter{{}, {}, {}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "req1",
+						ReqFilters:     []*ReqFilter{{}, {}, {}},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerNoticeMsg("too many req filters: req1: max filters is 2"),
+					},
 				},
 			},
-			want: []ServerMsg{
-				NewServerCountMsg("count1", 0, nil),
-				NewServerCountMsg("count2", 0, nil),
-				NewServerNoticeMsg("too many count filters: count3: max filters is 2"),
+		},
+		{
+			name:       "count: ok",
+			maxFilters: 2,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientCountMsg{
+						SubscriptionID: "count1",
+						ReqFilters:     []*ReqFilter{{}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientCountMsg{
+							SubscriptionID: "count1",
+							ReqFilters:     []*ReqFilter{{}, {}},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "count: ng",
+			maxFilters: 2,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientCountMsg{
+						SubscriptionID: "count1",
+						ReqFilters:     []*ReqFilter{{}, {}, {}},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerNoticeMsg("too many count filters: count1: max filters is 2"),
+					},
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewMaxReqFiltersMiddleware(tt.maxFilters)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleMaxReqFiltersMiddleware(tt.maxFilters)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1068,69 +1240,116 @@ func TestMaxLimitMiddleware(t *testing.T) {
 	tests := []struct {
 		name     string
 		maxLimit int
-		input    []ClientMsg
-		want     []ServerMsg
+		entries  []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
-			name:     "empty",
+			name:     "req: ok: no limit",
 			maxLimit: 2,
-			input:    nil,
-			want:     nil,
-		},
-		{
-			name:     "req",
-			maxLimit: 2,
-			input: []ClientMsg{
-				&ClientReqMsg{
-					SubscriptionID: "req1",
-					ReqFilters:     []*ReqFilter{{}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "req1",
+						ReqFilters:     []*ReqFilter{{}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "req1",
+							ReqFilters:     []*ReqFilter{{}, {}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "req2",
-					ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
-				},
-				&ClientReqMsg{
-					SubscriptionID: "req3",
-					ReqFilters:     []*ReqFilter{{}, {}, {Limit: toPtr(int64(3))}},
-				},
-			},
-			want: []ServerMsg{
-				NewServerEOSEMsg("req1"),
-				NewServerEOSEMsg("req2"),
-				NewServerNoticeMsg("too large limit: req3: max limit is 2"),
 			},
 		},
 		{
-			name:     "count",
+			name:     "req: ok: with limit",
 			maxLimit: 2,
-			input: []ClientMsg{
-				&ClientCountMsg{
-					SubscriptionID: "count1",
-					ReqFilters:     []*ReqFilter{{}},
-				},
-				&ClientCountMsg{
-					SubscriptionID: "count2",
-					ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
-				},
-				&ClientCountMsg{
-					SubscriptionID: "count3",
-					ReqFilters:     []*ReqFilter{{}, {}, {Limit: toPtr(int64(3))}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "req1",
+						ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "req1",
+							ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+						},
+					},
 				},
 			},
-			want: []ServerMsg{
-				NewServerCountMsg("count1", 0, nil),
-				NewServerCountMsg("count2", 0, nil),
-				NewServerNoticeMsg("too large limit: count3: max limit is 2"),
+		},
+		{
+			name:     "req: ng",
+			maxLimit: 2,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "req1",
+						ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(3))}},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerNoticeMsg("too large limit: req1: max limit is 2"),
+					},
+				},
+			},
+		},
+		{
+			name:     "count: ok: no limit",
+			maxLimit: 2,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientCountMsg{
+						SubscriptionID: "count",
+						ReqFilters:     []*ReqFilter{{}, {}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientCountMsg{
+							SubscriptionID: "count",
+							ReqFilters:     []*ReqFilter{{}, {}},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "count: ok: with limit",
+			maxLimit: 2,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientCountMsg{
+						SubscriptionID: "count",
+						ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientCountMsg{
+							SubscriptionID: "count",
+							ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "count: ng",
+			maxLimit: 2,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientCountMsg{
+						SubscriptionID: "count",
+						ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(3))}},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerNoticeMsg("too large limit: count: max limit is 2"),
+					},
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewMaxLimitMiddleware(tt.maxLimit)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleMaxLimitMiddleware(tt.maxLimit)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1139,53 +1358,80 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 	tests := []struct {
 		name     string
 		maxLimit int
-		input    []ClientMsg
-		want     []ServerMsg
+		entries  []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
-			name:     "req",
+			name:     "req: ok",
 			maxLimit: 5,
-			input: []ClientMsg{
-				&ClientReqMsg{
-					SubscriptionID: "12345",
-					ReqFilters:     []*ReqFilter{{}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "12345",
+						ReqFilters:     []*ReqFilter{{}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientReqMsg{
+							SubscriptionID: "12345",
+							ReqFilters:     []*ReqFilter{{}},
+						},
+					},
 				},
-				&ClientReqMsg{
-					SubscriptionID: "123456",
-					ReqFilters:     []*ReqFilter{{}},
-				},
-			},
-			want: []ServerMsg{
-				NewServerEOSEMsg("12345"),
-				NewServerNoticeMsg("too long subid: 123456: max subid length is 5"),
 			},
 		},
 		{
-			name:     "count",
-			maxLimit: 4,
-			input: []ClientMsg{
-				&ClientCountMsg{
-					SubscriptionID: "1234",
-					ReqFilters:     []*ReqFilter{{}},
-				},
-				&ClientCountMsg{
-					SubscriptionID: "12345",
-					ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(2))}},
+			name:     "req: ng",
+			maxLimit: 5,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientReqMsg{
+						SubscriptionID: "123456",
+						ReqFilters:     []*ReqFilter{{}},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerNoticeMsg("too long subid: 123456: max subid length is 5"),
+					},
 				},
 			},
-			want: []ServerMsg{
-				NewServerCountMsg("1234", 0, nil),
-				NewServerNoticeMsg("too long subid: 12345: max subid length is 4"),
+		},
+		{
+			name:     "count: ok",
+			maxLimit: 5,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientCountMsg{
+						SubscriptionID: "12345",
+						ReqFilters:     []*ReqFilter{{}},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientCountMsg{
+							SubscriptionID: "12345",
+							ReqFilters:     []*ReqFilter{{}},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "count: ng",
+			maxLimit: 5,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientCountMsg{
+						SubscriptionID: "123456",
+						ReqFilters:     []*ReqFilter{{}},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerNoticeMsg("too long subid: 123456: max subid length is 5"),
+					},
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewMaxSubIDLengthMiddleware(tt.maxLimit)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleMaxSubIDLengthMiddleware(tt.maxLimit)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1194,39 +1440,58 @@ func TestMaxEventTagsMiddleware(t *testing.T) {
 	tests := []struct {
 		name         string
 		maxEventTags int
-		input        []ClientMsg
-		want         []ServerMsg
+		entries      []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
-			name:         "test",
+			name:         "ok",
 			maxEventTags: 3,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:   "id1",
-						Tags: []Tag{{"e", "powa"}, {"e", "powa"}, {"e", "powa"}},
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:   "id1",
+							Tags: []Tag{{"e", "powa"}, {"e", "powa"}, {"e", "powa"}},
+						},
 					},
-				},
-				&ClientEventMsg{
-					&Event{
-						ID:   "id2",
-						Tags: []Tag{{"e", "powa"}, {"e", "powa"}, {"e", "powa"}, {"e", "powa"}},
+					wantCmsgs: []ClientMsg{
+						&ClientEventMsg{
+							&Event{
+								ID:   "id1",
+								Tags: []Tag{{"e", "powa"}, {"e", "powa"}, {"e", "powa"}},
+							},
+						},
 					},
 				},
 			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", true, "", ""),
-				NewServerOKMsg("id2", false, "", "too many event tags: max event tags is 3"),
+		},
+		{
+			name:         "ng",
+			maxEventTags: 3,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:   "id1",
+							Tags: []Tag{{"e", "powa"}, {"e", "powa"}, {"e", "powa"}, {"e", "powa"}},
+						},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerOKMsg(
+							"id1",
+							false,
+							"",
+							"too many event tags: max event tags is 3",
+						),
+					},
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewMaxEventTagsMiddleware(tt.maxEventTags)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleMaxEventTagsMiddleware(tt.maxEventTags)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1235,167 +1500,212 @@ func TestMaxContentLengthMiddleware(t *testing.T) {
 	tests := []struct {
 		name             string
 		maxContentLength int
-		input            []ClientMsg
-		want             []ServerMsg
+		entries          []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
-			name:             "test",
+			name:             "ok",
 			maxContentLength: 5,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:      "id1",
-						Content: "12345",
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:      "id1",
+							Content: "12345",
+						},
 					},
-				},
-				&ClientEventMsg{
-					&Event{
-						ID:      "id2",
-						Content: "123456",
+					wantCmsgs: []ClientMsg{
+						&ClientEventMsg{
+							&Event{
+								ID:      "id1",
+								Content: "12345",
+							},
+						},
 					},
 				},
 			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", true, "", ""),
-				NewServerOKMsg("id2", false, "", "too long content: max content length is 5"),
+		},
+		{
+			name:             "ng",
+			maxContentLength: 5,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:      "id1",
+							Content: "123456",
+						},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerOKMsg(
+							"id1",
+							false,
+							"",
+							"too long content: max content length is 5",
+						),
+					},
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewMaxContentLengthMiddleware(tt.maxContentLength)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleMaxContentLengthMiddleware(tt.maxContentLength)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
 
 func TestCreatedAtLowerLimitMiddleware(t *testing.T) {
 	tests := []struct {
-		name  string
-		lower int64
-		input []ClientMsg
-		want  []ServerMsg
+		name    string
+		lower   int64
+		entries []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
 			name:  "ok: past",
 			lower: 10,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:        "id1",
-						CreatedAt: time.Now().Unix() - 9,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:        "id1",
+							CreatedAt: time.Now().Unix() - 9,
+						},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientEventMsg{
+							&Event{
+								ID:        "id1",
+								CreatedAt: time.Now().Unix() - 9,
+							},
+						},
 					},
 				},
-			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", true, "", ""),
 			},
 		},
 		{
 			name:  "ok: future",
 			lower: 10,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:        "id1",
-						CreatedAt: time.Now().Unix() + 9,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:        "id1",
+							CreatedAt: time.Now().Unix() + 20,
+						},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientEventMsg{
+							&Event{
+								ID:        "id1",
+								CreatedAt: time.Now().Unix() + 20,
+							},
+						},
 					},
 				},
-			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", true, "", ""),
 			},
 		},
 		{
 			name:  "ng",
 			lower: 10,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:        "id1",
-						CreatedAt: time.Now().Unix() - 11,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:        "id1",
+							CreatedAt: time.Now().Unix() - 11,
+						},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerOKMsg("id1", false, "", "too old created_at"),
 					},
 				},
-			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", false, "", "too old created_at"),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewCreatedAtLowerLimitMiddleware(tt.lower)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleCreatedAtLowerLimitMiddleware(tt.lower)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
 
 func TestCreatedAtUpperLimitMiddleware(t *testing.T) {
 	tests := []struct {
-		name  string
-		upper int64
-		input []ClientMsg
-		want  []ServerMsg
+		name    string
+		upper   int64
+		entries []testSimpleMiddlewareInterfaceEntry
 	}{
 		{
 			name:  "ok: past",
 			upper: 10,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:        "id1",
-						CreatedAt: time.Now().Unix() - 9,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:        "id1",
+							CreatedAt: time.Now().Unix() - 20,
+						},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientEventMsg{
+							&Event{
+								ID:        "id1",
+								CreatedAt: time.Now().Unix() - 20,
+							},
+						},
 					},
 				},
-			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", true, "", ""),
 			},
 		},
 		{
 			name:  "ok: future",
 			upper: 10,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:        "id1",
-						CreatedAt: time.Now().Unix() + 9,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:        "id1",
+							CreatedAt: time.Now().Unix() + 9,
+						},
+					},
+					wantCmsgs: []ClientMsg{
+						&ClientEventMsg{
+							&Event{
+								ID:        "id1",
+								CreatedAt: time.Now().Unix() + 9,
+							},
+						},
 					},
 				},
-			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", true, "", ""),
 			},
 		},
 		{
 			name:  "ng",
 			upper: 10,
-			input: []ClientMsg{
-				&ClientEventMsg{
-					&Event{
-						ID:        "id1",
-						CreatedAt: time.Now().Unix() + 11,
+			entries: []testSimpleMiddlewareInterfaceEntry{
+				{
+					input: &ClientEventMsg{
+						&Event{
+							ID:        "id1",
+							CreatedAt: time.Now().Unix() + 11,
+						},
+					},
+					wantSmsgs: []ServerMsg{
+						NewServerOKMsg("id1", false, "", "too far off created_at"),
 					},
 				},
-			},
-			want: []ServerMsg{
-				NewServerOKMsg("id1", false, "", "too far off created_at"),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var h Handler
-			h = NewRouterHandler(100)
-			h = NewCreatedAtUpperLimitMiddleware(tt.upper)(h)
-			helperTestHandler(t, h, tt.input, tt.want)
+			m := newSimpleCreatedAtUpperLimitMiddleware(tt.upper)
+			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
 		})
 	}
 }
