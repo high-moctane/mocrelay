@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/high-moctane/mocrelay"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,8 +23,13 @@ type simplePrometheusMiddleware struct {
 	recvEventTotal  *prometheus.CounterVec
 	sendMsgTotal    *prometheus.CounterVec
 	reqTotal        prometheus.GaugeFunc
+	reqResponseTime prometheus.Summary
 
 	reqCounter *reqCounter
+
+	// map[reqID + subID]startTime
+	reqStartTimeMu sync.Mutex
+	reqStartTime   map[string]map[string]time.Time
 }
 
 func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusMiddleware {
@@ -62,8 +68,15 @@ func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusM
 			},
 			func() float64 { return float64(reqCounter.Count()) },
 		),
+		reqResponseTime: prometheus.NewSummary(
+			prometheus.SummaryOpts{
+				Name: "mocrelay_req_response_seconds",
+				Help: "Req to EOSE transaction time",
+			},
+		),
 
-		reqCounter: reqCounter,
+		reqCounter:   reqCounter,
+		reqStartTime: make(map[string]map[string]time.Time),
 	}
 
 	reg.MustRegister(m.connectionCount)
@@ -71,6 +84,7 @@ func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusM
 	reg.MustRegister(m.recvEventTotal)
 	reg.MustRegister(m.sendMsgTotal)
 	reg.MustRegister(m.reqTotal)
+	reg.MustRegister(m.reqResponseTime)
 
 	return m
 }
@@ -89,6 +103,7 @@ func (m *simplePrometheusMiddleware) HandleStop(r *http.Request) error {
 
 	reqID := mocrelay.GetRequestID(r.Context())
 	m.reqCounter.DeleteReqID(reqID)
+	m.deleteReqTimer(reqID)
 
 	return nil
 }
@@ -110,6 +125,7 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 		m.recvMsgTotal.WithLabelValues("REQ").Inc()
 		reqID := mocrelay.GetRequestID(r.Context())
 		m.reqCounter.AddSubID(reqID, msg.SubscriptionID)
+		m.startReqTimer(reqID, msg.SubscriptionID)
 
 	case *mocrelay.ClientCloseMsg:
 		m.recvMsgTotal.WithLabelValues("CLOSE").Inc()
@@ -137,9 +153,13 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 	r *http.Request,
 	msg mocrelay.ServerMsg,
 ) (<-chan mocrelay.ServerMsg, error) {
-	switch msg.(type) {
+	switch msg := msg.(type) {
 	case *mocrelay.ServerEOSEMsg:
 		m.sendMsgTotal.WithLabelValues("EOSE").Inc()
+		reqID := mocrelay.GetRequestID(r.Context())
+		if dur := m.stopReqTimer(reqID, msg.SubscriptionID); dur != 0 {
+			m.reqResponseTime.Observe(float64(dur) / float64(time.Second))
+		}
 
 	case *mocrelay.ServerEventMsg:
 		m.sendMsgTotal.WithLabelValues("EVENT").Inc()
@@ -165,6 +185,38 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 	res <- msg
 
 	return res, nil
+}
+
+func (m *simplePrometheusMiddleware) startReqTimer(reqID, subID string) {
+	m.reqStartTimeMu.Lock()
+	defer m.reqStartTimeMu.Unlock()
+
+	mm, ok := m.reqStartTime[reqID]
+	if !ok {
+		mm = make(map[string]time.Time)
+		m.reqStartTime[reqID] = mm
+	}
+	mm[subID] = time.Now()
+}
+
+func (m *simplePrometheusMiddleware) stopReqTimer(reqID, subID string) time.Duration {
+	m.reqStartTimeMu.Lock()
+	defer m.reqStartTimeMu.Unlock()
+
+	start, ok := m.reqStartTime[reqID][subID]
+	if !ok {
+		return 0
+	}
+	defer delete(m.reqStartTime[reqID], subID)
+
+	return time.Since(start)
+}
+
+func (m *simplePrometheusMiddleware) deleteReqTimer(reqID string) {
+	m.reqStartTimeMu.Lock()
+	defer m.reqStartTimeMu.Unlock()
+
+	delete(m.reqStartTime, reqID)
 }
 
 type reqCounter struct {
