@@ -3,8 +3,10 @@ package mocrelay
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -254,10 +256,24 @@ func (subs *subscribers) Publish(event *Event) {
 	})
 }
 
-type CacheHandler SimpleHandler
+type CacheHandler struct {
+	h *simpleCacheHandler
+}
 
 func NewCacheHandler(size int) CacheHandler {
-	return CacheHandler(NewSimpleHandler(newSimpleCacheHandler(size)))
+	return CacheHandler{h: newSimpleCacheHandler(size)}
+}
+
+func (h CacheHandler) Handle(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+	return NewSimpleHandler(h.h).Handle(r, recv, send)
+}
+
+func (h CacheHandler) Dump(w io.Writer) error {
+	return h.h.Dump(w)
+}
+
+func (h CacheHandler) Restore(r io.Reader) error {
+	return h.h.Restore(r)
 }
 
 type simpleCacheHandler struct {
@@ -326,6 +342,39 @@ func (h *simpleCacheHandler) HandleClientMsg(
 	default:
 		return nil, nil
 	}
+}
+
+func (h *simpleCacheHandler) Dump(w io.Writer) error {
+	events := h.c.Find(NewReqFiltersEventMatchers([]*ReqFilter{{}}))
+
+	b, err := json.Marshal(events)
+	if err != nil {
+		return fmt.Errorf("failed to marshal events: %w", err)
+	}
+
+	if _, err := w.Write(b); err != nil {
+		return fmt.Errorf("failed to write events: %w", err)
+	}
+
+	return nil
+}
+
+func (h *simpleCacheHandler) Restore(r io.Reader) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("failed to read events: %w", err)
+	}
+
+	var events []*Event
+	if err := json.Unmarshal(b, &events); err != nil {
+		return fmt.Errorf("failed to unmarshal events: %w", err)
+	}
+
+	for _, e := range events {
+		h.c.Add(e)
+	}
+
+	return nil
 }
 
 type MergeHandler struct {

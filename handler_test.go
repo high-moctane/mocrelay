@@ -2,7 +2,9 @@ package mocrelay
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"slices"
 	"testing"
@@ -857,6 +859,87 @@ func TestCacheHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newSimpleCacheHandler(tt.cap)
 			helperTestSimpleHandlerInterface(t, h, tt.entries)
+		})
+	}
+}
+
+func TestCacheHandlerDumpRestore(t *testing.T) {
+	tests := []struct {
+		name   string
+		size   int
+		events []*Event
+	}{
+		{
+			name:   "null",
+			size:   10,
+			events: nil,
+		},
+		{
+			name: "one",
+			size: 10,
+			events: []*Event{
+				{
+					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693156107,
+					Kind:      1,
+					Tags:      []Tag{},
+					Content:   "ぽわ〜",
+					Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+				},
+			},
+		},
+		{
+			name: "many",
+			size: 10,
+			events: []*Event{
+				{
+					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693157791,
+					Kind:      1,
+					Tags: []Tag{
+						{
+							"e",
+							"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+							"",
+							"root",
+						},
+						{
+							"p",
+							"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+						},
+					}, Content: "powa", Sig: "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+				},
+				{
+					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					CreatedAt: 1693156107,
+					Kind:      1,
+					Tags:      []Tag{},
+					Content:   "ぽわ〜",
+					Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewCacheHandler(tt.size)
+
+			b, err := json.Marshal(tt.events)
+			assert.NoError(t, err)
+
+			r := bytes.NewReader(b)
+			err = h.Restore(r)
+			assert.NoError(t, err)
+
+			buf := new(bytes.Buffer)
+			err = h.Dump(buf)
+			assert.NoError(t, err)
+
+			assert.Equal(t, b, buf.Bytes())
 		})
 	}
 }
