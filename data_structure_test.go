@@ -200,6 +200,185 @@ func TestSkipList_Find(t *testing.T) {
 	}
 }
 
+func TestSkipList_FindAll(t *testing.T) {
+	type entry struct{ k, v int }
+
+	tests := []struct {
+		name  string
+		cmp   func(int, int) int
+		input []entry
+		f     func(int) int
+		want  []int
+	}{
+		{
+			name:  "empty",
+			cmp:   cmp.Compare[int],
+			input: nil,
+			f:     func(a int) int { return -1 },
+			want:  nil,
+		},
+		{
+			name:  "one: found",
+			cmp:   cmp.Compare[int],
+			input: []entry{{1, 1}},
+			f:     func(a int) int { return cmp.Compare(a, 1) },
+			want:  []int{1},
+		},
+		{
+			name:  "one: not found: less",
+			cmp:   cmp.Compare[int],
+			input: []entry{{1, 1}},
+			f:     func(a int) int { return cmp.Compare(a, 0) },
+			want:  nil,
+		},
+		{
+			name:  "one: not found: more",
+			cmp:   cmp.Compare[int],
+			input: []entry{{1, 1}},
+			f:     func(a int) int { return cmp.Compare(a, 2) },
+			want:  nil,
+		},
+		{
+			name: "seq: found less half open",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 0; i < 100; i++ {
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			f: func(a int) int {
+				res := cmp.Compare(a, 10)
+				if res < 0 {
+					return 0
+				}
+				return 1
+			},
+			want: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		},
+		{
+			name: "seq: found more half open",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 0; i < 100; i++ {
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			f: func(a int) int {
+				res := cmp.Compare(a, 90)
+				if res > 0 {
+					return 0
+				}
+				return -1
+			},
+			want: []int{91, 92, 93, 94, 95, 96, 97, 98, 99},
+		},
+		{
+			name: "seq: found middle",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 0; i < 100; i++ {
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			f: func(a int) int {
+				res1 := cmp.Compare(a, 10)
+				res2 := cmp.Compare(a, 20)
+				if res1 < 0 {
+					return res1
+				}
+				if res2 < 0 {
+					return 0
+				}
+				return 1
+			},
+			want: []int{10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+		},
+		{
+			name: "seq: not found less half open",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 0; i < 100; i++ {
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			f: func(a int) int {
+				res := cmp.Compare(a, -1)
+				if res < 0 {
+					return 0
+				}
+				return 1
+			},
+			want: nil,
+		},
+		{
+			name: "seq: not found more half open",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 0; i < 100; i++ {
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			f: func(a int) int {
+				res := cmp.Compare(a, 100)
+				if res > 0 {
+					return 0
+				}
+				return -1
+			},
+			want: nil,
+		},
+		{
+			name: "seq: not found middle",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 0; i < 100; i++ {
+					if 10 <= i && i < 20 {
+						continue
+					}
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			f: func(a int) int {
+				res1 := cmp.Compare(a, 10)
+				res2 := cmp.Compare(a, 20)
+				if res1 < 0 {
+					return res1
+				}
+				if res2 < 0 {
+					return 0
+				}
+				return 1
+			},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := newSkipList[int, int](tt.cmp)
+
+			for _, item := range tt.input {
+				l.Add(item.k, item.v)
+			}
+
+			got := l.FindAll(tt.f)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestSkipList_Add(t *testing.T) {
 	type entry struct{ k, v int }
 
@@ -384,7 +563,7 @@ func TestSkipList_newHeight(t *testing.T) {
 	l := newSkipList[int, int](cmp.Compare[int])
 
 	small, large := 100, -1
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 300000; i++ {
 		n := l.newHeight()
 		small = min(small, n)
 		large = max(large, n)

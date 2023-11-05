@@ -176,6 +176,33 @@ func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 	return
 }
 
+func (l *skipList[K, V]) FindFirstNodeFunc(f func(K) int) *skipListNode[K, V] {
+	node := l.Head
+	var next *skipListNode[K, V]
+	for h := skipListMaxHeight - 1; h >= 0; h-- {
+		for {
+			node.NextsMu.RLock()
+			next = node.Nexts[h]
+			node.NextsMu.RUnlock()
+
+			if next == nil || f(next.K) >= 0 {
+				break
+			}
+			node = next
+		}
+	}
+
+	return next
+}
+
+func (l *skipList[K, V]) FindAll(f func(K) int) []V {
+	var ret []V
+	for node := l.FindFirstNodeFunc(f); node != nil && f(node.K) == 0; node = node.Next() {
+		ret = append(ret, node.V)
+	}
+	return ret
+}
+
 type skipListStackEntry[K, V any] struct {
 	node *skipListNode[K, V]
 	next *skipListNode[K, V]
@@ -361,13 +388,17 @@ type skipListNode[K, V any] struct {
 }
 
 func (nd *skipListNode[K, V]) Next() *skipListNode[K, V] {
+	return nd.NextHeight(0)
+}
+
+func (nd *skipListNode[K, V]) NextHeight(height int) *skipListNode[K, V] {
 	if nd == nil {
 		return nil
 	}
 
 	nd.NextsMu.RLock()
 	defer nd.NextsMu.RUnlock()
-	return nd.Nexts[0]
+	return nd.Nexts[height]
 }
 
 type randCache[K comparable, V any] struct {
