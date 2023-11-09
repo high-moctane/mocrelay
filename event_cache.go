@@ -12,6 +12,13 @@ type eventCache struct {
 	oldest   *skipList[*Event, *Event]
 	ids      *skipList[string, *Event]
 	keys     *skipList[string, *Event]
+	index    *skipList[eventCacheSearchKey, *Event]
+}
+
+type eventCacheSearchKey struct {
+	Value string
+	What  string
+	ID    string
 }
 
 func newEventCache(capacity int) *eventCache {
@@ -26,12 +33,23 @@ func newEventCache(capacity int) *eventCache {
 
 	revCmpFunc := func(a, b *Event) int { return cmpFunc(b, a) }
 
+	indexCmpFunc := func(a, b eventCacheSearchKey) int {
+		if res := cmp.Compare(a.Value, b.Value); res != 0 {
+			return res
+		}
+		if res := cmp.Compare(a.What, b.What); res != 0 {
+			return res
+		}
+		return cmp.Compare(a.ID, b.ID)
+	}
+
 	return &eventCache{
 		capacity: capacity,
 		latest:   newSkipList[*Event, *Event](cmpFunc),
 		oldest:   newSkipList[*Event, *Event](revCmpFunc),
 		ids:      newSkipList[string, *Event](cmp.Compare),
 		keys:     newSkipList[string, *Event](cmp.Compare),
+		index:    newSkipList[eventCacheSearchKey, *Event](indexCmpFunc),
 	}
 }
 
@@ -71,6 +89,47 @@ func (c *eventCache) eventKey(event *Event) (key string, ok bool) {
 	}
 }
 
+func (*eventCache) eventIndexKey(event *Event) []eventCacheSearchKey {
+	ret := []eventCacheSearchKey{
+		{
+			Value: event.ID,
+			What:  "id",
+			ID:    event.ID,
+		},
+		{
+			Value: event.Pubkey,
+			What:  "pubkey",
+			ID:    event.ID,
+		},
+	}
+
+	for _, tag := range event.Tags {
+		var k string
+		if len(tag) < 1 {
+			continue
+		}
+		if len(tag[0]) != 1 {
+			continue
+		}
+		if (tag[0][0] < 'a' || 'z' < tag[0][0]) && (tag[0][0] < 'A' || 'Z' < tag[0][0]) {
+			continue
+		}
+		if len(tag) > 1 {
+			k = tag[1]
+		}
+
+		key := eventCacheSearchKey{
+			Value: k,
+			What:  tag[0],
+			ID:    event.ID,
+		}
+
+		ret = append(ret, key)
+	}
+
+	return ret
+}
+
 func (c *eventCache) Add(event *Event) (added bool) {
 	if _, ok := c.ids.Find(event.ID); ok {
 		return
@@ -88,6 +147,9 @@ func (c *eventCache) Add(event *Event) (added bool) {
 	c.keys.Add(key, event)
 	c.latest.Add(event, event)
 	c.oldest.Add(event, event)
+	for _, k := range c.eventIndexKey(event) {
+		c.index.Add(k, event)
+	}
 
 	if c.latest.Len() > c.capacity {
 		c.oldest.Head.NextsMu.RLock()
@@ -103,6 +165,10 @@ func (c *eventCache) Add(event *Event) (added bool) {
 
 		c.latest.Delete(old)
 		c.oldest.Delete(old)
+
+		for _, k := range c.eventIndexKey(event) {
+			c.index.Delete(k)
+		}
 	}
 
 	added = true
