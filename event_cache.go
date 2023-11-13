@@ -7,59 +7,69 @@ import (
 )
 
 type eventCache struct {
-	capacity int
-	latest   *skipList[*Event, *Event]
-	oldest   *skipList[*Event, *Event]
-	ids      *skipList[string, *Event]
-	keys     *skipList[string, *Event]
-	index    *skipList[eventCacheSearchKey, *Event]
+	size int
+
+	latest *skipList[eventCacheKeyLatest, *Event]
+
+	// *skipList[evKey, *Event]
+	evKeys *skipList[string, *Event]
+
+	// *skipList[id, *Event]
+	kind5 *skipList[string, *Event]
+
+	// *skipList[eventKey, struct{}]
+	delEvKeys *skipList[string, struct{}]
 }
 
-type eventCacheSearchKey struct {
-	Value string
-	What  string
-	ID    string
+type eventCacheKeyLatest struct {
+	CreatedAt int64
+	ID        string
 }
 
-func newEventCache(capacity int) *eventCache {
-	cmpFunc := func(a, b *Event) int {
-		res := -cmp.Compare(a.CreatedAt, b.CreatedAt)
-		if res != 0 {
-			return res
-		}
+var eventCacheKeyLatestSentinel = eventCacheKeyLatest{CreatedAt: -1}
 
-		return -cmp.Compare(a.ID, b.ID)
+func eventCacheKeyLatestCmp(a, b eventCacheKeyLatest) int {
+	res := -cmp.Compare(a.CreatedAt, b.CreatedAt)
+	if res != 0 {
+		return res
 	}
+	return -cmp.Compare(a.ID, b.ID)
+}
 
-	revCmpFunc := func(a, b *Event) int { return cmpFunc(b, a) }
-
-	indexCmpFunc := func(a, b eventCacheSearchKey) int {
-		if res := cmp.Compare(a.Value, b.Value); res != 0 {
-			return res
-		}
-		if res := cmp.Compare(a.What, b.What); res != 0 {
-			return res
-		}
-		return cmp.Compare(a.ID, b.ID)
-	}
+func newEventCache(size int) *eventCache {
+	latest := newSkipList[eventCacheKeyLatest, *Event](eventCacheKeyLatestCmp)
+	latest.Add(eventCacheKeyLatestSentinel, nil)
 
 	return &eventCache{
-		capacity: capacity,
-		latest:   newSkipList[*Event, *Event](cmpFunc),
-		oldest:   newSkipList[*Event, *Event](revCmpFunc),
-		ids:      newSkipList[string, *Event](cmp.Compare),
-		keys:     newSkipList[string, *Event](cmp.Compare),
-		index:    newSkipList[eventCacheSearchKey, *Event](indexCmpFunc),
+		size:      size,
+		latest:    latest,
+		evKeys:    newSkipList[string, *Event](cmp.Compare),
+		kind5:     newSkipList[string, *Event](cmp.Compare),
+		delEvKeys: newSkipList[string, struct{}](cmp.Compare),
 	}
 }
 
-func (*eventCache) eventKeyRegular(event *Event) string { return event.ID }
+func eventCacheEventKey(event *Event) string {
+	switch event.EventType() {
+	case EventTypeRegular:
+		return event.ID
 
-func (*eventCache) eventKeyReplaceable(event *Event) string {
+	case EventTypeReplaceable:
+		return eventCacheReplaceableEventKey(event)
+
+	case EventTypeParamReplaceable:
+		return eventCacheParamReplaceableEventKey(event)
+
+	default:
+		return ""
+	}
+}
+
+func eventCacheReplaceableEventKey(event *Event) string {
 	return fmt.Sprintf("%s:%d", event.Pubkey, event.Kind)
 }
 
-func (*eventCache) eventKeyParameterized(event *Event) string {
+func eventCacheParamReplaceableEventKey(event *Event) string {
 	idx := slices.IndexFunc(event.Tags, func(t Tag) bool {
 		return len(t) >= 1 && t[0] == "d"
 	})
@@ -75,146 +85,127 @@ func (*eventCache) eventKeyParameterized(event *Event) string {
 	return fmt.Sprintf("%s:%d:%s", event.Pubkey, event.Kind, d)
 }
 
-func (c *eventCache) eventKey(event *Event) (key string, ok bool) {
-	switch event.EventType() {
-	case EventTypeRegular:
-		return c.eventKeyRegular(event), true
-	case EventTypeReplaceable:
-		return c.eventKeyReplaceable(event), true
-	case EventTypeParamReplaceable:
-		key := c.eventKeyParameterized(event)
-		return key, key != ""
-	default:
-		return "", false
+func (c *eventCache) Add(event *Event) (added bool) {
+	evKey := eventCacheEventKey(event)
+	if evKey == "" {
+		return
+	}
+
+	if c.deleted(evKey) {
+		return
+	}
+
+	if !c.updateEvKeys(event, evKey) {
+		return
+	}
+
+	if event.Kind == 5 {
+		c.doKind5(event, evKey)
+	}
+
+	added = c.add(event, evKey)
+	c.truncate()
+
+	return
+}
+
+func (c *eventCache) deleted(evKey string) bool {
+	_, ok := c.delEvKeys.Find(evKey)
+	return ok
+}
+
+func (c *eventCache) doKind5(event *Event, evKey string) {
+	c.kind5.Add(event.ID, event)
+
+	for _, evKey := range c.kind5EventKeys(event) {
+		c.delEvKeys.Add(evKey, struct{}{})
 	}
 }
 
-func (*eventCache) eventIndexKey(event *Event) []eventCacheSearchKey {
-	ret := []eventCacheSearchKey{
-		{
-			Value: event.ID,
-			What:  "id",
-			ID:    event.ID,
-		},
-		{
-			Value: event.Pubkey,
-			What:  "pubkey",
-			ID:    event.ID,
-		},
-	}
+func (*eventCache) kind5EventKeys(event *Event) []string {
+	var ret []string
 
 	for _, tag := range event.Tags {
-		var k string
-		if len(tag) < 1 {
+		if len(tag) < 2 {
 			continue
 		}
-		if len(tag[0]) != 1 {
-			continue
+		if tag[0] == "e" || tag[0] == "a" {
+			ret = append(ret, tag[1])
 		}
-		if (tag[0][0] < 'a' || 'z' < tag[0][0]) && (tag[0][0] < 'A' || 'Z' < tag[0][0]) {
-			continue
-		}
-		if len(tag) > 1 {
-			k = tag[1]
-		}
-
-		key := eventCacheSearchKey{
-			Value: k,
-			What:  tag[0],
-			ID:    event.ID,
-		}
-
-		ret = append(ret, key)
 	}
 
 	return ret
 }
 
-func (c *eventCache) Add(event *Event) (added bool) {
-	if _, ok := c.ids.Find(event.ID); ok {
-		return
-	}
-	key, ok := c.eventKey(event)
-	if !ok {
-		return
-	}
-	if old, ok := c.keys.Find(key); ok && old.CreatedAt > event.CreatedAt {
-		return
-	}
-
-	c.ids.Add(event.ID, event)
-	c.keys.Delete(key)
-	c.keys.Add(key, event)
-	c.latest.Add(event, event)
-	c.oldest.Add(event, event)
-	for _, k := range c.eventIndexKey(event) {
-		c.index.Add(k, event)
-	}
-
-	if c.latest.Len() > c.capacity {
-		c.oldest.Head.NextsMu.RLock()
-		head := c.oldest.Head.Nexts[0]
-		c.oldest.Head.NextsMu.RUnlock()
-		old := head.V
-
-		k, _ := c.eventKey(old)
-		if ev, ok := c.keys.Find(k); ok && ev == old {
-			c.keys.Delete(k)
+func (c *eventCache) updateEvKeys(event *Event, evKey string) (updated bool) {
+	old, ok := c.evKeys.Find(evKey)
+	if ok {
+		if old.CreatedAt >= event.CreatedAt {
+			return
 		}
-		c.ids.Delete(old.ID)
-
-		c.latest.Delete(old)
-		c.oldest.Delete(old)
-
-		for _, k := range c.eventIndexKey(event) {
-			c.index.Delete(k)
-		}
+		c.delete(old, evKey)
 	}
 
-	added = true
-	return
+	return c.evKeys.Add(evKey, event)
 }
 
-func (c *eventCache) DeleteID(id, pubkey string) {
-	event, ok := c.ids.Find(id)
-	if !ok || event.Pubkey != pubkey {
-		return
+func (c *eventCache) add(event *Event, evKey string) (added bool) {
+	key := eventCacheKeyLatest{
+		CreatedAt: event.CreatedAt,
+		ID:        event.ID,
 	}
-
-	k, _ := c.eventKey(event)
-	if ev, ok := c.keys.Find(k); ok && ev == event {
-		c.keys.Delete(k)
-	}
-	c.ids.Delete(id)
+	return c.latest.Add(key, event)
 }
 
-func (c *eventCache) DeleteNaddr(naddr, pubkey string) {
-	event, ok := c.keys.Find(naddr)
-	if !ok || event.Pubkey != pubkey {
-		return
-	}
-	c.ids.Delete(event.ID)
-	c.keys.Delete(naddr)
-}
-
-func (c *eventCache) Find(matcher EventCountMatcher) []*Event {
-	var ret []*Event
-
-	for node := c.latest.Head.Next(); node != nil; node = node.Next() {
-		ev := node.V
-
-		if _, ok := c.ids.Find(ev.ID); !ok {
-			continue
-		}
-		k, _ := c.eventKey(ev)
-		if e, ok := c.keys.Find(k); !ok || e.ID != ev.ID {
-			continue
-		}
-
-		if matcher.Done() {
+func (c *eventCache) truncate() {
+	for c.latest.Len() > c.size+1 {
+		oldest, ok := c.latest.FindPre(eventCacheKeyLatestSentinel)
+		if !ok {
 			break
 		}
-		if matcher.CountMatch(ev) {
+		c.delete(oldest, eventCacheEventKey(oldest))
+	}
+}
+
+func (c *eventCache) delete(event *Event, evKey string) {
+	key := eventCacheKeyLatest{
+		CreatedAt: event.CreatedAt,
+		ID:        event.ID,
+	}
+
+	if event.Kind == 5 {
+		c.kind5.Delete(event.ID)
+		for _, k := range c.kind5EventKeys(event) {
+			c.delEvKeys.Delete(k)
+		}
+	}
+
+	if old, ok := c.evKeys.Find(evKey); ok && old == event {
+		c.evKeys.Delete(evKey)
+	}
+
+	c.latest.Delete(key)
+}
+
+func (c *eventCache) Find(fs []*ReqFilter) []*Event {
+	var ret []*Event
+	m := NewReqFiltersEventMatchers(fs)
+
+	for node := c.latest.Head.Next(); node != nil; node = node.Next() {
+		if m.Done() {
+			break
+		}
+
+		ev := node.V
+		if ev == nil {
+			break
+		}
+
+		if c.deleted(eventCacheEventKey(ev)) {
+			continue
+		}
+
+		if m.CountMatch(ev) {
 			ret = append(ret, ev)
 		}
 	}

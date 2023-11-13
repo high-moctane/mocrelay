@@ -124,7 +124,7 @@ func TestEventCache(t *testing.T) {
 			for _, e := range tt.in {
 				c.Add(e)
 			}
-			got := c.Find(NewReqFilterMatcher(new(ReqFilter)))
+			got := c.Find([]*ReqFilter{{}})
 			assert.Equal(t, tt.want, got)
 		})
 	}

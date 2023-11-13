@@ -301,19 +301,6 @@ func (h *simpleCacheHandler) HandleClientMsg(
 	switch msg := msg.(type) {
 	case *ClientEventMsg:
 		ev := msg.Event
-		if ev.Kind == 5 {
-			for _, tag := range ev.Tags {
-				if len(tag) < 2 {
-					continue
-				}
-				switch tag[0] {
-				case "e":
-					h.c.DeleteID(tag[1], ev.Pubkey)
-				case "a":
-					h.c.DeleteNaddr(tag[1], ev.Pubkey)
-				}
-			}
-		}
 
 		var okMsg ServerMsg
 		if h.c.Add(ev) {
@@ -324,7 +311,7 @@ func (h *simpleCacheHandler) HandleClientMsg(
 		return newClosedBufCh(okMsg), nil
 
 	case *ClientReqMsg:
-		evs := h.c.Find(NewReqFiltersEventMatchers(msg.ReqFilters))
+		evs := h.c.Find(msg.ReqFilters)
 
 		smsgCh := make(chan ServerMsg, len(evs)+1)
 		defer close(smsgCh)
@@ -345,7 +332,7 @@ func (h *simpleCacheHandler) HandleClientMsg(
 }
 
 func (h *simpleCacheHandler) Dump(w io.Writer) error {
-	events := h.c.Find(NewReqFiltersEventMatchers([]*ReqFilter{{}}))
+	events := h.c.Find([]*ReqFilter{{}})
 
 	b, err := json.Marshal(events)
 	if err != nil {
