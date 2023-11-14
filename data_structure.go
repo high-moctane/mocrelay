@@ -155,13 +155,12 @@ func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 	node := l.Head
 	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for {
-			node.NextsMu.RLock()
-			next := node.Nexts[h]
-			node.NextsMu.RUnlock()
+			next := node.NextHeight(h)
 
 			if next == nil || l.Cmp(next.K, k) > 0 {
 				break
 			}
+
 			node = next
 		}
 
@@ -181,13 +180,12 @@ func (l *skipList[K, V]) FindFirstNodeFunc(f func(K) int) *skipListNode[K, V] {
 	var next *skipListNode[K, V]
 	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for {
-			node.NextsMu.RLock()
-			next = node.Nexts[h]
-			node.NextsMu.RUnlock()
+			next = node.NextHeight(h)
 
 			if next == nil || f(next.K) >= 0 {
 				break
 			}
+
 			node = next
 		}
 	}
@@ -229,13 +227,12 @@ func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
 	node := l.Head
 	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for {
-			node.NextsMu.RLock()
-			next = node.Nexts[h]
-			node.NextsMu.RUnlock()
+			next = node.NextHeight(h)
 
 			if next == nil || l.Cmp(next.K, k) >= 0 {
 				break
 			}
+
 			node = next
 		}
 
@@ -316,9 +313,7 @@ func (l *skipList[K, V]) tryDelete(k K) (deleted, ok bool) {
 	node := l.Head
 	for h := skipListMaxHeight - 1; h >= 0; h-- {
 		for {
-			node.NextsMu.RLock()
-			next = node.Nexts[h]
-			node.NextsMu.RUnlock()
+			next = node.NextHeight(h)
 
 			if next == nil || l.Cmp(next.K, k) >= 0 {
 				break
