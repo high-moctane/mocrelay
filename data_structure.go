@@ -175,6 +175,31 @@ func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 	return
 }
 
+func (l *skipList[K, V]) FindPre(k K) (v V, ok bool) {
+	node := l.Head
+	var next *skipListNode[K, V]
+	for h := skipListMaxHeight - 1; h >= 0; h-- {
+		for {
+			next = node.NextHeight(h)
+
+			if next == nil || l.Cmp(next.K, k) >= 0 {
+				break
+			}
+
+			node = next
+		}
+	}
+
+	if next != nil && l.Cmp(next.K, k) == 0 {
+		if node == l.Head {
+			return
+		}
+		return node.V, true
+	}
+
+	return
+}
+
 func (l *skipList[K, V]) FindFirstNodeFunc(f func(K) int) *skipListNode[K, V] {
 	node := l.Head
 	var next *skipListNode[K, V]
@@ -318,6 +343,7 @@ func (l *skipList[K, V]) tryDelete(k K) (deleted, ok bool) {
 			if next == nil || l.Cmp(next.K, k) >= 0 {
 				break
 			}
+
 			node = next
 		}
 

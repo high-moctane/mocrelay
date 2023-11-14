@@ -200,6 +200,121 @@ func TestSkipList_Find(t *testing.T) {
 	}
 }
 
+func TestSkipList_FindPre(t *testing.T) {
+	type entry struct{ k, v int }
+
+	tests := []struct {
+		name   string
+		cmp    func(int, int) int
+		input  []entry
+		target int
+		want   int
+		found  bool
+	}{
+		{
+			name:   "empty",
+			cmp:    cmp.Compare[int],
+			input:  nil,
+			target: 2,
+			found:  false,
+		},
+		{
+			name:   "one: not found",
+			cmp:    cmp.Compare[int],
+			input:  []entry{{1, 1}},
+			target: 1,
+			found:  false,
+		},
+		{
+			name:   "one: not found: too large",
+			cmp:    cmp.Compare[int],
+			input:  []entry{{1, 1}},
+			target: 3,
+			found:  false,
+		},
+		{
+			name:   "one: not found: too small",
+			cmp:    cmp.Compare[int],
+			input:  []entry{{1, 1}},
+			target: -5,
+			found:  false,
+		},
+		{
+			name: "odd: found",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 1; i < 100; i += 2 {
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			target: 31,
+			want:   29,
+			found:  true,
+		},
+		{
+			name: "odd: not found",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				var ret []entry
+				for i := 1; i < 100; i += 2 {
+					ret = append(ret, entry{i, i})
+				}
+				return ret
+			}(),
+			target: 48,
+			found:  false,
+		},
+		{
+			name: "rand odd: found",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				ret := make([]entry, 100)
+				for i := 1; i < 100; i += 2 {
+					ret[i] = entry{i, i}
+				}
+				rand.Shuffle(len(ret), func(i, j int) { ret[i], ret[j] = ret[j], ret[i] })
+				return ret
+			}(),
+			target: 73,
+			want:   71,
+			found:  true,
+		},
+		{
+			name: "rand odd: not found",
+			cmp:  cmp.Compare[int],
+			input: func() []entry {
+				ret := make([]entry, 100)
+				for i := 1; i < 100; i += 2 {
+					ret[i] = entry{i, i}
+				}
+				rand.Shuffle(len(ret), func(i, j int) { ret[i], ret[j] = ret[j], ret[i] })
+				return ret
+			}(),
+			target: 64,
+			found:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := newSkipList[int, int](tt.cmp)
+
+			for _, item := range tt.input {
+				l.Add(item.k, item.v)
+			}
+
+			got, ok := l.FindPre(tt.target)
+			assert.Equal(t, tt.found, ok)
+			if !ok {
+				return
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestSkipList_FindAll(t *testing.T) {
 	type entry struct{ k, v int }
 
