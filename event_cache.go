@@ -180,7 +180,7 @@ func (c *eventCache) delete(event *Event, evKey string) {
 		}
 	}
 
-	if old, ok := c.evKeys.Find(evKey); ok && old == event {
+	if old, ok := c.evKeys.Find(evKey); ok && old.ID == event.ID {
 		c.evKeys.Delete(evKey)
 	}
 
