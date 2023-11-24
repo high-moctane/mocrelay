@@ -132,8 +132,10 @@ func (msg *ClientUnknownMsg) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("label is not a string")
 	}
 
-	msg.Label = label
-	msg.Msg = elems[1:]
+	msg.Label = strings.Clone(label)
+
+	elemJSON, _ := json.Marshal(elems[1:])
+	json.Unmarshal(elemJSON, &msg.Msg)
 
 	return nil
 }
@@ -277,7 +279,7 @@ func (msg *ClientCloseMsg) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf(`client close msg label must be "CLOSE" but got %q`, elems[0])
 	}
 
-	msg.SubscriptionID = elems[1]
+	msg.SubscriptionID = strings.Clone(elems[1])
 
 	return nil
 }
@@ -309,7 +311,7 @@ func (msg *ClientAuthMsg) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf(`client auth msg label must be "AUTH" but got %q`, elems[0])
 	}
 
-	msg.Challenge = elems[1]
+	msg.Challenge = strings.Clone(elems[1])
 
 	return nil
 }
@@ -419,6 +421,9 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 			if !ok {
 				return errors.New("ids is not a string json array")
 			}
+			for i := range ret.IDs {
+				ret.IDs[i] = strings.Clone(ret.IDs[i])
+			}
 
 		case k == "authors":
 			sli, ok := v.([]any)
@@ -428,6 +433,9 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 			ret.Authors, ok = anySliceAs[string](sli)
 			if !ok {
 				return errors.New("authors is not a string json array")
+			}
+			for i := range ret.Authors {
+				ret.Authors[i] = strings.Clone(ret.Authors[i])
 			}
 
 		case k == "kinds":
@@ -464,7 +472,10 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 			if !ok {
 				return fmt.Errorf("%s is not a string json array", k)
 			}
-			ret.Tags[k] = vs
+			for i := range vs {
+				vs[i] = strings.Clone(vs[i])
+			}
+			ret.Tags[strings.Clone(k)] = vs
 
 		case k == "since":
 			numSince, ok := v.(json.Number)
@@ -859,6 +870,7 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 	if !ok {
 		return errors.New("id is not a json string")
 	}
+	ret.ID = strings.Clone(ret.ID)
 
 	// pubkey
 	tmp, ok = obj["pubkey"]
@@ -869,6 +881,7 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 	if !ok {
 		return errors.New("pubkey is not a json string")
 	}
+	ret.Pubkey = strings.Clone(ret.Pubkey)
 
 	// Created_at
 	tmp, ok = obj["created_at"]
@@ -917,6 +930,9 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 		if !ok {
 			return errors.New("tags is not string arrays of json array")
 		}
+		for j := range ret.Tags[i] {
+			ret.Tags[i][j] = strings.Clone(ret.Tags[i][j])
+		}
 	}
 
 	// content
@@ -928,6 +944,7 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 	if !ok {
 		return errors.New("content is not a json string")
 	}
+	ret.Content = strings.Clone(ret.Content)
 
 	// sig
 	tmp, ok = obj["sig"]
@@ -938,6 +955,7 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 	if !ok {
 		return errors.New("sig is not a json string")
 	}
+	ret.Sig = strings.Clone(ret.Sig)
 
 	*ev = ret
 
