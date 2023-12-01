@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -406,6 +407,9 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 	var obj map[string]any
 	if err := dec.Decode(&obj); err != nil {
 		return fmt.Errorf("not a json object: %w", err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("not a single json object: %w", err)
 	}
 
 	var ret ReqFilter
@@ -850,6 +854,9 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 	var obj map[string]interface{}
 	if err := dec.Decode(&obj); err != nil {
 		return fmt.Errorf("not a json object: %w", err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("not a single json object: %w", err)
 	}
 	if len(obj) != 7 {
 		return errors.New("contains some extra fields")
