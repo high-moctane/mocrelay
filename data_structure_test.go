@@ -106,10 +106,24 @@ func TestSkipList_Find(t *testing.T) {
 			found:  false,
 		},
 		{
+			name:   "empty: zero value",
+			cmp:    cmp.Compare[int],
+			input:  nil,
+			target: 0,
+			found:  false,
+		},
+		{
 			name:   "one: found",
 			cmp:    cmp.Compare[int],
 			input:  []entry{{1, 1}},
 			target: 1,
+			found:  true,
+		},
+		{
+			name:   "one: found (zero value)",
+			cmp:    cmp.Compare[int],
+			input:  []entry{{0, 0}},
+			target: 0,
 			found:  true,
 		},
 		{
@@ -581,7 +595,7 @@ func TestSkipList_Add(t *testing.T) {
 			}
 
 			var got []int
-			for node := l.Head.Nexts[0]; node != nil; node = node.Nexts[0] {
+			for node := l.Head.nexts[0].node; node != nil; node = node.nexts[0].node {
 				got = append(got, node.V)
 			}
 
@@ -664,7 +678,7 @@ func TestSkipList_Delete(t *testing.T) {
 			assert.Equal(t, tt.deleted, deleted)
 
 			var got []int
-			for node := l.Head.Nexts[0]; node != nil; node = node.Nexts[0] {
+			for node := l.Head.nexts[0].node; node != nil; node = node.nexts[0].node {
 				got = append(got, node.V)
 			}
 
@@ -674,17 +688,17 @@ func TestSkipList_Delete(t *testing.T) {
 	}
 }
 
-func TestSkipList_newHeight(t *testing.T) {
+func TestSkipList_randHeight(t *testing.T) {
 	l := newSkipList[int, int](cmp.Compare[int])
 
 	small, large := 100, -1
-	for i := 0; i < 300000; i++ {
-		n := l.newHeight()
+	for i := 0; i < 100000; i++ {
+		n := l.randHeight()
 		small = min(small, n)
 		large = max(large, n)
 	}
 	assert.Equal(t, 1, small)
-	assert.Equal(t, 17, large)
+	assert.Equal(t, 10, large)
 }
 
 func BenchmarkSkipList(b *testing.B) {

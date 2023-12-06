@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"math"
 	"math/bits"
 	"math/rand"
 	"sync"
@@ -124,10 +125,12 @@ func (rb *ringBuffer[T]) IdxFunc(f func(v T) bool) int {
 	return -1
 }
 
-const skipListMaxHeight = 16 + 1
+const skipListMaxHeight = 10
 
-type skipList[K any, V any] struct {
-	Cmp  func(K, K) int
+type skipList[K, V any] struct {
+	MaxHeight int
+	CmpFunc   func(K, K) int
+
 	Head *skipListNode[K, V]
 
 	lenMu sync.RWMutex
@@ -137,11 +140,15 @@ type skipList[K any, V any] struct {
 	rnd   *rand.Rand
 }
 
-func newSkipList[K, V any](cmp func(K, K) int) *skipList[K, V] {
+func newSkipList[K, V any](cmpFunc func(K, K) int) *skipList[K, V] {
+	var k K
+	var v V
+
 	return &skipList[K, V]{
-		Cmp:  cmp,
-		Head: &skipListNode[K, V]{Height: skipListMaxHeight},
-		rnd:  rand.New(rand.NewSource(rand.Int63())),
+		MaxHeight: skipListMaxHeight,
+		CmpFunc:   cmpFunc,
+		Head:      newSkipListNode(k, v, skipListMaxHeight),
+		rnd:       rand.New(rand.NewSource(rand.Int63())),
 	}
 }
 
@@ -151,23 +158,33 @@ func (l *skipList[K, V]) Len() int {
 	return l.len
 }
 
+func (l *skipList[K, V]) lenInc() {
+	l.lenMu.Lock()
+	defer l.lenMu.Unlock()
+	l.len++
+}
+func (l *skipList[K, V]) lenDec() {
+	l.lenMu.Lock()
+	defer l.lenMu.Unlock()
+	l.len--
+}
+
 func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 	node := l.Head
-	for h := skipListMaxHeight - 1; h >= 0; h-- {
-		for {
-			next := node.NextHeight(h)
 
-			if next == nil || l.Cmp(next.K, k) > 0 {
+	for h := l.MaxHeight - 1; h >= 0; h-- {
+		for {
+			node.nexts[h].mu.RLock()
+			next := node.nexts[h].node
+			node.nexts[h].mu.RUnlock()
+
+			if next == nil || l.CmpFunc(next.K, k) > 0 {
 				break
 			}
-
 			node = next
 		}
 
-		if l.Cmp(node.K, k) == 0 {
-			if node == l.Head {
-				return
-			}
+		if node != l.Head && l.CmpFunc(node.K, k) == 0 {
 			return node.V, true
 		}
 	}
@@ -177,58 +194,69 @@ func (l *skipList[K, V]) Find(k K) (v V, ok bool) {
 
 func (l *skipList[K, V]) FindPre(k K) (v V, ok bool) {
 	node := l.Head
-	var next *skipListNode[K, V]
-	for h := skipListMaxHeight - 1; h >= 0; h-- {
-		for {
-			next = node.NextHeight(h)
 
-			if next == nil || l.Cmp(next.K, k) >= 0 {
+	for h := l.MaxHeight - 1; h >= 0; h-- {
+		for {
+			node.nexts[h].mu.RLock()
+			next := node.nexts[h].node
+			node.nexts[h].mu.RUnlock()
+
+			if next == nil {
+				break
+			}
+			if c := l.CmpFunc(next.K, k); c >= 0 {
+				if h == 0 && node != l.Head && c == 0 {
+					return node.V, true
+				}
 				break
 			}
 
 			node = next
 		}
-	}
-
-	if next != nil && l.Cmp(next.K, k) == 0 {
-		if node == l.Head {
-			return
-		}
-		return node.V, true
 	}
 
 	return
 }
 
-func (l *skipList[K, V]) FindFirstNodeFunc(f func(K) int) *skipListNode[K, V] {
+func (l *skipList[K, V]) findFirstNodeFunc(f func(K) int) *skipListNode[K, V] {
 	node := l.Head
-	var next *skipListNode[K, V]
-	for h := skipListMaxHeight - 1; h >= 0; h-- {
+
+	for h := l.MaxHeight - 1; h >= 0; h-- {
 		for {
-			next = node.NextHeight(h)
+			node.nexts[h].mu.RLock()
+			next := node.nexts[h].node
+			node.nexts[h].mu.RUnlock()
 
 			if next == nil || f(next.K) >= 0 {
 				break
 			}
-
 			node = next
 		}
 	}
 
+	node.nexts[0].mu.RLock()
+	next := node.nexts[0].node
+	node.nexts[0].mu.RUnlock()
+
+	if next == nil || f(next.K) != 0 {
+		return nil
+	}
 	return next
 }
 
 func (l *skipList[K, V]) FindAll(f func(K) int) []V {
 	var ret []V
-	for node := l.FindFirstNodeFunc(f); node != nil && f(node.K) == 0; node = node.Next() {
+	node := l.findFirstNodeFunc(f)
+	for node != nil && f(node.K) == 0 {
 		ret = append(ret, node.V)
+
+		node.nexts[0].mu.RLock()
+		next := node.nexts[0].node
+		node.nexts[0].mu.RUnlock()
+
+		node = next
 	}
 	return ret
-}
-
-type skipListStackEntry[K, V any] struct {
-	node *skipListNode[K, V]
-	next *skipListNode[K, V]
 }
 
 func (l *skipList[K, V]) Add(k K, v V) (added bool) {
@@ -236,9 +264,7 @@ func (l *skipList[K, V]) Add(k K, v V) (added bool) {
 	for {
 		if added, ok = l.tryAdd(k, v); ok {
 			if added {
-				l.lenMu.Lock()
-				defer l.lenMu.Unlock()
-				l.len++
+				l.lenInc()
 			}
 			return
 		}
@@ -246,73 +272,69 @@ func (l *skipList[K, V]) Add(k K, v V) (added bool) {
 }
 
 func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
-	var switched [skipListMaxHeight]skipListStackEntry[K, V]
+	type traceElem[K, V any] struct {
+		Node, Next *skipListNode[K, V]
+	}
 
-	var next *skipListNode[K, V]
+	height := l.randHeight()
+
+	// Get trace
+	trace := make([]traceElem[K, V], height)
 	node := l.Head
-	for h := skipListMaxHeight - 1; h >= 0; h-- {
+	for h := l.MaxHeight - 1; h >= 0; h-- {
+		var next *skipListNode[K, V]
 		for {
-			next = node.NextHeight(h)
+			node.nexts[h].mu.RLock()
+			next = node.nexts[h].node
+			node.nexts[h].mu.RUnlock()
 
-			if next == nil || l.Cmp(next.K, k) >= 0 {
+			if next == nil || l.CmpFunc(next.K, k) > 0 {
 				break
 			}
 
 			node = next
 		}
 
-		if next != nil && l.Cmp(next.K, k) == 0 {
-			return false, true
+		if node != l.Head && l.CmpFunc(node.K, k) == 0 {
+			ok = true
+			return
 		}
 
-		switched[h] = skipListStackEntry[K, V]{
-			node: node,
-			next: next,
+		if h < height {
+			trace[h] = traceElem[K, V]{
+				Node: node,
+				Next: next,
+			}
 		}
 	}
 
-	height := l.newHeight()
-	newNode := skipListNode[K, V]{
-		K:      k,
-		V:      v,
-		Height: height,
-	}
-
-	return true, l.tryAddInsert(&newNode, switched)
-}
-
-func (l *skipList[K, V]) tryAddInsert(
-	newNode *skipListNode[K, V],
-	switched [skipListMaxHeight]skipListStackEntry[K, V],
-) (ok bool) {
-	var pre *skipListNode[K, V]
-	for h := newNode.Height - 1; h >= 0; h-- {
-		node := switched[h].node
-
-		if node != pre {
-			node.NextsMu.Lock()
-			defer node.NextsMu.Unlock()
-			pre = node
+	// Try insert
+	newNode := newSkipListNode(k, v, height)
+	for h := height - 1; h >= 0; h-- {
+		if trace[h].Node == nil {
+			panicf("%d\n%+v\n", height, trace)
 		}
+		trace[h].Node.nexts[h].mu.Lock()
+		defer trace[h].Node.nexts[h].mu.Unlock()
 
-		if node.Nexts[h] != switched[h].next {
+		if trace[h].Node.nexts[h].node != trace[h].Next {
 			return
 		}
 	}
 
-	for h := newNode.Height - 1; h >= 0; h-- {
-		newNode.Nexts[h] = switched[h].node.Nexts[h]
-		switched[h].node.Nexts[h] = newNode
+	for h := height - 1; h >= 0; h-- {
+		newNode.nexts[h].node = trace[h].Next
+		trace[h].Node.nexts[h].node = newNode
 	}
 
-	return true
+	return true, true
 }
 
-func (l *skipList[K, V]) newHeight() int {
+func (l *skipList[K, V]) randHeight() int {
 	l.rndMu.Lock()
 	n := l.rnd.Uint32()
 	l.rndMu.Unlock()
-	return bits.LeadingZeros16(uint16(n)) + 1
+	return bits.LeadingZeros16(uint16(n)|math.MaxUint16>>(l.MaxHeight-1)) + 1
 }
 
 func (l *skipList[K, V]) Delete(k K) (deleted bool) {
@@ -320,9 +342,7 @@ func (l *skipList[K, V]) Delete(k K) (deleted bool) {
 	for {
 		if deleted, ok = l.tryDelete(k); ok {
 			if deleted {
-				l.lenMu.Lock()
-				defer l.lenMu.Unlock()
-				l.len--
+				l.lenDec()
 			}
 			return
 		}
@@ -330,96 +350,90 @@ func (l *skipList[K, V]) Delete(k K) (deleted bool) {
 }
 
 func (l *skipList[K, V]) tryDelete(k K) (deleted, ok bool) {
-	var switched [skipListMaxHeight]skipListStackEntry[K, V]
-	switchedH := -1
-	var willDelete bool
-
-	var next *skipListNode[K, V]
+	// Get trace
+	var trace []*skipListNode[K, V]
 	node := l.Head
-	for h := skipListMaxHeight - 1; h >= 0; h-- {
+	var target *skipListNode[K, V]
+	for h := l.MaxHeight - 1; h >= 0; h-- {
 		for {
-			next = node.NextHeight(h)
+			node.nexts[h].mu.RLock()
+			next := node.nexts[h].node
+			node.nexts[h].mu.RUnlock()
 
-			if next == nil || l.Cmp(next.K, k) >= 0 {
+			if next == nil {
+				break
+			} else if next == target {
+				trace[h] = node
+				break
+			} else if c := l.CmpFunc(next.K, k); c >= 0 {
+				if c == 0 {
+					target = next
+					trace = make([]*skipListNode[K, V], h+1)
+					trace[h] = node
+				}
 				break
 			}
 
 			node = next
 		}
-
-		if node == nil {
-			return false, true
-		}
-
-		switched[h] = skipListStackEntry[K, V]{
-			node: node,
-			next: next,
-		}
-		if next != nil {
-			switchedH = max(switchedH, h)
-			willDelete = willDelete || l.Cmp(next.K, k) == 0
-		}
+	}
+	if trace == nil {
+		ok = true
+		return
 	}
 
-	if willDelete {
-		return true, l.tryDeleteRemove(switched, switchedH)
-	}
+	// Try remove
+	for h := len(trace) - 1; h >= 0; h-- {
+		trace[h].nexts[h].mu.Lock()
+		defer trace[h].nexts[h].mu.Unlock()
 
-	return false, true
-}
-
-func (l *skipList[K, V]) tryDeleteRemove(
-	switched [skipListMaxHeight]skipListStackEntry[K, V],
-	switchedH int,
-) (ok bool) {
-	var pre *skipListNode[K, V]
-	for h := switchedH; h >= 0; h-- {
-		node := switched[h].node
-
-		if node != pre {
-			node.NextsMu.Lock()
-			defer node.NextsMu.Unlock()
-			pre = node
-		}
-
-		if node.Nexts[h] != switched[h].next {
+		if trace[h].nexts[h].node != target {
 			return
 		}
+
 	}
 
-	for h := switchedH; h >= 0; h-- {
-		if switched[h].next == nil {
-			continue
-		}
-
-		switched[h].node.Nexts[h] = switched[h].node.Nexts[h].Nexts[h]
+	for h := len(trace) - 1; h >= 0; h-- {
+		target.nexts[h].mu.RLock()
+		defer target.nexts[h].mu.RUnlock()
+		trace[h].nexts[h].node = target.nexts[h].node
 	}
 
-	return true
+	return true, true
 }
 
 type skipListNode[K, V any] struct {
 	K K
 	V V
 
-	Height int
+	nexts []struct {
+		mu   sync.RWMutex
+		node *skipListNode[K, V]
+	}
+}
 
-	NextsMu sync.RWMutex
-	Nexts   [skipListMaxHeight]*skipListNode[K, V]
+func newSkipListNode[K, V any](k K, v V, height int) *skipListNode[K, V] {
+	if height <= 0 {
+		panicf("skipListNode height must be positive integer but got %d", height)
+	}
+
+	return &skipListNode[K, V]{
+		K: k,
+		V: v,
+		nexts: make([]struct {
+			mu   sync.RWMutex
+			node *skipListNode[K, V]
+		}, height),
+	}
 }
 
 func (nd *skipListNode[K, V]) Next() *skipListNode[K, V] {
-	return nd.NextHeight(0)
-}
-
-func (nd *skipListNode[K, V]) NextHeight(height int) *skipListNode[K, V] {
 	if nd == nil {
 		return nil
 	}
-
-	nd.NextsMu.RLock()
-	defer nd.NextsMu.RUnlock()
-	return nd.Nexts[height]
+	nd.nexts[0].mu.RLock()
+	defer nd.nexts[0].mu.RUnlock()
+	return nd.nexts[0].node
 }
 
 type randCache[K comparable, V any] struct {
