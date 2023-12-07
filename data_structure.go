@@ -163,6 +163,7 @@ func (l *skipList[K, V]) lenInc() {
 	defer l.lenMu.Unlock()
 	l.len++
 }
+
 func (l *skipList[K, V]) lenDec() {
 	l.lenMu.Lock()
 	defer l.lenMu.Unlock()
@@ -311,9 +312,6 @@ func (l *skipList[K, V]) tryAdd(k K, v V) (added, ok bool) {
 	// Try insert
 	newNode := newSkipListNode(k, v, height)
 	for h := height - 1; h >= 0; h-- {
-		if trace[h].Node == nil {
-			panicf("%d\n%+v\n", height, trace)
-		}
 		trace[h].Node.nexts[h].mu.Lock()
 		defer trace[h].Node.nexts[h].mu.Unlock()
 
@@ -350,11 +348,11 @@ func (l *skipList[K, V]) Delete(k K) (deleted bool) {
 }
 
 func (l *skipList[K, V]) tryDelete(k K) (deleted, ok bool) {
-	// Get trace
 	var trace []*skipListNode[K, V]
 	node := l.Head
 	var target *skipListNode[K, V]
 	for h := l.MaxHeight - 1; h >= 0; h-- {
+		c := -100
 		for {
 			node.nexts[h].mu.RLock()
 			next := node.nexts[h].node
@@ -362,13 +360,24 @@ func (l *skipList[K, V]) tryDelete(k K) (deleted, ok bool) {
 
 			if next == nil {
 				break
-			} else if next == target {
-				trace[h] = node
-				break
-			} else if c := l.CmpFunc(next.K, k); c >= 0 {
+			}
+			if c = l.CmpFunc(next.K, k); c >= 0 {
 				if c == 0 {
-					target = next
-					trace = make([]*skipListNode[K, V], h+1)
+					node.nexts[h].mu.Lock()
+					defer node.nexts[h].mu.Unlock()
+
+					if node.nexts[h].node != next {
+						return
+					}
+
+					if target == nil {
+						trace = make([]*skipListNode[K, V], h+1)
+						target = next
+					} else if next != target {
+						ok = true
+						return
+					}
+
 					trace[h] = node
 				}
 				break
@@ -376,26 +385,21 @@ func (l *skipList[K, V]) tryDelete(k K) (deleted, ok bool) {
 
 			node = next
 		}
+		if trace != nil && trace[h] == nil {
+			ok = true
+			return
+		}
 	}
-	if trace == nil {
+	if target == nil {
 		ok = true
 		return
 	}
 
-	// Try remove
 	for h := len(trace) - 1; h >= 0; h-- {
-		trace[h].nexts[h].mu.Lock()
-		defer trace[h].nexts[h].mu.Unlock()
-
-		if trace[h].nexts[h].node != target {
-			return
-		}
-
+		target.nexts[h].mu.Lock()
+		defer target.nexts[h].mu.Unlock()
 	}
-
 	for h := len(trace) - 1; h >= 0; h-- {
-		target.nexts[h].mu.RLock()
-		defer target.nexts[h].mu.RUnlock()
 		trace[h].nexts[h].node = target.nexts[h].node
 	}
 
