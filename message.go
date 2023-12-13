@@ -851,6 +851,14 @@ func NewServerClosedMsg(subID string, prefix, msg string) *ServerClosedMsg {
 	}
 }
 
+func NewServerClosedMsgf(subID string, prefix, format string, a ...any) *ServerClosedMsg {
+	return &ServerClosedMsg{
+		SubscriptionID: subID,
+		MsgPrefix:      prefix,
+		Msg:            fmt.Sprintf(format, a...),
+	}
+}
+
 func (*ServerClosedMsg) ServerMsg() {}
 
 func (msg *ServerClosedMsg) Message() string {

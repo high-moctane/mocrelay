@@ -1212,7 +1212,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {}, {}, {}},
 					},
 					wantSmsgs: []ServerMsg{
-						&ServerNoticeMsg{"too many req: sub4: max subscriptions is 3"},
+						NewServerClosedMsg("sub4", "", "too many req: max subscriptions is 3"),
 					},
 				},
 				{
@@ -1221,7 +1221,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {}, {}, {}, {}},
 					},
 					wantSmsgs: []ServerMsg{
-						&ServerNoticeMsg{"too many req: sub5: max subscriptions is 3"},
+						NewServerClosedMsg("sub5", "", "too many req: max subscriptions is 3"),
 					},
 				},
 			},
@@ -1294,7 +1294,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {}, {}, {}, {}},
 					},
 					wantSmsgs: []ServerMsg{
-						&ServerNoticeMsg{"too many req: sub5: max subscriptions is 3"},
+						NewServerClosedMsg("sub5", "", "too many req: max subscriptions is 3"),
 					},
 				},
 			},
@@ -1357,7 +1357,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {}, {}, {}, {}},
 					},
 					wantSmsgs: []ServerMsg{
-						&ServerNoticeMsg{"too many req: sub4: max subscriptions is 3"},
+						NewServerClosedMsg("sub4", "", "too many req: max subscriptions is 3"),
 					},
 				},
 			},
@@ -1406,7 +1406,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {}, {}},
 					},
 					wantSmsgs: []ServerMsg{
-						NewServerNoticeMsg("too many req filters: req1: max filters is 2"),
+						NewServerClosedMsg("req1", "", "too many req filters: max filters is 2"),
 					},
 				},
 			},
@@ -1439,7 +1439,11 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {}, {}},
 					},
 					wantSmsgs: []ServerMsg{
-						NewServerNoticeMsg("too many count filters: count1: max filters is 2"),
+						NewServerClosedMsg(
+							"count1",
+							"",
+							"too many count filters: max filters is 2",
+						),
 					},
 				},
 			},
@@ -1506,7 +1510,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(3))}},
 					},
 					wantSmsgs: []ServerMsg{
-						NewServerNoticeMsg("too large limit: req1: max limit is 2"),
+						NewServerClosedMsg("req1", "", "too large limit: max limit is 2"),
 					},
 				},
 			},
@@ -1557,7 +1561,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}, {Limit: toPtr(int64(3))}},
 					},
 					wantSmsgs: []ServerMsg{
-						NewServerNoticeMsg("too large limit: count: max limit is 2"),
+						NewServerClosedMsg("count", "", "too large limit: max limit is 2"),
 					},
 				},
 			},
@@ -1606,7 +1610,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}},
 					},
 					wantSmsgs: []ServerMsg{
-						NewServerNoticeMsg("too long subid: 123456: max subid length is 5"),
+						NewServerClosedMsg("123456", "", "too long subid: max subid length is 5"),
 					},
 				},
 			},
@@ -1639,7 +1643,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 						ReqFilters:     []*ReqFilter{{}},
 					},
 					wantSmsgs: []ServerMsg{
-						NewServerNoticeMsg("too long subid: 123456: max subid length is 5"),
+						NewServerClosedMsg("123456", "", "too long subid: max subid length is 5"),
 					},
 				},
 			},
