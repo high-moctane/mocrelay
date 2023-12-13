@@ -1085,6 +1085,62 @@ func TestServerCountMsg_MarshalJSON(t *testing.T) {
 	}
 }
 
+func TestServerClosedMsg_MarshalJSON(t *testing.T) {
+	type Expect struct {
+		Json []byte
+		Err  error
+	}
+
+	tests := []struct {
+		Name   string
+		Input  *ServerClosedMsg
+		Expect Expect
+	}{
+		{
+			Name: "ok: server closed message",
+			Input: &ServerClosedMsg{
+				SubscriptionID: "sub_id",
+				MsgPrefix:      ServerClosedMsgPrefixNoPrefix,
+				Msg:            "msg",
+			},
+			Expect: Expect{
+				Json: []byte(`["CLOSED","sub_id","msg"]`),
+				Err:  nil,
+			},
+		},
+		{
+			Name: "ok: server closed message with prefix",
+			Input: &ServerClosedMsg{
+				SubscriptionID: "sub_id",
+				MsgPrefix:      ServerClosedMsgPrefixError,
+				Msg:            "msg",
+			},
+			Expect: Expect{
+				Json: []byte(`["CLOSED","sub_id","error: msg"]`),
+				Err:  nil,
+			},
+		},
+		{
+			Name:  "ng: nil",
+			Input: nil,
+			Expect: Expect{
+				Err: ErrMarshalServerClosedMsg,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			got, err := tt.Input.MarshalJSON()
+			if tt.Expect.Err != nil || err != nil {
+				assert.ErrorIs(t, err, tt.Expect.Err)
+				return
+			}
+			assert.Equal(t, tt.Expect.Json, got)
+		})
+	}
+}
+
 func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 	var eose ServerMsg = &ServerEOSEMsg{
 		SubscriptionID: "sub_id",
@@ -1146,6 +1202,11 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		Count:          192,
 		Approximate:    toPtr(false),
 	}
+	var closed ServerMsg = &ServerClosedMsg{
+		SubscriptionID: "sub_id",
+		MsgPrefix:      ServerClosedMsgPrefixError,
+		Msg:            "msg",
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1155,6 +1216,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		json.Marshal(ok)
 		json.Marshal(auth)
 		json.Marshal(count)
+		json.Marshal(closed)
 	}
 }
 
@@ -1251,6 +1313,7 @@ func BenchmarkServerMsg_Marshal_Auth(b *testing.B) {
 		json.Marshal(auth)
 	}
 }
+
 func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
 	var count ServerMsg = &ServerCountMsg{
 		SubscriptionID: "sub_id",
@@ -1261,6 +1324,19 @@ func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		json.Marshal(count)
+	}
+}
+
+func BenchmarkServerMsg_Marshal_Closed(b *testing.B) {
+	var closed ServerMsg = &ServerClosedMsg{
+		SubscriptionID: "sub_id",
+		MsgPrefix:      ServerClosedMsgPrefixError,
+		Msg:            "msg",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		json.Marshal(closed)
 	}
 }
 

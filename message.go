@@ -827,6 +827,52 @@ func (msg *ServerCountMsg) MarshalJSON() ([]byte, error) {
 	return ret, err
 }
 
+type ServerClosedMsg struct {
+	SubscriptionID string
+	Msg            string
+	MsgPrefix      string
+}
+
+const (
+	ServerClosedMsgPrefixNoPrefix    = ""
+	ServerClosedMsgPrefixPoW         = "pow: "
+	ServerClosedMsgPrefixDuplicate   = "duplicate: "
+	ServerClosedMsgPrefixBlocked     = "blocked: "
+	ServerClosedMsgPrefixRateLimited = "rate-limited: "
+	ServerClosedMsgPrefixRateInvalid = "invalid: "
+	ServerClosedMsgPrefixError       = "error: "
+)
+
+func NewServerClosedMsg(subID string, prefix, msg string) *ServerClosedMsg {
+	return &ServerClosedMsg{
+		SubscriptionID: subID,
+		MsgPrefix:      prefix,
+		Msg:            msg,
+	}
+}
+
+func (*ServerClosedMsg) ServerMsg() {}
+
+func (msg *ServerClosedMsg) Message() string {
+	return msg.MsgPrefix + msg.Msg
+}
+
+var ErrMarshalServerClosedMsg = errors.New("failed to marshal server closed msg")
+
+func (msg *ServerClosedMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nil, ErrMarshalServerClosedMsg
+	}
+
+	v := [3]string{"CLOSED", msg.SubscriptionID, msg.Message()}
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		err = errors.Join(err, ErrMarshalServerClosedMsg)
+	}
+
+	return ret, err
+}
+
 type EventType int
 
 const (
