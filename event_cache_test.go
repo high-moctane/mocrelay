@@ -120,7 +120,7 @@ func TestEventCache(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := newEventCache(tt.cap)
+			c := NewEventCache(tt.cap)
 			for _, e := range tt.in {
 				c.Add(e)
 			}
@@ -131,7 +131,7 @@ func TestEventCache(t *testing.T) {
 }
 
 func Benchmark_eventCache_Add(b *testing.B) {
-	c := newEventCache(10000)
+	c := NewEventCache(10000)
 
 	genKey := func() string {
 		buf := make([]byte, 32)

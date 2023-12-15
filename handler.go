@@ -277,12 +277,12 @@ func (h CacheHandler) Restore(r io.Reader) error {
 }
 
 type simpleCacheHandler struct {
-	c *eventCache
+	c *EventCache
 }
 
 func newSimpleCacheHandler(size int) *simpleCacheHandler {
 	return &simpleCacheHandler{
-		c: newEventCache(size),
+		c: NewEventCache(size),
 	}
 }
 
