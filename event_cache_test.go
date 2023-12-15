@@ -1,154 +1,453 @@
 package mocrelay
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	assert "github.com/stretchr/testify/assert"
 )
 
-func TestEventCache(t *testing.T) {
-	reg := []*Event{
-		{ID: "reg0", Pubkey: "reg0", Kind: 1, CreatedAt: 0},
-		{ID: "reg1", Pubkey: "reg1", Kind: 1, CreatedAt: 1},
-		{ID: "reg2", Pubkey: "reg2", Kind: 1, CreatedAt: 2},
-		{ID: "reg3", Pubkey: "reg3", Kind: 1, CreatedAt: 3},
-		{ID: "reg4", Pubkey: "reg4", Kind: 1, CreatedAt: 4},
-		{ID: "reg5", Pubkey: "reg5", Kind: 1, CreatedAt: 5},
-	}
-	rep := []*Event{
-		{ID: "rep0", Pubkey: "rep0", Kind: 0, CreatedAt: 0},
-		{ID: "rep1", Pubkey: "rep0", Kind: 0, CreatedAt: 1},
-		{ID: "rep2", Pubkey: "rep0", Kind: 10000, CreatedAt: 2},
-		{ID: "rep3", Pubkey: "rep0", Kind: 10000, CreatedAt: 3},
-		{ID: "rep4", Pubkey: "rep1", Kind: 0, CreatedAt: 4},
-		{ID: "rep5", Pubkey: "rep1", Kind: 0, CreatedAt: 5},
-		{ID: "rep6", Pubkey: "rep0", Kind: 0, CreatedAt: 6},
-		{ID: "rep7", Pubkey: "rep0", Kind: 0, CreatedAt: 7},
-	}
-	prep := []*Event{
-		{ID: "prep0", Pubkey: "prep0", Kind: 30000, CreatedAt: 0, Tags: []Tag{{"d", "tag0"}}},
-		{ID: "prep1", Pubkey: "prep0", Kind: 30000, CreatedAt: 1, Tags: []Tag{{"d", "tag1"}}},
-		{ID: "prep2", Pubkey: "prep0", Kind: 30000, CreatedAt: 2, Tags: []Tag{{"d", "tag0"}}},
-		{ID: "prep3", Pubkey: "prep0", Kind: 30000, CreatedAt: 3, Tags: []Tag{{"d", "tag1"}}},
-		{ID: "prep4", Pubkey: "prep1", Kind: 30000, CreatedAt: 4, Tags: []Tag{{"d", "tag0"}}},
-		{ID: "prep5", Pubkey: "prep1", Kind: 30000, CreatedAt: 5, Tags: []Tag{{"d", "tag1"}}},
-		{ID: "prep6", Pubkey: "prep1", Kind: 30000, CreatedAt: 6, Tags: []Tag{{"d", "tag0"}}},
-		{ID: "prep7", Pubkey: "prep1", Kind: 30000, CreatedAt: 7, Tags: []Tag{{"d", "tag1"}}},
+func TestEventCache_Add(t *testing.T) {
+	regularEvents := func() []*Event {
+		var ret []*Event
+		for i := 0; i < 10; i++ {
+			ret = append(ret, &Event{
+				ID:        fmt.Sprintf("event-%d", i),
+				Pubkey:    "regular",
+				Kind:      1,
+				CreatedAt: int64(i),
+			})
+		}
+		return ret
+	}()
+	replaceableEvents := func() map[string]map[int64][]*Event {
+		pubkeys := []string{"pubkey01", "pubkey02", "pubkey03"}
+		kinds := []int64{10000, 10001, 10002}
+		ret := make(map[string]map[int64][]*Event)
+		for _, pubkey := range pubkeys {
+			ret[pubkey] = make(map[int64][]*Event)
+			for _, kind := range kinds {
+				for i := 0; i < 10; i++ {
+					ret[pubkey][kind] = append(ret[pubkey][kind], &Event{
+						ID:        fmt.Sprintf("event-%s-%d-%d", pubkey, kind, i),
+						Pubkey:    pubkey,
+						Kind:      kind,
+						CreatedAt: int64(i),
+					})
+				}
+			}
+		}
+		return ret
+	}()
+	paramReplaceableEvents := func() map[string]map[int64]map[string][]*Event {
+		pubkeys := []string{"pubkey01", "pubkey02", "pubkey03"}
+		kinds := []int64{30000, 30001, 30002}
+		params := []string{"param01", "param02", "param03"}
+		ret := make(map[string]map[int64]map[string][]*Event)
+		for _, pubkey := range pubkeys {
+			ret[pubkey] = make(map[int64]map[string][]*Event)
+			for _, kind := range kinds {
+				ret[pubkey][kind] = make(map[string][]*Event)
+				for _, param := range params {
+					for i := 0; i < 10; i++ {
+						ret[pubkey][kind][param] = append(ret[pubkey][kind][param], &Event{
+							ID:        fmt.Sprintf("event-%s-%d-%s-%d", pubkey, kind, param, i),
+							Pubkey:    pubkey,
+							Kind:      kind,
+							CreatedAt: int64(i),
+							Tags: []Tag{
+								{"d", param},
+							},
+						})
+					}
+				}
+			}
+		}
+		return ret
+	}()
+
+	type input struct {
+		event *Event
+		added bool
 	}
 
 	tests := []struct {
-		name string
-		cap  int
-		in   []*Event
-		want []*Event
+		name    string
+		cap     int
+		in      []*input
+		filters []*ReqFilter
+		found   []*Event
+		len     int
 	}{
 		{
-			"empty",
-			3,
-			nil,
-			nil,
+			name:    "empty",
+			cap:     5,
+			in:      []*input{},
+			filters: []*ReqFilter{{}},
+			found:   nil,
+			len:     0,
 		},
 		{
-			"two",
-			3,
-			[]*Event{reg[0], reg[1]},
-			[]*Event{reg[1], reg[0]},
+			name: "one",
+			cap:  5,
+			in: []*input{
+				{event: regularEvents[0], added: true},
+			},
+			filters: []*ReqFilter{{}},
+			found:   []*Event{regularEvents[0]},
+			len:     1,
 		},
 		{
-			"many",
-			3,
-			[]*Event{reg[0], reg[1], reg[2], reg[3], reg[4]},
-			[]*Event{reg[4], reg[3], reg[2]},
+			name: "full",
+			cap:  5,
+			in: []*input{
+				{event: regularEvents[0], added: true},
+				{event: regularEvents[1], added: true},
+				{event: regularEvents[2], added: true},
+				{event: regularEvents[3], added: true},
+				{event: regularEvents[4], added: true},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				regularEvents[4],
+				regularEvents[3],
+				regularEvents[2],
+				regularEvents[1],
+				regularEvents[0],
+			},
+			len: 5,
 		},
 		{
-			"two: reverse",
-			3,
-			[]*Event{reg[1], reg[0]},
-			[]*Event{reg[1], reg[0]},
+			name: "full and more",
+			cap:  5,
+			in: []*input{
+				{event: regularEvents[0], added: true},
+				{event: regularEvents[1], added: true},
+				{event: regularEvents[2], added: true},
+				{event: regularEvents[3], added: true},
+				{event: regularEvents[4], added: true},
+				{event: regularEvents[5], added: true},
+				{event: regularEvents[6], added: true},
+				{event: regularEvents[7], added: true},
+				{event: regularEvents[8], added: true},
+				{event: regularEvents[9], added: true},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				regularEvents[9],
+				regularEvents[8],
+				regularEvents[7],
+				regularEvents[6],
+				regularEvents[5],
+			},
+			len: 5,
 		},
 		{
-			"random",
-			3,
-			[]*Event{reg[3], reg[2], reg[1], reg[4], reg[0]},
-			[]*Event{reg[4], reg[3], reg[2]},
+			name: "full and more random order",
+			cap:  5,
+			in: []*input{
+				{event: regularEvents[7], added: true},
+				{event: regularEvents[3], added: true},
+				{event: regularEvents[9], added: true},
+				{event: regularEvents[1], added: true},
+				{event: regularEvents[5], added: true},
+				{event: regularEvents[0], added: true},
+				{event: regularEvents[4], added: true},
+				{event: regularEvents[6], added: true},
+				{event: regularEvents[8], added: true},
+				{event: regularEvents[2], added: true},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				regularEvents[9],
+				regularEvents[8],
+				regularEvents[7],
+				regularEvents[6],
+				regularEvents[5],
+			},
+			len: 5,
 		},
 		{
-			"duplicate",
-			3,
-			[]*Event{reg[1], reg[1], reg[0], reg[1]},
-			[]*Event{reg[1], reg[0]},
+			name: "full and more random order duplicate",
+			cap:  5,
+			in: []*input{
+				{event: regularEvents[7], added: true},
+				{event: regularEvents[3], added: true},
+				{event: regularEvents[7], added: false},
+				{event: regularEvents[9], added: true},
+				{event: regularEvents[1], added: true},
+				{event: regularEvents[3], added: false},
+				{event: regularEvents[5], added: true},
+				{event: regularEvents[0], added: true},
+				{event: regularEvents[4], added: true},
+				{event: regularEvents[6], added: true},
+				{event: regularEvents[8], added: true},
+				{event: regularEvents[2], added: true},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				regularEvents[9],
+				regularEvents[8],
+				regularEvents[7],
+				regularEvents[6],
+				regularEvents[5],
+			},
+			len: 5,
 		},
 		{
-			"replaceable",
-			3,
-			[]*Event{rep[0], rep[1], rep[2]},
-			[]*Event{rep[2], rep[1]},
+			name: "full replaceable",
+			cap:  5,
+			in: []*input{
+				{event: replaceableEvents["pubkey01"][10000][0], added: true},
+				{event: replaceableEvents["pubkey01"][10000][1], added: true},
+				{event: replaceableEvents["pubkey01"][10000][2], added: true},
+				{event: replaceableEvents["pubkey01"][10000][3], added: true},
+				{event: replaceableEvents["pubkey01"][10000][4], added: true},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				replaceableEvents["pubkey01"][10000][4],
+			},
+			len: 1,
 		},
 		{
-			"replaceable: reverse",
-			3,
-			[]*Event{rep[1], rep[0], rep[2]},
-			[]*Event{rep[2], rep[1]},
+			name: "full and more replaceable",
+			cap:  5,
+			in: []*input{
+				{event: replaceableEvents["pubkey01"][10000][0], added: true},
+				{event: replaceableEvents["pubkey01"][10000][1], added: true},
+				{event: replaceableEvents["pubkey01"][10000][2], added: true},
+				{event: replaceableEvents["pubkey01"][10000][3], added: true},
+				{event: replaceableEvents["pubkey01"][10000][4], added: true},
+				{event: replaceableEvents["pubkey01"][10000][5], added: true},
+				{event: replaceableEvents["pubkey01"][10000][6], added: true},
+				{event: replaceableEvents["pubkey01"][10000][7], added: true},
+				{event: replaceableEvents["pubkey01"][10000][8], added: true},
+				{event: replaceableEvents["pubkey01"][10000][9], added: true},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				replaceableEvents["pubkey01"][10000][9],
+			},
+			len: 1,
 		},
 		{
-			"replaceable: different pubkey",
-			3,
-			[]*Event{rep[0], rep[4], rep[5]},
-			[]*Event{rep[5], rep[0]},
+			name: "full and more random order replaceable",
+			cap:  5,
+			in: []*input{
+				{event: replaceableEvents["pubkey01"][10000][3], added: true},
+				{event: replaceableEvents["pubkey01"][10000][1], added: false},
+				{event: replaceableEvents["pubkey01"][10000][5], added: true},
+				{event: replaceableEvents["pubkey01"][10000][7], added: true},
+				{event: replaceableEvents["pubkey01"][10000][0], added: false},
+				{event: replaceableEvents["pubkey01"][10000][4], added: false},
+				{event: replaceableEvents["pubkey01"][10000][6], added: false},
+				{event: replaceableEvents["pubkey01"][10000][9], added: true},
+				{event: replaceableEvents["pubkey01"][10000][8], added: false},
+				{event: replaceableEvents["pubkey01"][10000][2], added: false},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				replaceableEvents["pubkey01"][10000][9],
+			},
+			len: 1,
 		},
 		{
-			"param replaceable",
-			5,
-			[]*Event{prep[0], prep[1], prep[2], prep[3]},
-			[]*Event{prep[3], prep[2]},
+			name: "full and more random order random kind replaceable",
+			cap:  5,
+			in: []*input{
+				{event: replaceableEvents["pubkey01"][10000][3], added: true},
+				{event: replaceableEvents["pubkey01"][10001][3], added: true},
+				{event: replaceableEvents["pubkey01"][10002][3], added: true},
+				{event: replaceableEvents["pubkey01"][10000][1], added: false},
+				{event: replaceableEvents["pubkey01"][10001][1], added: false},
+				{event: replaceableEvents["pubkey01"][10002][1], added: false},
+				{event: replaceableEvents["pubkey01"][10000][5], added: true},
+				{event: replaceableEvents["pubkey01"][10001][5], added: true},
+				{event: replaceableEvents["pubkey01"][10002][5], added: true},
+				{event: replaceableEvents["pubkey01"][10000][7], added: true},
+				{event: replaceableEvents["pubkey01"][10001][7], added: true},
+				{event: replaceableEvents["pubkey01"][10002][7], added: true},
+				{event: replaceableEvents["pubkey01"][10000][0], added: false},
+				{event: replaceableEvents["pubkey01"][10001][0], added: false},
+				{event: replaceableEvents["pubkey01"][10002][0], added: false},
+				{event: replaceableEvents["pubkey01"][10000][4], added: false},
+				{event: replaceableEvents["pubkey01"][10001][4], added: false},
+				{event: replaceableEvents["pubkey01"][10002][4], added: false},
+				{event: replaceableEvents["pubkey01"][10000][6], added: false},
+				{event: replaceableEvents["pubkey01"][10001][6], added: false},
+				{event: replaceableEvents["pubkey01"][10002][6], added: false},
+				{event: replaceableEvents["pubkey01"][10000][9], added: true},
+				{event: replaceableEvents["pubkey01"][10001][9], added: true},
+				{event: replaceableEvents["pubkey01"][10002][9], added: true},
+				{event: replaceableEvents["pubkey01"][10000][8], added: false},
+				{event: replaceableEvents["pubkey01"][10001][8], added: false},
+				{event: replaceableEvents["pubkey01"][10002][8], added: false},
+				{event: replaceableEvents["pubkey01"][10000][2], added: false},
+				{event: replaceableEvents["pubkey01"][10001][2], added: false},
+				{event: replaceableEvents["pubkey01"][10002][2], added: false},
+			},
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				replaceableEvents["pubkey01"][10002][9],
+				replaceableEvents["pubkey01"][10001][9],
+				replaceableEvents["pubkey01"][10000][9],
+			},
+			len: 3,
 		},
 		{
-			"param replaceable: different pubkey",
-			6,
-			[]*Event{prep[0], prep[1], prep[2], prep[3], prep[4], prep[5], prep[6], prep[7]},
-			[]*Event{prep[7], prep[6], prep[3], prep[2]},
-		},
-		{
-			"param replaceable: different pubkey",
-			6,
-			[]*Event{prep[0], prep[1], prep[2], prep[3], prep[4], prep[5], prep[6], prep[7]},
-			[]*Event{prep[7], prep[6], prep[3], prep[2]},
+			name: "full and more random order random kind parametrized replaceable",
+			cap:  30,
+			in: func() []*input {
+				var ret []*input
+				for _, pubkey := range []string{"pubkey01", "pubkey02", "pubkey03"} {
+					for _, kind := range []int64{30000, 30001, 30002} {
+						for _, param := range []string{"param01", "param02", "param03"} {
+							ret = append(ret, []*input{
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][3],
+									added: true,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][1],
+									added: false,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][5],
+									added: true,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][7],
+									added: true,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][0],
+									added: false,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][4],
+									added: false,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][6],
+									added: false,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][9],
+									added: true,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][8],
+									added: false,
+								},
+								{
+									event: paramReplaceableEvents[pubkey][kind][param][2],
+									added: false,
+								},
+							}...)
+						}
+					}
+				}
+				return ret
+			}(),
+			filters: []*ReqFilter{{}},
+			found: []*Event{
+				paramReplaceableEvents["pubkey03"][30002]["param03"][9],
+				paramReplaceableEvents["pubkey03"][30002]["param02"][9],
+				paramReplaceableEvents["pubkey03"][30002]["param01"][9],
+				paramReplaceableEvents["pubkey03"][30001]["param03"][9],
+				paramReplaceableEvents["pubkey03"][30001]["param02"][9],
+				paramReplaceableEvents["pubkey03"][30001]["param01"][9],
+				paramReplaceableEvents["pubkey03"][30000]["param03"][9],
+				paramReplaceableEvents["pubkey03"][30000]["param02"][9],
+				paramReplaceableEvents["pubkey03"][30000]["param01"][9],
+				paramReplaceableEvents["pubkey02"][30002]["param03"][9],
+				paramReplaceableEvents["pubkey02"][30002]["param02"][9],
+				paramReplaceableEvents["pubkey02"][30002]["param01"][9],
+				paramReplaceableEvents["pubkey02"][30001]["param03"][9],
+				paramReplaceableEvents["pubkey02"][30001]["param02"][9],
+				paramReplaceableEvents["pubkey02"][30001]["param01"][9],
+				paramReplaceableEvents["pubkey02"][30000]["param03"][9],
+				paramReplaceableEvents["pubkey02"][30000]["param02"][9],
+				paramReplaceableEvents["pubkey02"][30000]["param01"][9],
+				paramReplaceableEvents["pubkey01"][30002]["param03"][9],
+				paramReplaceableEvents["pubkey01"][30002]["param02"][9],
+				paramReplaceableEvents["pubkey01"][30002]["param01"][9],
+				paramReplaceableEvents["pubkey01"][30001]["param03"][9],
+				paramReplaceableEvents["pubkey01"][30001]["param02"][9],
+				paramReplaceableEvents["pubkey01"][30001]["param01"][9],
+				paramReplaceableEvents["pubkey01"][30000]["param03"][9],
+				paramReplaceableEvents["pubkey01"][30000]["param02"][9],
+				paramReplaceableEvents["pubkey01"][30000]["param01"][9],
+			},
+			len: 27,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := NewEventCache(tt.cap)
-			for _, e := range tt.in {
-				c.Add(e)
+			for _, in := range tt.in {
+				gotAdded := c.Add(in.event)
+				assert.Equal(t, in.added, gotAdded, c.getEventCache(in.event))
 			}
-			got := c.Find([]*ReqFilter{{}})
-			assert.Equal(t, tt.want, got)
+
+			found := c.Find(tt.filters)
+			assert.Equal(t, tt.found, found)
+
+			assert.Equal(t, tt.len, c.Len())
 		})
 	}
 }
 
-func Benchmark_eventCache_Add(b *testing.B) {
-	c := NewEventCache(10000)
-
-	genKey := func() string {
-		buf := make([]byte, 32)
-		rand.Read(buf)
-		return hex.EncodeToString(buf)
+func TestEventCache_getEventCache(t *testing.T) {
+	tests := []struct {
+		name string
+		in   *Event
+		want string
+	}{
+		{
+			name: "regular",
+			in: &Event{
+				ID:        "event-1",
+				Pubkey:    "regular",
+				Kind:      1,
+				CreatedAt: 1,
+				Tags:      []Tag{},
+			},
+			want: "event-1",
+		},
+		{
+			name: "replaceable",
+			in: &Event{
+				ID:        "event-1",
+				Pubkey:    "replaceable",
+				Kind:      10000,
+				CreatedAt: 1,
+				Tags:      []Tag{},
+			},
+			want: "replaceable:10000",
+		},
+		{
+			name: "parametrized replaceable",
+			in: &Event{
+				ID:        "event-1",
+				Pubkey:    "param-replaceable",
+				Kind:      30000,
+				CreatedAt: 1,
+				Tags: []Tag{
+					{"d", "param"},
+				},
+			},
+			want: "param-replaceable:30000:param",
+		},
 	}
 
-	b.ResetTimer()
-	b.RunParallel(func(b *testing.PB) {
-		for i := 0; b.Next(); i++ {
-			ev := Event{
-				ID:        genKey(),
-				Kind:      1,
-				CreatedAt: int64(i + 4 - i%5),
-			}
-
-			c.Add(&ev)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewEventCache(5)
+			got := c.getEventCache(tt.in)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
