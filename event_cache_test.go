@@ -1387,3 +1387,100 @@ func TestEventCache_Find(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkEventCache_Add(b *testing.B) {
+	c := NewEventCache(10000)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		events := func() []*Event {
+			ret := make([]*Event, 0, 10000)
+			for i := 0; i < 10000; i++ {
+				ret = append(ret, &Event{
+					ID:        fmt.Sprintf("event-%d", i),
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: int64(i),
+				})
+			}
+			return ret
+		}()
+
+		for i := 0; pb.Next(); i++ {
+			ev := events[i%len(events)]
+			c.Add(ev)
+			ev.CreatedAt += int64(len(events))
+		}
+	})
+}
+
+func BenchmarkEventCache_Find(b *testing.B) {
+	c := NewEventCache(10000)
+	for i := 0; i < c.Cap; i++ {
+		c.Add(&Event{
+			ID:        fmt.Sprintf("event-%d", i),
+			Pubkey:    "pubkey01",
+			Kind:      1,
+			CreatedAt: int64(i),
+		})
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			c.Find([]*ReqFilter{{}})
+		}
+	})
+}
+
+func BenchmarkEventCache_FindByPubkey(b *testing.B) {
+	c := NewEventCache(10000)
+	for i := 0; i < c.Cap/2; i++ {
+		c.Add(&Event{
+			ID:        fmt.Sprintf("event-pubkey01-%d", i),
+			Pubkey:    "pubkey01",
+			Kind:      1,
+			CreatedAt: int64(i),
+		})
+		c.Add(&Event{
+			ID:        fmt.Sprintf("event-pubkey02-%d", i),
+			Pubkey:    "pubkey02",
+			Kind:      1,
+			CreatedAt: int64(i),
+		})
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			c.Find([]*ReqFilter{{Authors: []string{"pubkey01"}}})
+		}
+	})
+}
+
+func BenchmarkEventCache_AddFind(b *testing.B) {
+	c := NewEventCache(10000)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		events := func() []*Event {
+			ret := make([]*Event, 0, 10000)
+			for i := 0; i < 10000; i++ {
+				ret = append(ret, &Event{
+					ID:        fmt.Sprintf("event-%d", i),
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: int64(i),
+				})
+			}
+			return ret
+		}()
+
+		for i := 0; pb.Next(); i++ {
+			ev := events[i%len(events)]
+			c.Add(ev)
+			c.Find([]*ReqFilter{{}})
+			ev.CreatedAt += int64(len(events))
+		}
+	})
+}
