@@ -900,3 +900,490 @@ func TestEventCache_AddKind5(t *testing.T) {
 		})
 	}
 }
+
+func TestEventCache_Find(t *testing.T) {
+	tests := []struct {
+		name    string
+		cap     int
+		in      []*Event
+		filters []*ReqFilter
+		want    []*Event
+	}{
+		{
+			name:    "empty",
+			cap:     3,
+			in:      []*Event{},
+			filters: []*ReqFilter{{}},
+			want:    nil,
+		},
+		{
+			name: "multiple",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+		{
+			name: "multiple with filter",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{IDs: []string{"event-1"}},
+			},
+			want: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+		{
+			name: "multiple filter",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{{}, {}},
+			want: []*Event{
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+		{
+			name: "multiple filter with different IDs",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{IDs: []string{"event-1"}},
+				{IDs: []string{"event-2"}},
+			},
+			want: []*Event{
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+		{
+			name: "multiple filter with same IDs",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{IDs: []string{"event-1"}},
+				{IDs: []string{"event-1"}},
+			},
+			want: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+		{
+			name: "multiple filter with overlap IDs",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{IDs: []string{"event-1", "event-2"}},
+				{IDs: []string{"event-1", "event-3"}},
+			},
+			want: []*Event{
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+		{
+			name: "filter with limit",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{Limit: toPtr[int64](2)},
+			},
+			want: []*Event{
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+			},
+		},
+		{
+			name: "multiple filter with limit",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{Limit: toPtr[int64](2)},
+				{Limit: toPtr[int64](1)},
+			},
+			want: []*Event{
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+			},
+		},
+		{
+			name: "multiple filter with IDs and limit",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{IDs: []string{"event-1", "event-2"}, Limit: toPtr[int64](1)},
+				{IDs: []string{"event-1", "event-3"}, Limit: toPtr[int64](2)},
+			},
+			want: []*Event{
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+		{
+			name: "limit 0",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{Limit: toPtr[int64](0)},
+			},
+			want: nil,
+		},
+		{
+			name: "big limit",
+			cap:  3,
+			in: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			filters: []*ReqFilter{
+				{Limit: toPtr[int64](100)},
+			},
+			want: []*Event{
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+				{
+					ID:        "event-2",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewEventCache(tt.cap)
+			for _, in := range tt.in {
+				c.Add(in)
+			}
+
+			found := c.Find(tt.filters)
+			assert.Equal(t, tt.want, found)
+		})
+	}
+}

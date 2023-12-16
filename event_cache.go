@@ -158,13 +158,10 @@ func (c *EventCache) findByFilter(f *ReqFilter) []*Event {
 
 	slices.SortFunc(ret, c.findResultCmp)
 
-	limit := len(ret)
 	if f.Limit != nil {
-		// TODO
-		limit = min(limit, int(*f.Limit))
+		limit := min(len(ret), int(*f.Limit))
+		ret = slices.Clip(ret[:limit])
 	}
-
-	ret = slices.Clip(ret[:limit])
 
 	return ret
 }
