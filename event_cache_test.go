@@ -389,7 +389,7 @@ func TestEventCache_Add(t *testing.T) {
 			c := NewEventCache(tt.cap)
 			for _, in := range tt.in {
 				gotAdded := c.Add(in.event)
-				assert.Equal(t, in.added, gotAdded, c.getEventCache(in.event))
+				assert.Equal(t, in.added, gotAdded, c.getEventKey(in.event))
 			}
 
 			found := c.Find(tt.filters)
@@ -446,8 +446,457 @@ func TestEventCache_getEventCache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := NewEventCache(5)
-			got := c.getEventCache(tt.in)
+			got := c.getEventKey(tt.in)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEventCache_AddKind5(t *testing.T) {
+	type input struct {
+		event *Event
+		added bool
+	}
+
+	tests := []struct {
+		name       string
+		cap        int
+		in         []*input
+		filters    []*ReqFilter
+		want       []*Event
+		len        int
+		deletedLen int
+	}{
+		{
+			name: "kind5 after event",
+			cap:  5,
+			in: []*input{
+				{
+					event: &Event{
+						ID:        "event-1",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 1,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:     "kind5",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "event-1"},
+						},
+						CreatedAt: 2,
+					},
+					added: true,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:     "kind5",
+					Pubkey: "pubkey01",
+					Kind:   5,
+					Tags: []Tag{
+						{"e", "event-1"},
+					},
+					CreatedAt: 2,
+				},
+			},
+			len:        1,
+			deletedLen: 1,
+		},
+		{
+			name: "kind5 before event",
+			cap:  5,
+			in: []*input{
+				{
+					event: &Event{
+						ID:     "kind5",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "event-1"},
+						},
+						CreatedAt: 2,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-1",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 1,
+					},
+					added: false,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:     "kind5",
+					Pubkey: "pubkey01",
+					Kind:   5,
+					Tags: []Tag{
+						{"e", "event-1"},
+					},
+					CreatedAt: 2,
+				},
+			},
+			len:        1,
+			deletedLen: 1,
+		},
+		{
+			name: "kind5 for parametrized replaceable event",
+			cap:  5,
+			in: []*input{
+				{
+					event: &Event{
+						ID:     "kind5",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"a", "pubkey01:30000:param"},
+						},
+						CreatedAt: 2,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:     "event-1",
+						Pubkey: "pubkey01",
+						Kind:   30000,
+						Tags: []Tag{
+							{"d", "param"},
+						},
+						CreatedAt: 1,
+					},
+					added: false,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:     "kind5",
+					Pubkey: "pubkey01",
+					Kind:   5,
+					Tags: []Tag{
+						{"a", "pubkey01:30000:param"},
+					},
+					CreatedAt: 2,
+				},
+			},
+			len:        1,
+			deletedLen: 1,
+		},
+		{
+			name: "delete oneself",
+			cap:  5,
+			in: []*input{
+				{
+					event: &Event{
+						ID:     "kind5",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "kind5"},
+						},
+						CreatedAt: 1,
+					},
+					added: true,
+				},
+			},
+			filters:    []*ReqFilter{{}},
+			want:       nil,
+			len:        0,
+			deletedLen: 0,
+		},
+		{
+			name: "kind5 for kind5",
+			cap:  5,
+			in: []*input{
+				{
+					event: &Event{
+						ID:     "kind5",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "kind5"},
+						},
+						CreatedAt: 1,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:     "kind5-2",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "kind5"},
+						},
+						CreatedAt: 2,
+					},
+					added: true,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:     "kind5-2",
+					Pubkey: "pubkey01",
+					Kind:   5,
+					Tags: []Tag{
+						{"e", "kind5"},
+					},
+					CreatedAt: 2,
+				},
+			},
+			len:        1,
+			deletedLen: 1,
+		},
+		{
+			name: "kind5 with different pubkey",
+			cap:  5,
+			in: []*input{
+				{
+					event: &Event{
+						ID:        "event-1",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 1,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:     "kind5-3",
+						Pubkey: "pubkey02",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "event-1"},
+						},
+						CreatedAt: 2,
+					},
+					added: true,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:     "kind5-3",
+					Pubkey: "pubkey02",
+					Kind:   5,
+					Tags: []Tag{
+						{"e", "event-1"},
+					},
+					CreatedAt: 2,
+				},
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 1,
+				},
+			},
+			len:        2,
+			deletedLen: 1,
+		},
+		{
+			name: "many events",
+			cap:  3,
+			in: []*input{
+				{
+					event: &Event{
+						ID:     "kind5-1",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "event-1"},
+						},
+						CreatedAt: 1,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-2",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 2,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-3",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 3,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-4",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 4,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-1",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 5,
+					},
+					added: true,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 5,
+				},
+				{
+					ID:        "event-4",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 4,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 3,
+				},
+			},
+			len:        3,
+			deletedLen: 0,
+		},
+		{
+			name: "many events with multiple same kind5",
+			cap:  3,
+			in: []*input{
+				{
+					event: &Event{
+						ID:     "kind5-1",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "event-1"},
+						},
+						CreatedAt: 1,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:     "kind5-2",
+						Pubkey: "pubkey01",
+						Kind:   5,
+						Tags: []Tag{
+							{"e", "event-1"},
+						},
+						CreatedAt: 2,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-2",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 3,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-3",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 4,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-1",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 10,
+					},
+					added: false,
+				},
+				{
+					event: &Event{
+						ID:        "event-4",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 5,
+					},
+					added: true,
+				},
+				{
+					event: &Event{
+						ID:        "event-1",
+						Pubkey:    "pubkey01",
+						Kind:      1,
+						CreatedAt: 10,
+					},
+					added: true,
+				},
+			},
+			filters: []*ReqFilter{{}},
+			want: []*Event{
+				{
+					ID:        "event-1",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 10,
+				},
+
+				{
+					ID:        "event-4",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 5,
+				},
+				{
+					ID:        "event-3",
+					Pubkey:    "pubkey01",
+					Kind:      1,
+					CreatedAt: 4,
+				},
+			},
+			len:        3,
+			deletedLen: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewEventCache(tt.cap)
+			for _, in := range tt.in {
+				gotAdded := c.Add(in.event)
+				assert.Equal(t, in.added, gotAdded, c.getEventKey(in.event))
+			}
+
+			found := c.Find(tt.filters)
+			assert.Equal(t, tt.want, found)
+
+			assert.Equal(t, tt.len, c.Len())
+			assert.Equal(t, tt.deletedLen, len(c.deleted))
 		})
 	}
 }

@@ -10,14 +10,20 @@ import (
 type EventCache struct {
 	Cap int
 
-	mu  sync.RWMutex
+	mu sync.RWMutex
+
+	// map[eventKey]*Event
 	evs map[string]*Event
+
+	// map[deletedEventKey]map[kind5ID]bool
+	deleted map[deletedEventKey]map[string]bool
 }
 
 func NewEventCache(capacity int) *EventCache {
 	return &EventCache{
-		Cap: capacity,
-		evs: make(map[string]*Event, capacity),
+		Cap:     capacity,
+		evs:     make(map[string]*Event, capacity),
+		deleted: make(map[deletedEventKey]map[string]bool),
 	}
 }
 
@@ -32,7 +38,11 @@ func (c *EventCache) Add(event *Event) (added bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	eventKey := c.getEventCache(event)
+	eventKey := c.getEventKey(event)
+
+	if c.isDeleted(eventKey, event.Pubkey) {
+		return false
+	}
 
 	if old, ok := c.evs[eventKey]; ok && old.CreatedAt >= event.CreatedAt {
 		return false
@@ -40,19 +50,78 @@ func (c *EventCache) Add(event *Event) (added bool) {
 
 	c.evs[eventKey] = event
 
+	if event.Kind == 5 {
+		c.addKind5(event)
+		c.deleteByKind5(event)
+	}
+
 	if len(c.evs) > c.Cap {
-		var oldest *Event
-		var key string
-		for k, ev := range c.evs {
-			if oldest == nil || ev.CreatedAt < oldest.CreatedAt {
-				oldest = ev
-				key = k
-			}
+		if oldest := c.getOldestEvent(); oldest != nil {
+			key := c.getEventKey(oldest)
+			c.delete(deletedEventKey{key, oldest.Pubkey})
 		}
-		delete(c.evs, key)
 	}
 
 	return true
+}
+
+func (c *EventCache) isDeleted(eventKey, pubkey string) bool {
+	return c.deleted[deletedEventKey{eventKey, pubkey}] != nil
+}
+
+func (c *EventCache) addKind5(event *Event) {
+	keys := c.getEventKeyFromKind5Tags(event)
+	for _, key := range keys {
+		k := deletedEventKey{key, event.Pubkey}
+		if c.deleted[k] == nil {
+			c.deleted[k] = make(map[string]bool)
+		}
+		c.deleted[deletedEventKey{key, event.Pubkey}][event.ID] = true
+	}
+}
+
+func (c *EventCache) deleteByKind5(event *Event) {
+	keys := c.getEventKeyFromKind5Tags(event)
+
+	for _, key := range keys {
+		c.delete(deletedEventKey{key, event.Pubkey})
+	}
+}
+
+func (c *EventCache) delete(delEvKey deletedEventKey) (deleted bool) {
+	cand, ok := c.evs[delEvKey.EventKey]
+	if !ok {
+		return
+	}
+	if cand.Pubkey != delEvKey.Pubkey {
+		return
+	}
+
+	// deleted
+	if cand.Kind == 5 {
+		keys := c.getEventKeyFromKind5Tags(cand)
+		for _, key := range keys {
+			delete(c.deleted[deletedEventKey{key, cand.Pubkey}], cand.ID)
+			if len(c.deleted[deletedEventKey{key, cand.Pubkey}]) == 0 {
+				delete(c.deleted, deletedEventKey{key, cand.Pubkey})
+			}
+		}
+	}
+
+	// evs
+	delete(c.evs, delEvKey.EventKey)
+
+	return true
+}
+
+func (c *EventCache) getOldestEvent() *Event {
+	var oldest *Event
+	for _, ev := range c.evs {
+		if oldest == nil || ev.CreatedAt < oldest.CreatedAt {
+			oldest = ev
+		}
+	}
+	return oldest
 }
 
 func (c *EventCache) Find(filters []*ReqFilter) []*Event {
@@ -107,7 +176,7 @@ func (c *EventCache) findResultCmp(a, b *Event) int {
 	return -cmp.Compare(a.ID, b.ID)
 }
 
-func (c *EventCache) getEventCache(event *Event) string {
+func (c *EventCache) getEventKey(event *Event) string {
 	switch event.EventType() {
 	case EventTypeRegular:
 		return event.ID
@@ -132,4 +201,24 @@ func (c *EventCache) getEventCache(event *Event) string {
 	}
 
 	return ""
+}
+
+func (c *EventCache) getEventKeyFromKind5Tags(event *Event) []string {
+	var ret []string
+
+	for _, tag := range event.Tags {
+		if len(tag) < 2 {
+			continue
+		}
+		if tag[0] == "a" || tag[0] == "e" {
+			ret = append(ret, tag[1])
+		}
+	}
+
+	return ret
+}
+
+type deletedEventKey struct {
+	EventKey string
+	Pubkey   string
 }
