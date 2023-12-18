@@ -1,10 +1,11 @@
 package mocrelay
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"sync"
+
+	"github.com/igrmk/treemap/v2"
 )
 
 type EventCache struct {
@@ -13,17 +14,21 @@ type EventCache struct {
 	mu sync.RWMutex
 
 	// map[eventKey]*Event
-	evs map[string]*Event
+	evs          map[string]*Event
+	evsCreatedAt *treemap.TreeMap[eventCacheEvsCreatedAtKey, *Event]
 
-	// map[deletedEventKey]map[kind5ID]bool
-	deleted map[deletedEventKey]map[string]bool
+	// map[eventCacheDeletedEventKey]map[kind5ID]bool
+	deleted map[eventCacheDeletedEventKey]map[string]bool
 }
 
 func NewEventCache(capacity int) *EventCache {
 	return &EventCache{
-		Cap:     capacity,
-		evs:     make(map[string]*Event, capacity),
-		deleted: make(map[deletedEventKey]map[string]bool),
+		Cap: capacity,
+		evs: make(map[string]*Event, capacity),
+		evsCreatedAt: treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
+			eventCacheEvsCreatedAtKeyTreeCmp,
+		),
+		deleted: make(map[eventCacheDeletedEventKey]map[string]bool),
 	}
 }
 
@@ -44,11 +49,9 @@ func (c *EventCache) Add(event *Event) (added bool) {
 		return false
 	}
 
-	if old, ok := c.evs[eventKey]; ok && old.CreatedAt >= event.CreatedAt {
-		return false
+	if added = c.add(eventKey, event); !added {
+		return
 	}
-
-	c.evs[eventKey] = event
 
 	if event.Kind == 5 {
 		c.addKind5(event)
@@ -58,7 +61,7 @@ func (c *EventCache) Add(event *Event) (added bool) {
 	if len(c.evs) > c.Cap {
 		if oldest := c.getOldestEvent(); oldest != nil {
 			key := c.getEventKey(oldest)
-			c.delete(deletedEventKey{key, oldest.Pubkey})
+			c.delete(eventCacheDeletedEventKey{key, oldest.Pubkey})
 		}
 	}
 
@@ -66,17 +69,31 @@ func (c *EventCache) Add(event *Event) (added bool) {
 }
 
 func (c *EventCache) isDeleted(eventKey, pubkey string) bool {
-	return c.deleted[deletedEventKey{eventKey, pubkey}] != nil
+	return c.deleted[eventCacheDeletedEventKey{eventKey, pubkey}] != nil
+}
+
+func (c *EventCache) add(eventKey string, event *Event) (added bool) {
+	old, ok := c.evs[eventKey]
+	if ok {
+		if old.CreatedAt >= event.CreatedAt {
+			return
+		}
+		c.evsCreatedAt.Del(eventCacheEvsCreatedAtKey{old.CreatedAt, old.ID})
+	}
+
+	c.evs[eventKey] = event
+	c.evsCreatedAt.Set(eventCacheEvsCreatedAtKey{event.CreatedAt, event.ID}, event)
+	return true
 }
 
 func (c *EventCache) addKind5(event *Event) {
 	keys := c.getEventKeyFromKind5Tags(event)
 	for _, key := range keys {
-		k := deletedEventKey{key, event.Pubkey}
+		k := eventCacheDeletedEventKey{key, event.Pubkey}
 		if c.deleted[k] == nil {
 			c.deleted[k] = make(map[string]bool)
 		}
-		c.deleted[deletedEventKey{key, event.Pubkey}][event.ID] = true
+		c.deleted[eventCacheDeletedEventKey{key, event.Pubkey}][event.ID] = true
 	}
 }
 
@@ -84,11 +101,11 @@ func (c *EventCache) deleteByKind5(event *Event) {
 	keys := c.getEventKeyFromKind5Tags(event)
 
 	for _, key := range keys {
-		c.delete(deletedEventKey{key, event.Pubkey})
+		c.delete(eventCacheDeletedEventKey{key, event.Pubkey})
 	}
 }
 
-func (c *EventCache) delete(delEvKey deletedEventKey) (deleted bool) {
+func (c *EventCache) delete(delEvKey eventCacheDeletedEventKey) (deleted bool) {
 	cand, ok := c.evs[delEvKey.EventKey]
 	if !ok {
 		return
@@ -101,9 +118,9 @@ func (c *EventCache) delete(delEvKey deletedEventKey) (deleted bool) {
 	if cand.Kind == 5 {
 		keys := c.getEventKeyFromKind5Tags(cand)
 		for _, key := range keys {
-			delete(c.deleted[deletedEventKey{key, cand.Pubkey}], cand.ID)
-			if len(c.deleted[deletedEventKey{key, cand.Pubkey}]) == 0 {
-				delete(c.deleted, deletedEventKey{key, cand.Pubkey})
+			delete(c.deleted[eventCacheDeletedEventKey{key, cand.Pubkey}], cand.ID)
+			if len(c.deleted[eventCacheDeletedEventKey{key, cand.Pubkey}]) == 0 {
+				delete(c.deleted, eventCacheDeletedEventKey{key, cand.Pubkey})
 			}
 		}
 	}
@@ -111,37 +128,42 @@ func (c *EventCache) delete(delEvKey deletedEventKey) (deleted bool) {
 	// evs
 	delete(c.evs, delEvKey.EventKey)
 
+	// evsCreatedAt
+	c.evsCreatedAt.Del(eventCacheEvsCreatedAtKey{cand.CreatedAt, delEvKey.EventKey})
+
 	return true
 }
 
 func (c *EventCache) getOldestEvent() *Event {
-	var oldest *Event
-	for _, ev := range c.evs {
-		if oldest == nil || ev.CreatedAt < oldest.CreatedAt {
-			oldest = ev
-		}
-	}
-	return oldest
+	return c.evsCreatedAt.Reverse().Value()
 }
 
 func (c *EventCache) Find(filters []*ReqFilter) []*Event {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	var results [][]*Event
 
-	events := make(map[string]*Event)
-	for _, f := range filters {
-		evs := c.findByFilter(f)
-		for _, ev := range evs {
-			events[ev.ID] = ev
+	func() {
+		c.mu.RLock()
+		defer c.mu.RUnlock()
+
+		for _, f := range filters {
+			results = append(results, c.findByFilter(f))
+		}
+	}()
+
+	t := treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
+		eventCacheEvsCreatedAtKeyTreeCmp,
+	)
+
+	for _, result := range results {
+		for _, ev := range result {
+			t.Set(eventCacheEvsCreatedAtKey{ev.CreatedAt, ev.ID}, ev)
 		}
 	}
 
 	var ret []*Event
-	for _, ev := range events {
-		ret = append(ret, ev)
+	for it := t.Iterator(); it.Valid(); it.Next() {
+		ret = append(ret, it.Value())
 	}
-
-	slices.SortFunc(ret, c.findResultCmp)
 
 	return ret
 }
@@ -150,27 +172,17 @@ func (c *EventCache) findByFilter(f *ReqFilter) []*Event {
 	var ret []*Event
 
 	m := NewReqFilterMatcher(f)
-	for _, ev := range c.evs {
-		if m.Match(ev) {
-			ret = append(ret, ev)
+
+	for it := c.evsCreatedAt.Iterator(); it.Valid(); it.Next() {
+		if m.Done() {
+			break
+		}
+		if m.CountMatch(it.Value()) {
+			ret = append(ret, it.Value())
 		}
 	}
 
-	slices.SortFunc(ret, c.findResultCmp)
-
-	if f.Limit != nil {
-		limit := min(len(ret), int(*f.Limit))
-		ret = slices.Clip(ret[:limit])
-	}
-
 	return ret
-}
-
-func (c *EventCache) findResultCmp(a, b *Event) int {
-	if res := -cmp.Compare(a.CreatedAt, b.CreatedAt); res != 0 {
-		return res
-	}
-	return -cmp.Compare(a.ID, b.ID)
 }
 
 func (c *EventCache) getEventKey(event *Event) string {
@@ -215,7 +227,16 @@ func (c *EventCache) getEventKeyFromKind5Tags(event *Event) []string {
 	return ret
 }
 
-type deletedEventKey struct {
+type eventCacheDeletedEventKey struct {
 	EventKey string
 	Pubkey   string
+}
+
+type eventCacheEvsCreatedAtKey struct {
+	CreatedAt int64
+	ID        string
+}
+
+func eventCacheEvsCreatedAtKeyTreeCmp(a, b eventCacheEvsCreatedAtKey) bool {
+	return b.CreatedAt < a.CreatedAt || (b.CreatedAt == a.CreatedAt && b.ID < a.ID)
 }
