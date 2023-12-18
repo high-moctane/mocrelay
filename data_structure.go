@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"container/heap"
 	"math"
 	"math/bits"
 	"math/rand"
@@ -438,6 +439,62 @@ func (nd *skipListNode[K, V]) Next() *skipListNode[K, V] {
 	nd.nexts[0].mu.RLock()
 	defer nd.nexts[0].mu.RUnlock()
 	return nd.nexts[0].node
+}
+
+type typedHeap[T any] struct {
+	S        []T
+	LessFunc func(T, T) bool
+}
+
+func newTypedHeap[T any](less func(T, T) bool) *typedHeap[T] {
+	return &typedHeap[T]{LessFunc: less}
+}
+
+func (h *typedHeap[T]) Len() int {
+	return len(h.S)
+}
+
+func (h *typedHeap[T]) Less(i, j int) bool {
+	return h.LessFunc(h.S[i], h.S[j])
+}
+
+func (h *typedHeap[T]) Swap(i, j int) {
+	h.S[i], h.S[j] = h.S[j], h.S[i]
+}
+
+func (h *typedHeap[T]) Push(x interface{}) {
+	h.S = append(h.S, x.(T))
+}
+
+func (h *typedHeap[T]) Pop() interface{} {
+	old := h.S
+	n := len(old)
+	x := old[n-1]
+	h.S = old[0 : n-1]
+	return x
+}
+
+func (h *typedHeap[T]) HeapInit() {
+	heap.Init(h)
+}
+
+func (h *typedHeap[T]) HeapPush(x T) {
+	heap.Push(h, x)
+}
+
+func (h *typedHeap[T]) HeapPop() T {
+	return heap.Pop(h).(T)
+}
+
+func (h *typedHeap[T]) HeapPushPop(x T) T {
+	old := h.S[0]
+	h.S[0] = x
+	heap.Fix(h, 0)
+	return old
+}
+
+func (h *typedHeap[T]) HeapPeek() T {
+	return h.S[0]
 }
 
 type randCache[K comparable, V any] struct {
