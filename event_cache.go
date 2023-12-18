@@ -139,64 +139,11 @@ func (c *EventCache) getOldestEvent() *Event {
 }
 
 func (c *EventCache) Find(filters []*ReqFilter) []*Event {
-	var results [][]*Event
-
-	func() {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
-
-		for _, f := range filters {
-			results = append(results, c.findByFilter(f))
-		}
-	}()
-
-	// merge
-	h := newTypedHeap[*Event](eventCacheFindCmp)
-	seen := make(map[string]int)
-
-	for idx := range results {
-		for len(results[idx]) > 0 {
-			ev := results[idx][0]
-			results[idx] = results[idx][1:]
-			if _, ok := seen[ev.ID]; !ok {
-				h.HeapPush(ev)
-				seen[ev.ID] = idx
-				break
-			}
-		}
-	}
-
 	var ret []*Event
-	for h.Len() > 0 {
-		ev := h.HeapPeek()
+	m := NewReqFiltersEventMatchers(filters)
 
-		ret = append(ret, ev)
-
-		idx := seen[ev.ID]
-		var next *Event
-		for len(results[idx]) > 0 {
-			e := results[idx][0]
-			results[idx] = results[idx][1:]
-			if _, ok := seen[e.ID]; !ok {
-				next = e
-				seen[e.ID] = idx
-				break
-			}
-		}
-		if next == nil {
-			h.HeapPop()
-		} else {
-			h.HeapPushPop(next)
-		}
-	}
-
-	return ret
-}
-
-func (c *EventCache) findByFilter(f *ReqFilter) []*Event {
-	var ret []*Event
-
-	m := NewReqFilterMatcher(f)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	for it := c.evsCreatedAt.Iterator(); it.Valid(); it.Next() {
 		if m.Done() {
@@ -260,10 +207,6 @@ type eventCacheDeletedEventKey struct {
 type eventCacheEvsCreatedAtKey struct {
 	CreatedAt int64
 	ID        string
-}
-
-func eventCacheFindCmp(a, b *Event) bool {
-	return b.CreatedAt < a.CreatedAt || (b.CreatedAt == a.CreatedAt && b.ID < a.ID)
 }
 
 func eventCacheEvsCreatedAtKeyTreeCmp(a, b eventCacheEvsCreatedAtKey) bool {
