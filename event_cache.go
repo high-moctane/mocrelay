@@ -129,7 +129,7 @@ func (c *EventCache) delete(delEvKey eventCacheDeletedEventKey) (deleted bool) {
 	delete(c.evs, delEvKey.EventKey)
 
 	// evsCreatedAt
-	c.evsCreatedAt.Del(eventCacheEvsCreatedAtKey{cand.CreatedAt, delEvKey.EventKey})
+	c.evsCreatedAt.Del(eventCacheEvsCreatedAtKey{cand.CreatedAt, cand.ID})
 
 	return true
 }
