@@ -32,9 +32,10 @@ func main() {
 	h = mocprom.NewPrometheusMiddleware(reg)(h)
 
 	relay := mocrelay.NewRelay(h, &mocrelay.RelayOption{
-		Logger:     slog.Default(),
-		RecvLogger: slog.Default(),
-		SendLogger: slog.Default(),
+		Logger:      slog.Default(),
+		RecvLogger:  slog.Default(),
+		SendLogger:  slog.Default(),
+		SendTimeout: 10 * time.Second,
 	})
 
 	nip11 := &mocrelay.NIP11{

@@ -40,6 +40,8 @@ type RelayOption struct {
 	RecvLogger *slog.Logger
 	SendLogger *slog.Logger
 
+	SendTimeout time.Duration
+
 	RecvRateLimitRate  time.Duration
 	RecvRateLimitBurst int
 	SendRateLimitRate  time.Duration
@@ -260,7 +262,7 @@ func (relay *Relay) serveWriteLoop(
 			return fmt.Errorf("serverWrite terminated by ctx: %w", ctx.Err())
 
 		case <-pingTickCh:
-			if err := conn.Ping(ctx); err != nil {
+			if err := relay.sendPingWithTimeout(ctx, conn); err != nil {
 				return fmt.Errorf("failed to send ping: %w", err)
 			}
 
@@ -272,7 +274,7 @@ func (relay *Relay) serveWriteLoop(
 				return fmt.Errorf("failed to marshal server msg: %w", err)
 			}
 
-			if err := conn.Write(ctx, websocket.MessageText, jsonMsg); err != nil {
+			if err := relay.sendMsgWithTimeout(ctx, conn, jsonMsg); err != nil {
 				return fmt.Errorf("failed to write websocket: %w", err)
 			}
 
@@ -285,6 +287,28 @@ func (relay *Relay) serveWriteLoop(
 			)
 		}
 	}
+}
+
+func (relay *Relay) sendPingWithTimeout(ctx context.Context, conn *websocket.Conn) error {
+	if relay.opt.PingDuration > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, relay.opt.SendTimeout)
+		defer cancel()
+	}
+	return conn.Ping(ctx)
+}
+
+func (relay *Relay) sendMsgWithTimeout(
+	ctx context.Context,
+	conn *websocket.Conn,
+	msg []byte,
+) error {
+	if relay.opt.PingDuration > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, relay.opt.SendTimeout)
+		defer cancel()
+	}
+	return conn.Write(ctx, websocket.MessageText, msg)
 }
 
 func (relay *Relay) prepareLoggers() {
