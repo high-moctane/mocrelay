@@ -2015,3 +2015,52 @@ func TestEventCreatedAtMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestFilterUnmatchedRecvEventMiddleware(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter []*ReqFilter
+		input  []ClientMsg
+		want   []ServerMsg
+	}{
+		{
+			name:   "no filterling",
+			filter: []*ReqFilter{{}},
+			input: []ClientMsg{
+				&ClientEventMsg{&Event{ID: "id1"}},
+				&ClientEventMsg{&Event{ID: "id2"}},
+				&ClientEventMsg{&Event{ID: "id3"}},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+				NewServerOKMsg("id2", true, "", ""),
+				NewServerOKMsg("id3", true, "", ""),
+			},
+		},
+		{
+			name:   "filterling",
+			filter: []*ReqFilter{{IDs: []string{"id1", "id3"}}},
+			input: []ClientMsg{
+				&ClientEventMsg{&Event{ID: "id1"}},
+				&ClientEventMsg{&Event{ID: "id2"}},
+				&ClientEventMsg{&Event{ID: "id3"}},
+			},
+			want: []ServerMsg{
+				NewServerOKMsg("id1", true, "", ""),
+				NewServerOKMsg("id2", false, "blocked: ", "the event is not allowed"),
+				NewServerOKMsg("id3", true, "", ""),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewReqFiltersEventMatchers(tt.filter)
+
+			var h Handler
+			h = NewRouterHandler(100)
+			h = NewRecvEventAllowFilterMiddleware(m)(h)
+			helperTestHandler(t, h, tt.input, tt.want)
+		})
+	}
+}

@@ -1662,3 +1662,57 @@ func (m *simpleSendEventUniqueFilterMiddleware) HandleServerMsg(
 
 	return newClosedBufCh[ServerMsg](msg), nil
 }
+
+type RecvEventAllowFilterMiddleware Middleware
+
+func NewRecvEventAllowFilterMiddleware(matcher EventMatcher) RecvEventAllowFilterMiddleware {
+	m := newSimpleRecvEventAllowFilterMiddleware(matcher)
+	return RecvEventAllowFilterMiddleware(NewSimpleMiddleware(m))
+}
+
+var _ SimpleMiddlewareInterface = (*simpleRecvEventAllowFilterMiddleware)(nil)
+
+type simpleRecvEventAllowFilterMiddleware struct {
+	matcher EventMatcher
+}
+
+func newSimpleRecvEventAllowFilterMiddleware(
+	matcher EventMatcher,
+) *simpleRecvEventAllowFilterMiddleware {
+	return &simpleRecvEventAllowFilterMiddleware{matcher: matcher}
+}
+
+func (m *simpleRecvEventAllowFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleRecvEventAllowFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleRecvEventAllowFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		if !m.matcher.Match(msg.Event) {
+			okMsg := NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOkMsgPrefixBlocked,
+				"the event is not allowed",
+			)
+			return nil, newClosedBufCh[ServerMsg](okMsg), nil
+		}
+	}
+	return newClosedBufCh[ClientMsg](msg), nil, nil
+}
+
+func (m *simpleRecvEventAllowFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh[ServerMsg](msg), nil
+}
