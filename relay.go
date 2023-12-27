@@ -22,53 +22,21 @@ var (
 type Relay struct {
 	Handler Handler
 
-	opt *RelayOption
+	opt RelayOption
 
 	wg sync.WaitGroup
-
-	logger     *slog.Logger
-	recvLogger *slog.Logger
-	sendLogger *slog.Logger
-
-	recvRateLimitRate  time.Duration
-	recvRateLimitBurst int
-	sendRateLimitRate  time.Duration
-}
-
-type RelayOption struct {
-	Logger     *slog.Logger
-	RecvLogger *slog.Logger
-	SendLogger *slog.Logger
-
-	SendTimeout time.Duration
-
-	RecvRateLimitRate  time.Duration
-	RecvRateLimitBurst int
-	SendRateLimitRate  time.Duration
-
-	MaxMessageLength int64
-
-	PingDuration time.Duration
-}
-
-func (opt *RelayOption) maxMessageLength() int64 {
-	const defaultMaxMessageLength = 16384
-
-	if opt == nil || opt.MaxMessageLength == 0 {
-		return defaultMaxMessageLength
-	}
-
-	return opt.MaxMessageLength
 }
 
 func NewRelay(handler Handler, option *RelayOption) *Relay {
-	relay := &Relay{
-		Handler: handler,
-		opt:     option,
+	opt := option
+	if opt == nil {
+		opt = NewDefaultRelayOption()
 	}
 
-	relay.prepareLoggers()
-	relay.prepareRateLimitOpts()
+	relay := &Relay{
+		Handler: handler,
+		opt:     *opt,
+	}
 
 	return relay
 }
@@ -87,7 +55,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx = ctxWithHTTPHeader(ctx, r)
 	r = r.WithContext(ctx)
 
-	relay.logInfo(ctx, relay.logger, "mocrelay session start")
+	relay.logInfo(ctx, relay.opt.Logger, "mocrelay session start")
 
 	errs := make(chan error, 3)
 
@@ -100,11 +68,11 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		relay.logWarn(ctx, relay.logger, "failed to upgrade http", "err", err)
+		relay.logWarn(ctx, relay.opt.Logger, "failed to upgrade http", "err", err)
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "")
-	conn.SetReadLimit(relay.opt.maxMessageLength())
+	conn.SetReadLimit(relay.opt.MaxMessageLength)
 
 	recv := make(chan ClientMsg)
 	send := make(chan ServerMsg)
@@ -149,9 +117,9 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err = errors.Join(ErrRelayStop, err)
 
 	if errors.Is(err, io.EOF) {
-		relay.logInfo(ctx, relay.logger, "mocrelay session end")
+		relay.logInfo(ctx, relay.opt.Logger, "mocrelay session end")
 	} else {
-		relay.logWarn(ctx, relay.logger, "mocrelay session end with error", "err", err)
+		relay.logWarn(ctx, relay.opt.Logger, "mocrelay session end with error", "err", err)
 	}
 }
 
@@ -161,7 +129,7 @@ func (relay *Relay) serveReadLoop(
 	recv chan<- ClientMsg,
 	send chan ServerMsg,
 ) error {
-	l := newRateLimiter(relay.recvRateLimitRate, relay.recvRateLimitBurst)
+	l := newRateLimiter(relay.opt.RecvRateLimitRate, relay.opt.RecvRateLimitBurst)
 	defer l.Stop()
 
 	for {
@@ -183,13 +151,13 @@ func (relay *Relay) serveRead(
 		return fmt.Errorf("failed to read websocket: %w", err)
 	}
 	if typ != websocket.MessageText {
-		relay.logWarn(ctx, relay.recvLogger, "received binary websocket message")
+		relay.logWarn(ctx, relay.opt.RecvLogger, "received binary websocket message")
 		notice := NewServerNoticeMsgf("binary websocket message type is not allowed")
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
 	}
 	if !utf8.Valid(payload) || !json.Valid(payload) {
-		relay.logWarn(ctx, relay.recvLogger, "received invalid json message")
+		relay.logWarn(ctx, relay.opt.RecvLogger, "received invalid json message")
 		notice := NewServerNoticeMsgf("invalid json msg")
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
@@ -197,7 +165,7 @@ func (relay *Relay) serveRead(
 
 	msg, err := ParseClientMsg(payload)
 	if err != nil {
-		relay.logWarn(ctx, relay.recvLogger, "failed to parse client msg", "error", err)
+		relay.logWarn(ctx, relay.opt.RecvLogger, "failed to parse client msg", "error", err)
 		notice := NewServerNoticeMsgf("invalid client msg")
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
@@ -205,14 +173,14 @@ func (relay *Relay) serveRead(
 
 	relay.logInfo(
 		ctx,
-		relay.recvLogger,
+		relay.opt.RecvLogger,
 		"recv client msg",
 		"clientMsg",
 		json.RawMessage(payload),
 	)
 
 	if ok := ValidClientMsg(msg); !ok {
-		relay.logWarn(ctx, relay.recvLogger, "invalid client msg", "error", err)
+		relay.logWarn(ctx, relay.opt.RecvLogger, "invalid client msg", "error", err)
 		notice := NewServerNoticeMsgf("invalid client msg: %s", payload)
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
@@ -220,13 +188,13 @@ func (relay *Relay) serveRead(
 	if msg, ok := msg.(*ClientEventMsg); ok {
 		valid, err := msg.Event.Verify()
 		if err != nil {
-			relay.logWarn(ctx, relay.recvLogger, "failed to verify event msg", "error", err)
+			relay.logWarn(ctx, relay.opt.RecvLogger, "failed to verify event msg", "error", err)
 			notice := NewServerNoticeMsg("internal error")
 			sendServerMsgCtx(ctx, send, notice)
 			return nil
 		}
 		if !valid {
-			relay.logWarn(ctx, relay.recvLogger, "received invalid sig event", "clientMsg", msg)
+			relay.logWarn(ctx, relay.opt.RecvLogger, "received invalid sig event", "clientMsg", msg)
 			notice := NewServerNoticeMsgf("invalid sig event: %s", msg.Event.ID)
 			sendServerMsgCtx(ctx, send, notice)
 			return nil
@@ -245,9 +213,6 @@ func (relay *Relay) serveWriteLoop(
 	conn *websocket.Conn,
 	send <-chan ServerMsg,
 ) error {
-	l := newRateLimiter(relay.sendRateLimitRate, 0)
-	defer l.cancel()
-
 	var pingTickCh <-chan time.Time
 	if relay.opt.PingDuration != 0 {
 		pingTicker := time.NewTicker(relay.opt.PingDuration)
@@ -267,8 +232,6 @@ func (relay *Relay) serveWriteLoop(
 			}
 
 		case msg := <-send:
-			<-l.C
-
 			jsonMsg, err := json.Marshal(msg)
 			if err != nil {
 				return fmt.Errorf("failed to marshal server msg: %w", err)
@@ -280,7 +243,7 @@ func (relay *Relay) serveWriteLoop(
 
 			relay.logInfo(
 				ctx,
-				relay.sendLogger,
+				relay.opt.SendLogger,
 				"sent server msg",
 				"serverMsg",
 				json.RawMessage(jsonMsg),
@@ -311,22 +274,6 @@ func (relay *Relay) sendMsgWithTimeout(
 	return conn.Write(ctx, websocket.MessageText, msg)
 }
 
-func (relay *Relay) prepareLoggers() {
-	if relay.opt == nil {
-		return
-	}
-
-	if relay.opt.Logger != nil {
-		relay.logger = slog.New(WithSlogMocrelayHandler(relay.opt.Logger.Handler()))
-	}
-	if relay.opt.RecvLogger != nil {
-		relay.recvLogger = slog.New(WithSlogMocrelayHandler(relay.opt.RecvLogger.Handler()))
-	}
-	if relay.opt.SendLogger != nil {
-		relay.sendLogger = slog.New(WithSlogMocrelayHandler(relay.opt.SendLogger.Handler()))
-	}
-}
-
 func (relay *Relay) logInfo(ctx context.Context, logger *slog.Logger, msg string, args ...any) {
 	if logger == nil {
 		return
@@ -341,12 +288,34 @@ func (relay *Relay) logWarn(ctx context.Context, logger *slog.Logger, msg string
 	logger.WarnContext(ctx, msg, args...)
 }
 
-func (relay *Relay) prepareRateLimitOpts() {
-	if relay.opt == nil {
-		return
-	}
+type RelayOption struct {
+	Logger     *slog.Logger
+	RecvLogger *slog.Logger
+	SendLogger *slog.Logger
 
-	relay.recvRateLimitRate = relay.opt.RecvRateLimitRate
-	relay.recvRateLimitBurst = relay.opt.RecvRateLimitBurst
-	relay.sendRateLimitRate = relay.opt.SendRateLimitRate
+	SendTimeout time.Duration
+
+	RecvRateLimitRate  time.Duration
+	RecvRateLimitBurst int
+
+	MaxMessageLength int64
+
+	PingDuration time.Duration
+}
+
+func NewDefaultRelayOption() *RelayOption {
+	return &RelayOption{
+		Logger:     slog.New(WithSlogMocrelayHandler(slog.Default().Handler())),
+		RecvLogger: slog.New(WithSlogMocrelayHandler(slog.Default().Handler())),
+		SendLogger: slog.New(WithSlogMocrelayHandler(slog.Default().Handler())),
+
+		SendTimeout: 10 * time.Second,
+
+		RecvRateLimitRate:  10 * time.Millisecond,
+		RecvRateLimitBurst: 1,
+
+		MaxMessageLength: 100_000,
+
+		PingDuration: 1 * time.Minute,
+	}
 }
