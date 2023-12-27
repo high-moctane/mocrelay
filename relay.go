@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
 )
 
@@ -129,8 +130,7 @@ func (relay *Relay) serveReadLoop(
 	recv chan<- ClientMsg,
 	send chan ServerMsg,
 ) error {
-	l := newRateLimiter(relay.opt.RecvRateLimitRate, relay.opt.RecvRateLimitBurst)
-	defer l.Stop()
+	l := rate.NewLimiter(rate.Limit(relay.opt.RecvRateLimitRate), relay.opt.RecvRateLimitBurst)
 
 	for {
 		if err := relay.serveRead(ctx, conn, recv, send, l); err != nil {
@@ -144,8 +144,12 @@ func (relay *Relay) serveRead(
 	conn *websocket.Conn,
 	recv chan<- ClientMsg,
 	send chan ServerMsg,
-	limiter *rateLimiter,
+	limiter *rate.Limiter,
 ) error {
+	if err := limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("rate limit: %w", err)
+	}
+
 	typ, payload, err := conn.Read(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to read websocket: %w", err)
@@ -200,8 +204,6 @@ func (relay *Relay) serveRead(
 			return nil
 		}
 	}
-
-	<-limiter.C
 
 	sendCtx(ctx, recv, msg)
 
@@ -295,7 +297,7 @@ type RelayOption struct {
 
 	SendTimeout time.Duration
 
-	RecvRateLimitRate  time.Duration
+	RecvRateLimitRate  float64
 	RecvRateLimitBurst int
 
 	MaxMessageLength int64
@@ -311,7 +313,7 @@ func NewDefaultRelayOption() *RelayOption {
 
 		SendTimeout: 10 * time.Second,
 
-		RecvRateLimitRate:  10 * time.Millisecond,
+		RecvRateLimitRate:  2,
 		RecvRateLimitBurst: 1,
 
 		MaxMessageLength: 100_000,
