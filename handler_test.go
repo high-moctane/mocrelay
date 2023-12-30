@@ -107,8 +107,17 @@ func helperTestSimpleHandlerInterface(
 
 		var smsgs []ServerMsg
 		if smsgCh != nil {
-			for smsg := range recvCtx(ctx, smsgCh) {
-				smsgs = append(smsgs, smsg)
+		L:
+			for {
+				select {
+				case <-ctx.Done():
+					break L
+				case smsg, ok := <-smsgCh:
+					if !ok {
+						break L
+					}
+					smsgs = append(smsgs, smsg)
+				}
 			}
 		}
 		assert.EqualValuesf(t, entry.want, smsgs, "at %d", i)
@@ -1126,16 +1135,34 @@ func helperTestSimpleMiddlewareInterface(
 
 			var smsgs []ServerMsg
 			if sMsgCh != nil {
-				for smsg := range recvCtx(ctx, sMsgCh) {
-					smsgs = append(smsgs, smsg)
+			L1:
+				for {
+					select {
+					case <-ctx.Done():
+						break L1
+					case smsg, ok := <-sMsgCh:
+						if !ok {
+							break L1
+						}
+						smsgs = append(smsgs, smsg)
+					}
 				}
 			}
 			assert.EqualValuesf(t, entry.wantSmsgs, smsgs, "at %d", i)
 
 			var cmsgs []ClientMsg
 			if cmsgCh != nil {
-				for cmsg := range recvCtx(ctx, cmsgCh) {
-					cmsgs = append(cmsgs, cmsg)
+			L2:
+				for {
+					select {
+					case <-ctx.Done():
+						break L2
+					case cmsg, ok := <-cmsgCh:
+						if !ok {
+							break L2
+						}
+						cmsgs = append(cmsgs, cmsg)
+					}
 				}
 			}
 			assert.EqualValuesf(t, entry.wantCmsgs, cmsgs, "at %d", i)
@@ -1145,8 +1172,17 @@ func helperTestSimpleMiddlewareInterface(
 			assert.NoError(t, err)
 
 			var smsgs []ServerMsg
-			for smsg := range recvCtx(ctx, sMsgCh) {
-				smsgs = append(smsgs, smsg)
+		L3:
+			for {
+				select {
+				case <-ctx.Done():
+					break L3
+				case smsg, ok := <-sMsgCh:
+					if !ok {
+						break L3
+					}
+					smsgs = append(smsgs, smsg)
+				}
 			}
 
 			assert.EqualValuesf(t, entry.wantSmsgs, smsgs, "at %d", i)

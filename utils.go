@@ -67,31 +67,6 @@ func sendServerMsgCtx(ctx context.Context, ch chan<- ServerMsg, msg ServerMsg) (
 	return sendCtx(ctx, ch, msg)
 }
 
-func recvCtx[T any](ctx context.Context, ch <-chan T) <-chan T {
-	ret := make(chan T)
-
-	go func() {
-		defer close(ret)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case v, ok := <-ch:
-				if !ok {
-					return
-				}
-				if !sendCtx(ctx, ret, v) {
-					return
-				}
-			}
-		}
-	}()
-
-	return ret
-}
-
 type bufCh[T any] chan T
 
 func newBufCh[T any](items ...T) bufCh[T] {
