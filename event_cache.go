@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"sync"
@@ -16,6 +17,7 @@ type EventCache struct {
 	// map[eventKey]*Event
 	evs          map[string]*Event
 	evsCreatedAt *treemap.TreeMap[eventCacheEvsCreatedAtKey, *Event]
+	evsIndex     eventCacheEvsIndex
 
 	// map[eventCacheDeletedEventKey]map[kind5ID]bool
 	deleted map[eventCacheDeletedEventKey]map[string]bool
@@ -28,7 +30,8 @@ func NewEventCache(capacity int) *EventCache {
 		evsCreatedAt: treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
 			eventCacheEvsCreatedAtKeyTreeCmp,
 		),
-		deleted: make(map[eventCacheDeletedEventKey]map[string]bool),
+		evsIndex: make(eventCacheEvsIndex),
+		deleted:  make(map[eventCacheDeletedEventKey]map[string]bool),
 	}
 }
 
@@ -36,6 +39,10 @@ func (c *EventCache) Len() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	return c.len()
+}
+
+func (c *EventCache) len() int {
 	return len(c.evs)
 }
 
@@ -83,6 +90,7 @@ func (c *EventCache) add(eventKey string, event *Event) (added bool) {
 
 	c.evs[eventKey] = event
 	c.evsCreatedAt.Set(eventCacheEvsCreatedAtKey{event.CreatedAt, event.ID}, event)
+	c.evsIndex.Add(event)
 	return true
 }
 
@@ -131,6 +139,9 @@ func (c *EventCache) delete(delEvKey eventCacheDeletedEventKey) (deleted bool) {
 	// evsCreatedAt
 	c.evsCreatedAt.Del(eventCacheEvsCreatedAtKey{cand.CreatedAt, cand.ID})
 
+	// evsIndex
+	c.evsIndex.Delete(cand)
+
 	return true
 }
 
@@ -139,19 +150,40 @@ func (c *EventCache) getOldestEvent() *Event {
 }
 
 func (c *EventCache) Find(filters []*ReqFilter) []*Event {
-	var ret []*Event
-	m := NewReqFiltersEventMatchers(filters)
+	tree := treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
+		eventCacheEvsCreatedAtKeyTreeCmp,
+	)
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	for it := c.evsCreatedAt.Iterator(); it.Valid(); it.Next() {
-		if m.Done() {
-			break
+	if c.len() == 0 {
+		return nil
+	}
+
+	for _, filter := range filters {
+		t, ok := c.evsIndex.Find(filter)
+		if ok {
+			for it := t.Iterator(); it.Valid(); it.Next() {
+				ev := it.Value()
+				tree.Set(eventCacheEvsCreatedAtKey{ev.CreatedAt, ev.ID}, ev)
+			}
+		} else {
+			m := NewReqFilterMatcher(filter)
+			for it := c.evsCreatedAt.Iterator(); it.Valid(); it.Next() {
+				if m.Done() {
+					break
+				}
+				if m.CountMatch(it.Value()) {
+					tree.Set(it.Key(), it.Value())
+				}
+			}
 		}
-		if m.CountMatch(it.Value()) {
-			ret = append(ret, it.Value())
-		}
+	}
+
+	var ret []*Event
+	for it := tree.Iterator(); it.Valid(); it.Next() {
+		ret = append(ret, it.Value())
 	}
 
 	return ret
@@ -211,4 +243,178 @@ type eventCacheEvsCreatedAtKey struct {
 
 func eventCacheEvsCreatedAtKeyTreeCmp(a, b eventCacheEvsCreatedAtKey) bool {
 	return b.CreatedAt < a.CreatedAt || (b.CreatedAt == a.CreatedAt && b.ID < a.ID)
+}
+
+type eventCacheEvsIndexKey struct {
+	What  int8
+	Value any
+}
+
+const (
+	eventCacheEvsIndexKeyWhatID = iota
+	eventCacheEvsIndexKeyWhatAuthor
+	eventCacheEvsIndexKeyWhatKind
+	eventCacheEvsIndexKeyWhatTag
+)
+
+type eventCacheEvsIndex map[eventCacheEvsIndexKey]map[string]*Event
+
+func (eventCacheEvsIndex) keysFromEvent(event *Event) []eventCacheEvsIndexKey {
+	var ret []eventCacheEvsIndexKey
+
+	ret = append(ret, eventCacheEvsIndexKey{eventCacheEvsIndexKeyWhatID, event.ID})
+	ret = append(ret, eventCacheEvsIndexKey{eventCacheEvsIndexKeyWhatAuthor, event.Pubkey})
+	ret = append(ret, eventCacheEvsIndexKey{eventCacheEvsIndexKeyWhatKind, event.Kind})
+
+	for _, tag := range event.Tags {
+		if len(tag) == 0 {
+			continue
+		}
+		if len(tag[0]) != 1 {
+			continue
+		}
+		var v string
+		if len(tag) >= 2 {
+			v = tag[1]
+		}
+		ret = append(ret, eventCacheEvsIndexKey{
+			eventCacheEvsIndexKeyWhatTag,
+			[2]string{tag[0], v},
+		})
+	}
+
+	return ret
+}
+
+func (c eventCacheEvsIndex) keysFromReqFilter(filter *ReqFilter) [][]eventCacheEvsIndexKey {
+	var ret [][]eventCacheEvsIndexKey
+
+	if filter.IDs != nil {
+		keys := make([]eventCacheEvsIndexKey, 0, len(filter.IDs))
+		for _, id := range filter.IDs {
+			keys = append(keys, eventCacheEvsIndexKey{eventCacheEvsIndexKeyWhatID, id})
+		}
+		ret = append(ret, keys)
+	}
+
+	if filter.Authors != nil {
+		keys := make([]eventCacheEvsIndexKey, 0, len(filter.Authors))
+		for _, author := range filter.Authors {
+			keys = append(keys, eventCacheEvsIndexKey{eventCacheEvsIndexKeyWhatAuthor, author})
+		}
+		ret = append(ret, keys)
+	}
+
+	if filter.Kinds != nil {
+		keys := make([]eventCacheEvsIndexKey, 0, len(filter.Kinds))
+		for _, kind := range filter.Kinds {
+			keys = append(keys, eventCacheEvsIndexKey{eventCacheEvsIndexKeyWhatKind, kind})
+		}
+		ret = append(ret, keys)
+	}
+
+	if filter.Tags != nil {
+		for tag, vs := range filter.Tags {
+			keys := make([]eventCacheEvsIndexKey, 0, len(vs))
+			for _, v := range vs {
+				keys = append(keys, eventCacheEvsIndexKey{
+					eventCacheEvsIndexKeyWhatTag,
+					[2]string{tag, v},
+				})
+			}
+			ret = append(ret, keys)
+		}
+	}
+
+	return ret
+}
+
+func (c eventCacheEvsIndex) isFullScanReqFilter(filter *ReqFilter) bool {
+	return filter.IDs == nil && filter.Authors == nil && filter.Kinds == nil && filter.Tags == nil
+}
+
+func (c eventCacheEvsIndex) Add(event *Event) {
+	for _, key := range c.keysFromEvent(event) {
+		var m map[string]*Event
+		if m = c[key]; m == nil {
+			m = make(map[string]*Event)
+			c[key] = m
+		}
+		m[event.ID] = event
+	}
+}
+
+func (c eventCacheEvsIndex) Delete(event *Event) {
+	for _, key := range c.keysFromEvent(event) {
+		m, ok := c[key]
+		if !ok {
+			continue
+		}
+		delete(m, event.ID)
+		if len(m) == 0 {
+			delete(c, key)
+		}
+	}
+}
+
+func (c eventCacheEvsIndex) Find(
+	filter *ReqFilter,
+) (ret *treemap.TreeMap[eventCacheEvsCreatedAtKey, *Event], ok bool) {
+	ok = !c.isFullScanReqFilter(filter)
+	if !ok {
+		return
+	}
+
+	ret = treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
+		eventCacheEvsCreatedAtKeyTreeCmp,
+	)
+
+	keysSlice := c.keysFromReqFilter(filter)
+
+	idMaps := make([]map[string]*Event, 0, len(keysSlice))
+
+	for _, keys := range keysSlice {
+		m := make(map[string]*Event)
+		for _, key := range keys {
+			for id, ev := range c[key] {
+				m[id] = ev
+			}
+		}
+		idMaps = append(idMaps, m)
+	}
+
+	slices.SortFunc(idMaps, func(a, b map[string]*Event) int {
+		return cmp.Compare(len(a), len(b))
+	})
+
+	for len(idMaps) > 1 {
+		m := idMaps[0]
+		mlast := idMaps[len(idMaps)-1]
+
+		for id := range m {
+			if _, ok := mlast[id]; !ok {
+				delete(m, id)
+			}
+		}
+
+		idMaps = idMaps[:len(idMaps)-1]
+	}
+
+	limit := len(idMaps[0])
+	if filter.Limit != nil {
+		limit = min(limit, int(*filter.Limit))
+	}
+
+	cnt := 0
+	for _, ev := range idMaps[0] {
+		ret.Set(eventCacheEvsCreatedAtKey{ev.CreatedAt, ev.ID}, ev)
+		cnt++
+		if cnt > limit {
+			k := ret.Reverse().Key()
+			ret.Del(k)
+			cnt--
+		}
+	}
+
+	return
 }
