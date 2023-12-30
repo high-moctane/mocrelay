@@ -150,10 +150,22 @@ func (c *EventCache) getOldestEvent() *Event {
 }
 
 func (c *EventCache) Find(filters []*ReqFilter) []*Event {
-	tree := treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
-		eventCacheEvsCreatedAtKeyTreeCmp,
-	)
+	tree := c.findNeedLock(filters)
+	if tree == nil {
+		return nil
+	}
 
+	var ret []*Event
+	for it := tree.Iterator(); it.Valid(); it.Next() {
+		ret = append(ret, it.Value())
+	}
+
+	return ret
+}
+
+func (c *EventCache) findNeedLock(
+	filters []*ReqFilter,
+) *treemap.TreeMap[eventCacheEvsCreatedAtKey, *Event] {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -161,12 +173,16 @@ func (c *EventCache) Find(filters []*ReqFilter) []*Event {
 		return nil
 	}
 
+	ret := treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
+		eventCacheEvsCreatedAtKeyTreeCmp,
+	)
+
 	for _, filter := range filters {
 		t, ok := c.evsIndex.Find(filter)
 		if ok {
 			for it := t.Iterator(); it.Valid(); it.Next() {
 				ev := it.Value()
-				tree.Set(eventCacheEvsCreatedAtKey{ev.CreatedAt, ev.ID}, ev)
+				ret.Set(eventCacheEvsCreatedAtKey{ev.CreatedAt, ev.ID}, ev)
 			}
 		} else {
 			m := NewReqFilterMatcher(filter)
@@ -175,15 +191,10 @@ func (c *EventCache) Find(filters []*ReqFilter) []*Event {
 					break
 				}
 				if m.CountMatch(it.Value()) {
-					tree.Set(it.Key(), it.Value())
+					ret.Set(it.Key(), it.Value())
 				}
 			}
 		}
-	}
-
-	var ret []*Event
-	for it := tree.Iterator(); it.Valid(); it.Next() {
-		ret = append(ret, it.Value())
 	}
 
 	return ret
