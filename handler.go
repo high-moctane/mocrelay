@@ -89,8 +89,6 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 	)
 }
 
-var ErrRouterHandlerStop = errors.New("router handler stopped")
-
 type RouterHandler struct {
 	buflen int
 	subs   *subscribers
@@ -119,31 +117,7 @@ func (router *RouterHandler) Handle(
 
 	subCh := make(chan ServerMsg, router.buflen)
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case msg, ok := <-recv:
-				if !ok {
-					return
-				}
-				m := router.recv(ctx, reqID, msg, subCh)
-				sendServerMsgCtx(ctx, send, m)
-			}
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
 		defer cancel()
 
 		for {
@@ -157,8 +131,21 @@ func (router *RouterHandler) Handle(
 		}
 	}()
 
-	wg.Wait()
-	return errors.Join(ErrRouterHandlerStop, ctx.Err())
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case msg, ok := <-recv:
+			if !ok {
+				return ErrRecvClosed
+			}
+			m := router.recv(ctx, reqID, msg, subCh)
+			sendServerMsgCtx(ctx, send, m)
+		}
+	}
 }
 
 func (router *RouterHandler) recv(
