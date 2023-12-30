@@ -853,13 +853,10 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 				rCh := make(chan ClientMsg)
 				sCh := make(chan ServerMsg)
 
-				errs := make(chan error, 3)
+				errs := make(chan error, 2)
+				defer func() { err = errors.Join(err, <-errs, <-errs) }()
 
-				var wg sync.WaitGroup
-
-				wg.Add(1)
 				go func() {
-					defer wg.Done()
 					defer cancel()
 					defer close(rCh)
 
@@ -869,14 +866,14 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 							if err != nil {
 								return err
 							}
-							if cmsgCh != nil {
-								for cmsg := range recvCtx(ctx, cmsgCh) {
-									sendClientMsgCtx(ctx, rCh, cmsg)
-								}
-							}
 							if smsgCh != nil {
 								for smsg := range recvCtx(ctx, smsgCh) {
 									sendServerMsgCtx(ctx, send, smsg)
+								}
+							}
+							if cmsgCh != nil {
+								for cmsg := range recvCtx(ctx, cmsgCh) {
+									sendClientMsgCtx(ctx, rCh, cmsg)
 								}
 							}
 						}
@@ -888,9 +885,7 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 					}()
 				}()
 
-				wg.Add(1)
 				go func() {
-					defer wg.Done()
 					defer cancel()
 
 					errs <- func() error {
@@ -912,21 +907,8 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 					}()
 				}()
 
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					defer cancel()
-					errs <- handler.Handle(r, rCh, sCh)
-				}()
-
-				wg.Wait()
-
-				close(errs)
-				for e := range errs {
-					err = errors.Join(err, e)
-				}
-
-				return
+				defer cancel()
+				return handler.Handle(r, rCh, sCh)
 			},
 		)
 	}
