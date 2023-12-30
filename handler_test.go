@@ -2052,7 +2052,7 @@ func TestEventCreatedAtMiddleware(t *testing.T) {
 	}
 }
 
-func TestFilterUnmatchedRecvEventMiddleware(t *testing.T) {
+func TestEventAllowFilterMiddleware(t *testing.T) {
 	tests := []struct {
 		name   string
 		filter []*ReqFilter
