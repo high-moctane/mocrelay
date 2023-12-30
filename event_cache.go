@@ -404,9 +404,16 @@ func (c eventCacheEvsIndex) Find(
 	if filter.Limit != nil {
 		limit = min(limit, int(*filter.Limit))
 	}
+	m := NewReqFilterMatcher(&ReqFilter{
+		Since: filter.Since,
+		Until: filter.Until,
+	})
 
 	cnt := 0
 	for _, ev := range idMaps[0] {
+		if !m.Match(ev) {
+			continue
+		}
 		ret.Set(eventCacheEvsCreatedAtKey{ev.CreatedAt, ev.ID}, ev)
 		cnt++
 		if cnt > limit {
