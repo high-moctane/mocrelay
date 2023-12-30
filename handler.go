@@ -1729,3 +1729,57 @@ func (m *simpleRecvEventAllowFilterMiddleware) HandleServerMsg(
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
 }
+
+type RecvEventDenyFilterMiddleware Middleware
+
+func NewRecvEventDenyFilterMiddleware(matcher EventMatcher) RecvEventDenyFilterMiddleware {
+	m := newSimpleRecvEventDenyFilterMiddleware(matcher)
+	return RecvEventDenyFilterMiddleware(NewSimpleMiddleware(m))
+}
+
+var _ SimpleMiddlewareInterface = (*simpleRecvEventDenyFilterMiddleware)(nil)
+
+type simpleRecvEventDenyFilterMiddleware struct {
+	matcher EventMatcher
+}
+
+func newSimpleRecvEventDenyFilterMiddleware(
+	matcher EventMatcher,
+) *simpleRecvEventDenyFilterMiddleware {
+	return &simpleRecvEventDenyFilterMiddleware{matcher: matcher}
+}
+
+func (m *simpleRecvEventDenyFilterMiddleware) HandleStart(
+	r *http.Request,
+) (*http.Request, error) {
+	return r, nil
+}
+
+func (m *simpleRecvEventDenyFilterMiddleware) HandleStop(r *http.Request) error {
+	return nil
+}
+
+func (m *simpleRecvEventDenyFilterMiddleware) HandleClientMsg(
+	r *http.Request,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	if msg, ok := msg.(*ClientEventMsg); ok {
+		if m.matcher.Match(msg.Event) {
+			okMsg := NewServerOKMsg(
+				msg.Event.ID,
+				false,
+				ServerOkMsgPrefixBlocked,
+				"the event is not allowed",
+			)
+			return nil, newClosedBufCh[ServerMsg](okMsg), nil
+		}
+	}
+	return newClosedBufCh[ClientMsg](msg), nil, nil
+}
+
+func (m *simpleRecvEventDenyFilterMiddleware) HandleServerMsg(
+	r *http.Request,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	return newClosedBufCh[ServerMsg](msg), nil
+}
