@@ -53,57 +53,23 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 			ctx := r.Context()
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
+			r = r.WithContext(ctx)
 
-			smsgChCh := make(chan (<-chan ServerMsg))
-			errs := make(chan error, 1)
-
-			var wg sync.WaitGroup
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer cancel()
-				defer close(smsgChCh)
-
-				errs <- func() error {
-					for cmsg := range recvCtx(ctx, recv) {
-						smsgCh, err := h.HandleClientMsg(r, cmsg)
-						if err != nil {
-							return err
-						}
-						if smsgCh == nil {
-							continue
-						}
-						sendCtx(ctx, smsgChCh, smsgCh)
-					}
-
-					if err := ctx.Err(); err != nil {
-						return err
-					}
-					return ErrRecvClosed
-				}()
-			}()
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer cancel()
-
-				for smsgCh := range recvCtx(ctx, smsgChCh) {
+			for cmsg := range recvCtx(ctx, recv) {
+				smsgCh, err := h.HandleClientMsg(r, cmsg)
+				if err != nil {
+					return err
+				}
+				if smsgCh != nil {
 					for smsg := range recvCtx(ctx, smsgCh) {
 						sendServerMsgCtx(ctx, send, smsg)
 					}
 				}
-			}()
-
-			wg.Wait()
-
-			close(errs)
-			for e := range errs {
-				err = errors.Join(err, e)
 			}
-
-			return
+			if err := ctx.Err(); err != nil {
+				return ctx.Err()
+			}
+			return ErrRecvClosed
 		},
 	)
 }
