@@ -313,8 +313,8 @@ func NewDefaultRelayOption() *RelayOption {
 
 		SendTimeout: 10 * time.Second,
 
-		RecvRateLimitRate:  2,
-		RecvRateLimitBurst: 1,
+		RecvRateLimitRate:  10,
+		RecvRateLimitBurst: 10,
 
 		MaxMessageLength: 100_000,
 
