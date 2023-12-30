@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -429,36 +428,28 @@ func (ss *mergeHandlerSession) Handle(
 		ss.handleSend(ctx, send)
 	}()
 
-	return ss.runHandlers(r)
+	return ss.runHandlers(r, ss.h.hs)
 }
 
-func (ss *mergeHandlerSession) runHandlers(r *http.Request) error {
-	hs := ss.h.hs
-	var wg sync.WaitGroup
-	errs := make(chan error, len(hs))
-
+func (ss *mergeHandlerSession) runHandlers(r *http.Request, handlers []Handler) (err error) {
 	ctx := r.Context()
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	r = r.WithContext(ctx)
 
-	wg.Add(len(hs))
-	for i := 0; i < len(ss.h.hs); i++ {
-		go func(i int) {
-			defer wg.Done()
+	l := len(handlers)
+
+	if l > 1 {
+		errCh := make(chan error, 1)
+		defer func() { err = errors.Join(err, <-errCh) }()
+
+		go func() {
 			defer cancel()
-			errs <- hs[i].Handle(r, ss.recvs[i], ss.sends[i])
-		}(i)
-	}
-	wg.Wait()
-
-	close(errs)
-	var err error
-	for e := range errs {
-		err = errors.Join(err, e)
+			errCh <- ss.runHandlers(r, handlers[:l-1])
+		}()
 	}
 
-	return err
+	defer cancel()
+	return handlers[l-1].Handle(r, ss.recvs[l-1], ss.sends[l-1])
 }
 
 func (ss *mergeHandlerSession) mergeSends(ctx context.Context) {
