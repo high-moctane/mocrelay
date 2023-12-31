@@ -85,7 +85,7 @@ func (c *EventCache) add(eventKey string, event *Event) (added bool) {
 		if old.CreatedAt >= event.CreatedAt {
 			return
 		}
-		c.evsCreatedAt.Del(eventCacheEvsCreatedAtKey{old.CreatedAt, old.ID})
+		c.delete(eventCacheDeletedEventKey{eventKey, old.Pubkey})
 	}
 
 	c.evs[eventKey] = event
