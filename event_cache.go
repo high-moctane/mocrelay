@@ -385,7 +385,7 @@ func (c eventCacheEvsIndex) Find(
 	idMaps := make([]map[string]*Event, 0, len(keysSlice))
 
 	for _, keys := range keysSlice {
-		m := make(map[string]*Event, len(keys))
+		m := make(map[string]*Event)
 		for _, key := range keys {
 			for id, ev := range c[key] {
 				m[id] = ev
