@@ -1,11 +1,9 @@
 package mocrelay
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"slices"
 	"testing"
 	"time"
@@ -18,7 +16,6 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
 	recv := make(chan ClientMsg, len(in))
 	send := make(chan ServerMsg, len(out)*2)
 
@@ -26,7 +23,7 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 
 	go func() {
 		defer cancel()
-		errCh <- h.Handle(r, recv, send)
+		errCh <- h.Handle(ctx, recv, send)
 	}()
 
 	for _, msg := range in {
@@ -96,13 +93,11 @@ func helperTestSimpleHandlerInterface(
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
-
-	r, err := h.HandleStart(r)
+	ctx, err := h.HandleStart(ctx)
 	assert.NoError(t, err)
 
 	for i, entry := range entries {
-		smsgCh, err := h.HandleClientMsg(r, entry.input)
+		smsgCh, err := h.HandleClientMsg(ctx, entry.input)
 		assert.NoError(t, err)
 
 		var smsgs []ServerMsg
@@ -123,7 +118,7 @@ func helperTestSimpleHandlerInterface(
 		assert.EqualValuesf(t, entry.want, smsgs, "at %d", i)
 	}
 
-	err = h.HandleStop(r)
+	err = h.HandleStop(ctx)
 	assert.NoError(t, err)
 }
 
@@ -1122,15 +1117,13 @@ func helperTestSimpleMiddlewareInterface(
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	r, _ := http.NewRequestWithContext(ctx, "", "/", new(bufio.Reader))
-
-	r, err := m.HandleStart(r)
+	ctx, err := m.HandleStart(ctx)
 	assert.NoError(t, err)
 
 	for i, entry := range entries {
 		switch msg := entry.input.(type) {
 		case ClientMsg:
-			cmsgCh, sMsgCh, err := m.HandleClientMsg(r, msg)
+			cmsgCh, sMsgCh, err := m.HandleClientMsg(ctx, msg)
 			assert.NoError(t, err)
 
 			var smsgs []ServerMsg
@@ -1168,7 +1161,7 @@ func helperTestSimpleMiddlewareInterface(
 			assert.EqualValuesf(t, entry.wantCmsgs, cmsgs, "at %d", i)
 
 		case ServerMsg:
-			sMsgCh, err := m.HandleServerMsg(r, msg)
+			sMsgCh, err := m.HandleServerMsg(ctx, msg)
 			assert.NoError(t, err)
 
 			var smsgs []ServerMsg
@@ -1192,7 +1185,7 @@ func helperTestSimpleMiddlewareInterface(
 		}
 	}
 
-	err = m.HandleStop(r)
+	err = m.HandleStop(ctx)
 	assert.NoError(t, err)
 }
 

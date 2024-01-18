@@ -1,7 +1,7 @@
 package prometheus
 
 import (
-	"net/http"
+	"context"
 	"strconv"
 	"sync"
 	"time"
@@ -89,19 +89,19 @@ func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusM
 	return m
 }
 
-func (m *simplePrometheusMiddleware) HandleStart(r *http.Request) (*http.Request, error) {
+func (m *simplePrometheusMiddleware) HandleStart(ctx context.Context) (context.Context, error) {
 	m.connectionCount.Inc()
 
-	reqID := mocrelay.GetRequestID(r.Context())
+	reqID := mocrelay.GetRequestID(ctx)
 	m.reqCounter.AddReqID(reqID)
 
-	return r, nil
+	return ctx, nil
 }
 
-func (m *simplePrometheusMiddleware) HandleStop(r *http.Request) error {
+func (m *simplePrometheusMiddleware) HandleStop(ctx context.Context) error {
 	m.connectionCount.Dec()
 
-	reqID := mocrelay.GetRequestID(r.Context())
+	reqID := mocrelay.GetRequestID(ctx)
 	m.reqCounter.DeleteReqID(reqID)
 	m.deleteReqTimer(reqID)
 
@@ -109,7 +109,7 @@ func (m *simplePrometheusMiddleware) HandleStop(r *http.Request) error {
 }
 
 func (m *simplePrometheusMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg mocrelay.ClientMsg,
 ) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
 	switch msg := msg.(type) {
@@ -123,13 +123,13 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 
 	case *mocrelay.ClientReqMsg:
 		m.recvMsgTotal.WithLabelValues("REQ").Inc()
-		reqID := mocrelay.GetRequestID(r.Context())
+		reqID := mocrelay.GetRequestID(ctx)
 		m.reqCounter.AddSubID(reqID, msg.SubscriptionID)
 		m.startReqTimer(reqID, msg.SubscriptionID)
 
 	case *mocrelay.ClientCloseMsg:
 		m.recvMsgTotal.WithLabelValues("CLOSE").Inc()
-		reqID := mocrelay.GetRequestID(r.Context())
+		reqID := mocrelay.GetRequestID(ctx)
 		m.reqCounter.DeleteSubID(reqID, msg.SubscriptionID)
 
 	case *mocrelay.ClientAuthMsg:
@@ -150,13 +150,13 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 }
 
 func (m *simplePrometheusMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg mocrelay.ServerMsg,
 ) (<-chan mocrelay.ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *mocrelay.ServerEOSEMsg:
 		m.sendMsgTotal.WithLabelValues("EOSE").Inc()
-		reqID := mocrelay.GetRequestID(r.Context())
+		reqID := mocrelay.GetRequestID(ctx)
 		if dur := m.stopReqTimer(reqID, msg.SubscriptionID); dur != 0 {
 			m.reqResponseTime.Observe(float64(dur) / float64(time.Second))
 		}

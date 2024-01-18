@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -18,41 +17,36 @@ var (
 )
 
 type Handler interface {
-	Handle(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error
+	Handle(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error
 }
 
-type HandlerFunc func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error
+type HandlerFunc func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error
 
 func (f HandlerFunc) Handle(
-	r *http.Request,
+	ctx context.Context,
 	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
 ) error {
-	return f(r, recv, send)
+	return f(ctx, recv, send)
 }
 
 type SimpleHandler Handler
 
 type SimpleHandlerInterface interface {
-	HandleStart(*http.Request) (*http.Request, error)
-	HandleStop(*http.Request) error
-	HandleClientMsg(*http.Request, ClientMsg) (<-chan ServerMsg, error)
+	HandleStart(context.Context) (context.Context, error)
+	HandleStop(context.Context) error
+	HandleClientMsg(context.Context, ClientMsg) (<-chan ServerMsg, error)
 }
 
 func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 	return HandlerFunc(
-		func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
-			defer func() { err = errors.Join(err, h.HandleStop(r)) }()
+		func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
+			defer func() { err = errors.Join(err, h.HandleStop(ctx)) }()
 
-			r, err = h.HandleStart(r)
+			ctx, err = h.HandleStart(ctx)
 			if err != nil {
 				return
 			}
-
-			ctx := r.Context()
-			ctx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			r = r.WithContext(ctx)
 
 			for {
 				select {
@@ -63,7 +57,7 @@ func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
 					if !ok {
 						return ErrRecvClosed
 					}
-					smsgCh, err := h.HandleClientMsg(r, cmsg)
+					smsgCh, err := h.HandleClientMsg(ctx, cmsg)
 					if err != nil {
 						return err
 					}
@@ -104,11 +98,11 @@ func NewRouterHandler(buflen int) *RouterHandler {
 }
 
 func (router *RouterHandler) Handle(
-	r *http.Request,
+	ctx context.Context,
 	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
 ) (err error) {
-	ctx, cancel := context.WithCancel(r.Context())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	reqID := GetRequestID(ctx)
@@ -246,8 +240,12 @@ func NewCacheHandler(size int) CacheHandler {
 	return CacheHandler{h: newSimpleCacheHandler(size)}
 }
 
-func (h CacheHandler) Handle(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-	return NewSimpleHandler(h.h).Handle(r, recv, send)
+func (h CacheHandler) Handle(
+	ctx context.Context,
+	recv <-chan ClientMsg,
+	send chan<- ServerMsg,
+) error {
+	return NewSimpleHandler(h.h).Handle(ctx, recv, send)
 }
 
 func (h CacheHandler) Dump(w io.Writer) error {
@@ -268,16 +266,16 @@ func newSimpleCacheHandler(size int) *simpleCacheHandler {
 	}
 }
 
-func (h *simpleCacheHandler) HandleStart(r *http.Request) (*http.Request, error) {
-	return r, nil
+func (h *simpleCacheHandler) HandleStart(ctx context.Context) (context.Context, error) {
+	return ctx, nil
 }
 
-func (h *simpleCacheHandler) HandleStop(r *http.Request) error {
+func (h *simpleCacheHandler) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (h *simpleCacheHandler) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ServerMsg, error) {
 	switch msg := msg.(type) {
@@ -360,11 +358,11 @@ func NewMergeHandler(handlers ...Handler) Handler {
 }
 
 func (h *MergeHandler) Handle(
-	r *http.Request,
+	ctx context.Context,
 	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
 ) error {
-	return newMergeHandlerSession(h).Handle(r, recv, send)
+	return newMergeHandlerSession(h).Handle(ctx, recv, send)
 }
 
 type mergeHandlerSession struct {
@@ -406,12 +404,11 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 }
 
 func (ss *mergeHandlerSession) Handle(
-	r *http.Request,
+	ctx context.Context,
 	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
 ) error {
-	ctx, cancel := context.WithCancel(r.Context())
-	r = r.WithContext(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	go func() {
@@ -428,13 +425,11 @@ func (ss *mergeHandlerSession) Handle(
 		ss.handleSend(ctx, send)
 	}()
 
-	return ss.runHandlers(r, ss.h.hs)
+	return ss.runHandlers(ctx, ss.h.hs)
 }
 
-func (ss *mergeHandlerSession) runHandlers(r *http.Request, handlers []Handler) (err error) {
-	ctx := r.Context()
+func (ss *mergeHandlerSession) runHandlers(ctx context.Context, handlers []Handler) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
-	r = r.WithContext(ctx)
 
 	l := len(handlers)
 
@@ -444,12 +439,12 @@ func (ss *mergeHandlerSession) runHandlers(r *http.Request, handlers []Handler) 
 
 		go func() {
 			defer cancel()
-			errCh <- ss.runHandlers(r, handlers[:l-1])
+			errCh <- ss.runHandlers(ctx, handlers[:l-1])
 		}()
 	}
 
 	defer cancel()
-	return handlers[l-1].Handle(r, ss.recvs[l-1], ss.sends[l-1])
+	return handlers[l-1].Handle(ctx, ss.recvs[l-1], ss.sends[l-1])
 }
 
 func (ss *mergeHandlerSession) mergeSends(ctx context.Context) {
@@ -857,27 +852,25 @@ type Middleware func(Handler) Handler
 type SimpleMiddleware Middleware
 
 type SimpleMiddlewareInterface interface {
-	HandleStart(*http.Request) (*http.Request, error)
-	HandleStop(*http.Request) error
-	HandleClientMsg(*http.Request, ClientMsg) (<-chan ClientMsg, <-chan ServerMsg, error)
-	HandleServerMsg(*http.Request, ServerMsg) (<-chan ServerMsg, error)
+	HandleStart(context.Context) (context.Context, error)
+	HandleStop(context.Context) error
+	HandleClientMsg(context.Context, ClientMsg) (<-chan ClientMsg, <-chan ServerMsg, error)
+	HandleServerMsg(context.Context, ServerMsg) (<-chan ServerMsg, error)
 }
 
 func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
-				defer func() { err = errors.Join(err, m.HandleStop(r)) }()
+			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
+				defer func() { err = errors.Join(err, m.HandleStop(ctx)) }()
 
-				r, err = m.HandleStart(r)
+				ctx, err = m.HandleStart(ctx)
 				if err != nil {
 					return
 				}
 
-				ctx := r.Context()
 				ctx, cancel := context.WithCancel(ctx)
 				defer cancel()
-				r = r.WithContext(ctx)
 
 				rCh := make(chan ClientMsg)
 				sCh := make(chan ServerMsg)
@@ -899,7 +892,7 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 								if !ok {
 									return ErrRecvClosed
 								}
-								cmsgCh, smsgCh, err := m.HandleClientMsg(r, cmsg)
+								cmsgCh, smsgCh, err := m.HandleClientMsg(ctx, cmsg)
 								if err != nil {
 									return err
 								}
@@ -948,7 +941,7 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 								return ctx.Err()
 
 							case smsg := <-sCh:
-								smsgCh, err := m.HandleServerMsg(r, smsg)
+								smsgCh, err := m.HandleServerMsg(ctx, smsg)
 								if err != nil {
 									return err
 								}
@@ -973,7 +966,7 @@ func NewSimpleMiddleware(m SimpleMiddlewareInterface) SimpleMiddleware {
 				}()
 
 				defer cancel()
-				return handler.Handle(r, rCh, sCh)
+				return handler.Handle(ctx, rCh, sCh)
 			},
 		)
 	}
@@ -1033,17 +1026,17 @@ func newSimpleEventCreatedAtMiddleware(
 }
 
 func (m *simpleEventCreatedAtMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleEventCreatedAtMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleEventCreatedAtMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleEventCreatedAtMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1071,7 +1064,7 @@ func (m *simpleEventCreatedAtMiddleware) HandleClientMsg(
 }
 
 func (m *simpleEventCreatedAtMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
@@ -1082,10 +1075,10 @@ type MaxSubscriptionsMiddleware Middleware
 func NewMaxSubscriptionsMiddleware(maxSubs int) MaxSubscriptionsMiddleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error {
 				sm := newSimpleMaxSubscriptionsMiddleware(maxSubs)
 				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(r, recv, send)
+				return m(h).Handle(ctx, recv, send)
 			},
 		)
 	}
@@ -1111,17 +1104,17 @@ func newSimpleMaxSubscriptionsMiddleware(
 }
 
 func (m *simpleMaxSubscriptionsMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleMaxSubscriptionsMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxSubscriptionsMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleMaxSubscriptionsMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
@@ -1141,7 +1134,7 @@ func (m *simpleMaxSubscriptionsMiddleware) HandleClientMsg(
 }
 
 func (m *simpleMaxSubscriptionsMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
@@ -1171,17 +1164,17 @@ func newSimpleMaxReqFiltersMiddleware(
 }
 
 func (m *simpleMaxReqFiltersMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleMaxReqFiltersMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxReqFiltersMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleMaxReqFiltersMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
@@ -1202,7 +1195,7 @@ func (m *simpleMaxReqFiltersMiddleware) HandleClientMsg(
 }
 
 func (m *simpleMaxReqFiltersMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
@@ -1232,17 +1225,17 @@ func newSimpleMaxLimitMiddleware(
 }
 
 func (m *simpleMaxLimitMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleMaxLimitMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxLimitMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleMaxLimitMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
@@ -1265,7 +1258,7 @@ func (m *simpleMaxLimitMiddleware) HandleClientMsg(
 }
 
 func (m *simpleMaxLimitMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
@@ -1295,17 +1288,17 @@ func newSimpleMaxSubIDLengthMiddleware(
 }
 
 func (m *simpleMaxSubIDLengthMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleMaxSubIDLengthMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxSubIDLengthMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleMaxSubIDLengthMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
@@ -1326,7 +1319,7 @@ func (m *simpleMaxSubIDLengthMiddleware) HandleClientMsg(
 }
 
 func (m *simpleMaxSubIDLengthMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
@@ -1356,17 +1349,17 @@ func newSimpleMaxEventTagsMiddleware(
 }
 
 func (m *simpleMaxEventTagsMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleMaxEventTagsMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxEventTagsMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleMaxEventTagsMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1385,7 +1378,7 @@ func (m *simpleMaxEventTagsMiddleware) HandleClientMsg(
 }
 
 func (m *simpleMaxEventTagsMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
@@ -1415,17 +1408,17 @@ func newSimpleMaxContentLengthMiddleware(
 }
 
 func (m *simpleMaxContentLengthMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleMaxContentLengthMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleMaxContentLengthMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleMaxContentLengthMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1444,7 +1437,7 @@ func (m *simpleMaxContentLengthMiddleware) HandleClientMsg(
 }
 
 func (m *simpleMaxContentLengthMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh(msg), nil
@@ -1468,17 +1461,17 @@ func newSimpleCreatedAtLowerLimitMiddleware(lower int64) *simpleCreatedAtLowerLi
 }
 
 func (m *simpleCreatedAtLowerLimitMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleCreatedAtLowerLimitMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleCreatedAtLowerLimitMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleCreatedAtLowerLimitMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1497,7 +1490,7 @@ func (m *simpleCreatedAtLowerLimitMiddleware) HandleClientMsg(
 }
 
 func (m *simpleCreatedAtLowerLimitMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
@@ -1521,17 +1514,17 @@ func newSimpleCreatedAtUpperLimitMiddleware(upper int64) *simpleCreatedAtUpperLi
 }
 
 func (m *simpleCreatedAtUpperLimitMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleCreatedAtUpperLimitMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleCreatedAtUpperLimitMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleCreatedAtUpperLimitMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1550,7 +1543,7 @@ func (m *simpleCreatedAtUpperLimitMiddleware) HandleClientMsg(
 }
 
 func (m *simpleCreatedAtUpperLimitMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
@@ -1561,10 +1554,10 @@ type RecvEventUniqueFilterMiddleware Middleware
 func NewRecvEventUniqueFilterMiddleware(size int) RecvEventUniqueFilterMiddleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error {
 				sm := newSimpleRecvEventUniqueFilterMiddleware(size)
 				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(r, recv, send)
+				return m(h).Handle(ctx, recv, send)
 			},
 		)
 	}
@@ -1583,17 +1576,17 @@ func newSimpleRecvEventUniqueFilterMiddleware(size int) *simpleRecvEventUniqueFi
 }
 
 func (m *simpleRecvEventUniqueFilterMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleRecvEventUniqueFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleRecvEventUniqueFilterMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleRecvEventUniqueFilterMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1613,7 +1606,7 @@ func (m *simpleRecvEventUniqueFilterMiddleware) HandleClientMsg(
 }
 
 func (m *simpleRecvEventUniqueFilterMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
@@ -1624,10 +1617,10 @@ type SendEventUniqueFilterMiddleware Middleware
 func NewSendEventUniqueFilterMiddleware(size int) SendEventUniqueFilterMiddleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(
-			func(r *http.Request, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error {
 				sm := newSimpleSendEventUniqueFilterMiddleware(size)
 				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(r, recv, send)
+				return m(h).Handle(ctx, recv, send)
 			},
 		)
 	}
@@ -1646,24 +1639,24 @@ func newSimpleSendEventUniqueFilterMiddleware(size int) *simpleSendEventUniqueFi
 }
 
 func (m *simpleSendEventUniqueFilterMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleSendEventUniqueFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleSendEventUniqueFilterMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleSendEventUniqueFilterMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
 func (m *simpleSendEventUniqueFilterMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	if msg, ok := msg.(*ServerEventMsg); ok {
@@ -1696,17 +1689,17 @@ func newSimpleRecvEventAllowFilterMiddleware(
 }
 
 func (m *simpleRecvEventAllowFilterMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleRecvEventAllowFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleRecvEventAllowFilterMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleRecvEventAllowFilterMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1724,7 +1717,7 @@ func (m *simpleRecvEventAllowFilterMiddleware) HandleClientMsg(
 }
 
 func (m *simpleRecvEventAllowFilterMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
@@ -1750,17 +1743,17 @@ func newSimpleRecvEventDenyFilterMiddleware(
 }
 
 func (m *simpleRecvEventDenyFilterMiddleware) HandleStart(
-	r *http.Request,
-) (*http.Request, error) {
-	return r, nil
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
 }
 
-func (m *simpleRecvEventDenyFilterMiddleware) HandleStop(r *http.Request) error {
+func (m *simpleRecvEventDenyFilterMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
 func (m *simpleRecvEventDenyFilterMiddleware) HandleClientMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	if msg, ok := msg.(*ClientEventMsg); ok {
@@ -1778,7 +1771,7 @@ func (m *simpleRecvEventDenyFilterMiddleware) HandleClientMsg(
 }
 
 func (m *simpleRecvEventDenyFilterMiddleware) HandleServerMsg(
-	r *http.Request,
+	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
