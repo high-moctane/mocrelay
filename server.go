@@ -12,21 +12,9 @@ type ServeMux struct {
 	NIP11   *NIP11
 	Default http.Handler
 	Logger  *slog.Logger
-
-	logger *slog.Logger
 }
 
 func (mux *ServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	ctx = ctxWithRealIP(ctx, r)
-	ctx = ctxWithRequestID(ctx)
-	ctx = ctxWithHTTPHeader(ctx, r)
-	r = r.WithContext(ctx)
-
-	if mux.Logger != nil {
-		mux.logger = slog.New(WithSlogMocrelayHandler(mux.Logger.Handler()))
-	}
-
 	if r.Header.Get("Upgrade") != "" {
 		mux.logInfo(r.Context(), "got relay access")
 		mux.Relay.ServeHTTP(w, r)
@@ -50,8 +38,8 @@ func (mux *ServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (mux *ServeMux) logInfo(ctx context.Context, msg string, args ...any) {
-	if mux.logger == nil {
+	if mux.Logger == nil {
 		return
 	}
-	mux.logger.InfoContext(ctx, msg, args...)
+	mux.Logger.InfoContext(ctx, msg, args...)
 }

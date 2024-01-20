@@ -31,7 +31,9 @@ func main() {
 	h = mocrelay.NewRecvEventUniqueFilterMiddleware(10)(h)
 	h = mocprom.NewPrometheusMiddleware(reg)(h)
 
-	relay := mocrelay.NewRelay(h, nil)
+	opt := mocrelay.NewDefaultRelayOption()
+	opt.Logger = slog.Default()
+	relay := mocrelay.NewRelay(h, opt)
 
 	nip11 := &mocrelay.NIP11{
 		Name:        "mocrelay",
@@ -40,9 +42,8 @@ func main() {
 	}
 
 	relayMux := &mocrelay.ServeMux{
-		Relay:  relay,
-		NIP11:  nip11,
-		Logger: slog.Default(),
+		Relay: relay,
+		NIP11: nip11,
 	}
 
 	mux := http.NewServeMux()

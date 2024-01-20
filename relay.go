@@ -52,9 +52,6 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = ctxWithRequest(ctx, r)
-	ctx = ctxWithRealIP(ctx, r)
-	ctx = ctxWithRequestID(ctx)
-	ctx = ctxWithHTTPHeader(ctx, r)
 
 	relay.logInfo(ctx, relay.opt.Logger, "mocrelay session start")
 
@@ -305,10 +302,6 @@ type RelayOption struct {
 
 func NewDefaultRelayOption() *RelayOption {
 	return &RelayOption{
-		Logger:     slog.New(WithSlogMocrelayHandler(slog.Default().Handler())),
-		RecvLogger: slog.New(WithSlogMocrelayHandler(slog.Default().Handler())),
-		SendLogger: slog.New(WithSlogMocrelayHandler(slog.Default().Handler())),
-
 		SendTimeout: 10 * time.Second,
 
 		RecvRateLimitRate:  10,

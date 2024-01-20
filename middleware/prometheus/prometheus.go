@@ -8,6 +8,8 @@ import (
 
 	"github.com/high-moctane/mocrelay"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/google/uuid"
 )
 
 type PrometheusMiddleware mocrelay.SimpleMiddleware
@@ -15,6 +17,19 @@ type PrometheusMiddleware mocrelay.SimpleMiddleware
 func NewPrometheusMiddleware(reg prometheus.Registerer) PrometheusMiddleware {
 	m := newSimplePrometheusMiddleware(reg)
 	return PrometheusMiddleware(mocrelay.NewSimpleMiddleware(m))
+}
+
+type requestIDKey struct{}
+
+var requestIDKeyInstance = requestIDKey{}
+
+func setRequestID(ctx context.Context, reqID string) context.Context {
+	return context.WithValue(ctx, requestIDKeyInstance, reqID)
+}
+
+func getRequestID(ctx context.Context) string {
+	reqID, _ := ctx.Value(requestIDKeyInstance).(string)
+	return reqID
 }
 
 type simplePrometheusMiddleware struct {
@@ -92,7 +107,8 @@ func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusM
 func (m *simplePrometheusMiddleware) HandleStart(ctx context.Context) (context.Context, error) {
 	m.connectionCount.Inc()
 
-	reqID := mocrelay.GetRequestID(ctx)
+	reqID := uuid.NewString()
+	ctx = setRequestID(ctx, reqID)
 	m.reqCounter.AddReqID(reqID)
 
 	return ctx, nil
@@ -101,7 +117,7 @@ func (m *simplePrometheusMiddleware) HandleStart(ctx context.Context) (context.C
 func (m *simplePrometheusMiddleware) HandleStop(ctx context.Context) error {
 	m.connectionCount.Dec()
 
-	reqID := mocrelay.GetRequestID(ctx)
+	reqID := getRequestID(ctx)
 	m.reqCounter.DeleteReqID(reqID)
 	m.deleteReqTimer(reqID)
 
@@ -112,6 +128,8 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 	ctx context.Context,
 	msg mocrelay.ClientMsg,
 ) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
+	reqID := getRequestID(ctx)
+
 	switch msg := msg.(type) {
 	case *mocrelay.ClientUnknownMsg:
 		m.recvMsgTotal.WithLabelValues("UNKNOWN").Inc()
@@ -123,13 +141,11 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 
 	case *mocrelay.ClientReqMsg:
 		m.recvMsgTotal.WithLabelValues("REQ").Inc()
-		reqID := mocrelay.GetRequestID(ctx)
 		m.reqCounter.AddSubID(reqID, msg.SubscriptionID)
 		m.startReqTimer(reqID, msg.SubscriptionID)
 
 	case *mocrelay.ClientCloseMsg:
 		m.recvMsgTotal.WithLabelValues("CLOSE").Inc()
-		reqID := mocrelay.GetRequestID(ctx)
 		m.reqCounter.DeleteSubID(reqID, msg.SubscriptionID)
 
 	case *mocrelay.ClientAuthMsg:
@@ -156,7 +172,7 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 	switch msg := msg.(type) {
 	case *mocrelay.ServerEOSEMsg:
 		m.sendMsgTotal.WithLabelValues("EOSE").Inc()
-		reqID := mocrelay.GetRequestID(ctx)
+		reqID := getRequestID(ctx)
 		if dur := m.stopReqTimer(reqID, msg.SubscriptionID); dur != 0 {
 			m.reqResponseTime.Observe(float64(dur) / float64(time.Second))
 		}

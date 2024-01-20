@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -105,7 +107,7 @@ func (router *RouterHandler) Handle(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	reqID := GetRequestID(ctx)
+	reqID := uuid.NewString()
 	defer router.subs.UnsubscribeAll(reqID)
 
 	subCh := make(chan ServerMsg, router.buflen)
