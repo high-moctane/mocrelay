@@ -150,36 +150,34 @@ func (relay *Relay) serveRead(
 		return fmt.Errorf("failed to read websocket: %w", err)
 	}
 	if typ != websocket.MessageText {
-		relay.logWarn(ctx, relay.opt.RecvLogger, "received binary websocket message")
+		relay.logWarn(ctx, relay.opt.Logger, "received binary websocket message")
 		notice := NewServerNoticeMsgf("binary websocket message type is not allowed")
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
 	}
 	if !utf8.Valid(payload) || !json.Valid(payload) {
-		relay.logWarn(ctx, relay.opt.RecvLogger, "received invalid json message")
+		relay.logWarn(ctx, relay.opt.Logger, "received invalid json message")
 		notice := NewServerNoticeMsgf("invalid json msg")
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
 	}
 
+	if relay.opt.RawRecvHook != nil {
+		if err := relay.opt.RawRecvHook(ctx, payload); err != nil {
+			return fmt.Errorf("raw recv hook: %w", err)
+		}
+	}
+
 	msg, err := ParseClientMsg(payload)
 	if err != nil {
-		relay.logWarn(ctx, relay.opt.RecvLogger, "failed to parse client msg", "error", err)
+		relay.logWarn(ctx, relay.opt.Logger, "failed to parse client msg", "error", err)
 		notice := NewServerNoticeMsgf("invalid client msg")
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
 	}
 
-	relay.logInfo(
-		ctx,
-		relay.opt.RecvLogger,
-		"recv client msg",
-		"clientMsg",
-		json.RawMessage(payload),
-	)
-
 	if ok := ValidClientMsg(msg); !ok {
-		relay.logWarn(ctx, relay.opt.RecvLogger, "invalid client msg", "error", err)
+		relay.logWarn(ctx, relay.opt.Logger, "invalid client msg", "error", err)
 		notice := NewServerNoticeMsgf("invalid client msg: %s", payload)
 		sendServerMsgCtx(ctx, send, notice)
 		return nil
@@ -187,13 +185,13 @@ func (relay *Relay) serveRead(
 	if msg, ok := msg.(*ClientEventMsg); ok {
 		valid, err := msg.Event.Verify()
 		if err != nil {
-			relay.logWarn(ctx, relay.opt.RecvLogger, "failed to verify event msg", "error", err)
+			relay.logWarn(ctx, relay.opt.Logger, "failed to verify event msg", "error", err)
 			notice := NewServerNoticeMsg("internal error")
 			sendServerMsgCtx(ctx, send, notice)
 			return nil
 		}
 		if !valid {
-			relay.logWarn(ctx, relay.opt.RecvLogger, "received invalid sig event", "clientMsg", msg)
+			relay.logWarn(ctx, relay.opt.Logger, "received invalid sig event", "clientMsg", msg)
 			notice := NewServerNoticeMsgf("invalid sig event: %s", msg.Event.ID)
 			sendServerMsgCtx(ctx, send, notice)
 			return nil
@@ -238,13 +236,11 @@ func (relay *Relay) serveWriteLoop(
 				return fmt.Errorf("failed to write websocket: %w", err)
 			}
 
-			relay.logInfo(
-				ctx,
-				relay.opt.SendLogger,
-				"sent server msg",
-				"serverMsg",
-				json.RawMessage(jsonMsg),
-			)
+			if relay.opt.RawSendHook != nil {
+				if err := relay.opt.RawSendHook(ctx, jsonMsg); err != nil {
+					return fmt.Errorf("raw send hook: %w", err)
+				}
+			}
 		}
 	}
 }
@@ -286,9 +282,10 @@ func (relay *Relay) logWarn(ctx context.Context, logger *slog.Logger, msg string
 }
 
 type RelayOption struct {
-	Logger     *slog.Logger
-	RecvLogger *slog.Logger
-	SendLogger *slog.Logger
+	Logger *slog.Logger
+
+	RawRecvHook func(ctx context.Context, msg []byte) error
+	RawSendHook func(ctx context.Context, msg []byte) error
 
 	SendTimeout time.Duration
 
