@@ -1022,10 +1022,11 @@ func BuildMiddlewareFromNIP11(nip11 *NIP11) Middleware {
 	}
 
 	return func(h Handler) Handler {
-		bases := make([]SimpleMiddlewareBaseInterface, 0, 7)
 		if v := nip11.Limitation.MaxSubscriptions; v != 0 {
-			bases = append(bases, NewSimpleMaxSubscriptionsMiddlewareBase(v))
+			h = NewMaxSubscriptionsMiddleware(v)(h)
 		}
+
+		bases := make([]SimpleMiddlewareBaseInterface, 0, 6)
 		if v := nip11.Limitation.MaxFilters; v != 0 {
 			bases = append(bases, NewSimpleMaxReqFiltersMiddlewareBase(v))
 		}
