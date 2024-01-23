@@ -1017,33 +1017,36 @@ func simpleMiddlewareHandleSend(
 
 func BuildMiddlewareFromNIP11(nip11 *NIP11) Middleware {
 	if nip11 == nil {
-		return nil
+		return func(h Handler) Handler { return h }
 	}
 
 	return func(h Handler) Handler {
+		bases := make([]SimpleMiddlewareBaseInterface, 0, 7)
 		if v := nip11.Limitation.MaxSubscriptions; v != 0 {
-			h = NewMaxSubscriptionsMiddleware(v)(h)
+			bases = append(bases, NewSimpleMaxSubscriptionsMiddlewareBase(v))
 		}
 		if v := nip11.Limitation.MaxFilters; v != 0 {
-			h = NewMaxReqFiltersMiddleware(v)(h)
+			bases = append(bases, NewSimpleMaxReqFiltersMiddlewareBase(v))
 		}
 		if v := nip11.Limitation.MaxLimit; v != 0 {
-			h = NewMaxLimitMiddleware(v)(h)
+			bases = append(bases, NewSimpleMaxLimitMiddlewareBase(v))
 		}
 		if v := nip11.Limitation.MaxEventTags; v != 0 {
-			h = NewMaxEventTagsMiddleware(v)(h)
+			bases = append(bases, NewSimpleMaxEventTagsMiddlewareBase(v))
 		}
 		if v := nip11.Limitation.MaxContentLength; v != 0 {
-			h = NewMaxContentLengthMiddleware(v)(h)
+			bases = append(bases, NewSimpleMaxContentLengthMiddlewareBase(v))
 		}
 		if v := nip11.Limitation.CreatedAtLowerLimit; v != 0 {
-			h = NewCreatedAtLowerLimitMiddleware(v)(h)
+			bases = append(bases, NewSimpleCreatedAtLowerLimitMiddlewareBase(v))
 		}
 		if v := nip11.Limitation.CreatedAtUpperLimit; v != 0 {
-			h = NewCreatedAtUpperLimitMiddleware(v)(h)
+			bases = append(bases, NewSimpleCreatedAtUpperLimitMiddlewareBase(v))
 		}
-
-		return h
+		if len(bases) == 0 {
+			return h
+		}
+		return NewSimpleMiddleware(bases...)(h)
 	}
 }
 
