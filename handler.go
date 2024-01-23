@@ -9,7 +9,6 @@ import (
 	"io"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -874,8 +873,6 @@ func NewSimpleMiddleware(bases ...SimpleMiddlewareBaseInterface) SimpleMiddlewar
 					}
 				}
 
-				mus := make([]sync.Mutex, len(bases))
-
 				ctx, cancel := context.WithCancel(ctx)
 				defer cancel()
 
@@ -889,13 +886,13 @@ func NewSimpleMiddleware(bases ...SimpleMiddlewareBaseInterface) SimpleMiddlewar
 					defer cancel()
 					defer close(rCh)
 
-					errs <- simpleMiddlewareHandleRecv(ctx, mus, bases, recv, send, rCh)
+					errs <- simpleMiddlewareHandleRecv(ctx, bases, recv, send, rCh)
 				}()
 
 				go func() {
 					defer cancel()
 
-					errs <- simpleMiddlewareHandleSend(ctx, mus, bases, send, sCh)
+					errs <- simpleMiddlewareHandleSend(ctx, bases, send, sCh)
 				}()
 
 				defer cancel()
@@ -907,7 +904,6 @@ func NewSimpleMiddleware(bases ...SimpleMiddlewareBaseInterface) SimpleMiddlewar
 
 func simpleMiddlewareHandleRecv(
 	ctx context.Context,
-	mus []sync.Mutex,
 	bases []SimpleMiddlewareBaseInterface,
 	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
@@ -925,13 +921,10 @@ func simpleMiddlewareHandleRecv(
 
 			cmsgs := []ClientMsg{cmsg}
 
-			for i, base := range bases {
+			for _, base := range bases {
 				var nextCmsgs []ClientMsg
 				for _, cmsg := range cmsgs {
-					mus[i].Lock()
 					cmsgCh, smsgCh, err := base.HandleClientMsg(ctx, cmsg)
-					mus[i].Unlock()
-
 					if err != nil {
 						return err
 					}
@@ -978,7 +971,6 @@ func simpleMiddlewareHandleRecv(
 
 func simpleMiddlewareHandleSend(
 	ctx context.Context,
-	mus []sync.Mutex,
 	bases []SimpleMiddlewareBaseInterface,
 	send chan<- ServerMsg,
 	sCh chan ServerMsg,
@@ -993,10 +985,7 @@ func simpleMiddlewareHandleSend(
 			for i := len(bases) - 1; 0 <= i; i-- {
 				var nextSmsgs []ServerMsg
 				for _, smsg := range smsgs {
-					mus[i].Lock()
 					smsgCh, err := bases[i].HandleServerMsg(ctx, smsg)
-					mus[i].Unlock()
-
 					if err != nil {
 						return err
 					}
