@@ -270,13 +270,13 @@ const (
 
 type eventCacheEvsIndex struct {
 	total int
-	idx   map[eventCacheEvsIndexKey]map[string]*Event
+	idx   map[eventCacheEvsIndexKey]map[*Event]bool
 }
 
 func newEventCacheEvsIndex(total int) *eventCacheEvsIndex {
 	return &eventCacheEvsIndex{
 		total: total,
-		idx:   make(map[eventCacheEvsIndexKey]map[string]*Event),
+		idx:   make(map[eventCacheEvsIndexKey]map[*Event]bool),
 	}
 }
 
@@ -356,12 +356,12 @@ func (c *eventCacheEvsIndex) isFullScanReqFilter(filter *ReqFilter) bool {
 
 func (c *eventCacheEvsIndex) Add(event *Event) {
 	for _, key := range c.keysFromEvent(event) {
-		var m map[string]*Event
+		var m map[*Event]bool
 		if m = c.idx[key]; m == nil {
-			m = make(map[string]*Event)
+			m = make(map[*Event]bool)
 			c.idx[key] = m
 		}
-		m[event.ID] = event
+		m[event] = true
 	}
 }
 
@@ -371,7 +371,7 @@ func (c *eventCacheEvsIndex) Delete(event *Event) {
 		if !ok {
 			continue
 		}
-		delete(m, event.ID)
+		delete(m, event)
 		if len(m) == 0 {
 			delete(c.idx, key)
 		}
@@ -392,7 +392,7 @@ func (c *eventCacheEvsIndex) Find(
 
 	keysSlice := c.keysFromReqFilter(filter)
 
-	idMaps := make([]map[string]*Event, 0, len(keysSlice))
+	idMaps := make([]map[*Event]bool, 0, len(keysSlice))
 
 	for _, keys := range keysSlice {
 		size := 0
@@ -400,16 +400,16 @@ func (c *eventCacheEvsIndex) Find(
 			size += len(c.idx[key])
 		}
 
-		m := make(map[string]*Event, min(size, c.total))
+		m := make(map[*Event]bool, min(size, c.total))
 		for _, key := range keys {
-			for id, ev := range c.idx[key] {
-				m[id] = ev
+			for ev := range c.idx[key] {
+				m[ev] = true
 			}
 		}
 		idMaps = append(idMaps, m)
 	}
 
-	slices.SortFunc(idMaps, func(a, b map[string]*Event) int {
+	slices.SortFunc(idMaps, func(a, b map[*Event]bool) int {
 		return cmp.Compare(len(a), len(b))
 	})
 
@@ -436,7 +436,7 @@ func (c *eventCacheEvsIndex) Find(
 	})
 
 	cnt := 0
-	for _, ev := range idMaps[0] {
+	for ev := range idMaps[0] {
 		if !m.Match(ev) {
 			continue
 		}
