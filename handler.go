@@ -1024,33 +1024,40 @@ func BuildMiddlewareFromNIP11(nip11 *NIP11) Middleware {
 	}
 
 	return func(h Handler) Handler {
-		bases := make([]SimpleMiddlewareBaseInterface, 0, 7)
-		if v := nip11.Limitation.MaxSubscriptions; v != 0 {
-			bases = append(bases, NewSimpleMaxSubscriptionsMiddlewareBase(v))
-		}
-		if v := nip11.Limitation.MaxFilters; v != 0 {
-			bases = append(bases, NewSimpleMaxReqFiltersMiddlewareBase(v))
-		}
-		if v := nip11.Limitation.MaxLimit; v != 0 {
-			bases = append(bases, NewSimpleMaxLimitMiddlewareBase(v))
-		}
-		if v := nip11.Limitation.MaxEventTags; v != 0 {
-			bases = append(bases, NewSimpleMaxEventTagsMiddlewareBase(v))
-		}
-		if v := nip11.Limitation.MaxContentLength; v != 0 {
-			bases = append(bases, NewSimpleMaxContentLengthMiddlewareBase(v))
-		}
-		if v := nip11.Limitation.CreatedAtLowerLimit; v != 0 {
-			bases = append(bases, NewSimpleCreatedAtLowerLimitMiddlewareBase(v))
-		}
-		if v := nip11.Limitation.CreatedAtUpperLimit; v != 0 {
-			bases = append(bases, NewSimpleCreatedAtUpperLimitMiddlewareBase(v))
-		}
+		bases := BuildSimpleMiddlewareBasesFromNIP11(nip11)
 		if len(bases) == 0 {
 			return h
 		}
 		return NewSimpleMiddleware(bases...)(h)
 	}
+}
+
+func BuildSimpleMiddlewareBasesFromNIP11(nip11 *NIP11) []SimpleMiddlewareBaseInterface {
+	var ret []SimpleMiddlewareBaseInterface
+
+	if v := nip11.Limitation.MaxSubscriptions; v != 0 {
+		ret = append(ret, NewSimpleMaxSubscriptionsMiddlewareBase(v))
+	}
+	if v := nip11.Limitation.MaxFilters; v != 0 {
+		ret = append(ret, NewSimpleMaxReqFiltersMiddlewareBase(v))
+	}
+	if v := nip11.Limitation.MaxLimit; v != 0 {
+		ret = append(ret, NewSimpleMaxLimitMiddlewareBase(v))
+	}
+	if v := nip11.Limitation.MaxEventTags; v != 0 {
+		ret = append(ret, NewSimpleMaxEventTagsMiddlewareBase(v))
+	}
+	if v := nip11.Limitation.MaxContentLength; v != 0 {
+		ret = append(ret, NewSimpleMaxContentLengthMiddlewareBase(v))
+	}
+	if v := nip11.Limitation.CreatedAtLowerLimit; v != 0 {
+		ret = append(ret, NewSimpleCreatedAtLowerLimitMiddlewareBase(v))
+	}
+	if v := nip11.Limitation.CreatedAtUpperLimit; v != 0 {
+		ret = append(ret, NewSimpleCreatedAtUpperLimitMiddlewareBase(v))
+	}
+
+	return ret
 }
 
 type EventCreatedAtMiddleware Middleware
