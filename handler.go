@@ -9,6 +9,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -1134,6 +1135,7 @@ type SimpleMaxSubscriptionsMiddlewareBase struct {
 	maxSubs int
 
 	// map[subID]exist
+	mu   sync.Mutex
 	subs map[string]bool
 }
 
@@ -1163,6 +1165,10 @@ func (m *SimpleMaxSubscriptionsMiddlewareBase) HandleClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	// TODO(high-moctane) small critical section
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	switch msg := msg.(type) {
 	case *ClientReqMsg:
 		m.subs[msg.SubscriptionID] = true
