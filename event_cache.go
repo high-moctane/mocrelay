@@ -17,7 +17,7 @@ type EventCache struct {
 	// map[eventKey]*Event
 	evs          map[string]*Event
 	evsCreatedAt *treemap.TreeMap[eventCacheEvsCreatedAtKey, *Event]
-	evsIndex     eventCacheEvsIndex
+	evsIndex     *eventCacheEvsIndex
 
 	// map[eventCacheDeletedEventKey]map[kind5ID]bool
 	deleted map[eventCacheDeletedEventKey]map[string]bool
@@ -30,7 +30,7 @@ func NewEventCache(capacity int) *EventCache {
 		evsCreatedAt: treemap.NewWithKeyCompare[eventCacheEvsCreatedAtKey, *Event](
 			eventCacheEvsCreatedAtKeyTreeCmp,
 		),
-		evsIndex: make(eventCacheEvsIndex),
+		evsIndex: newEventCacheEvsIndex(capacity),
 		deleted:  make(map[eventCacheDeletedEventKey]map[string]bool),
 	}
 }
@@ -268,9 +268,19 @@ const (
 	eventCacheEvsIndexKeyWhatTag
 )
 
-type eventCacheEvsIndex map[eventCacheEvsIndexKey]map[string]*Event
+type eventCacheEvsIndex struct {
+	total int
+	idx   map[eventCacheEvsIndexKey]map[string]*Event
+}
 
-func (eventCacheEvsIndex) keysFromEvent(event *Event) []eventCacheEvsIndexKey {
+func newEventCacheEvsIndex(total int) *eventCacheEvsIndex {
+	return &eventCacheEvsIndex{
+		total: total,
+		idx:   make(map[eventCacheEvsIndexKey]map[string]*Event),
+	}
+}
+
+func (*eventCacheEvsIndex) keysFromEvent(event *Event) []eventCacheEvsIndexKey {
 	var ret []eventCacheEvsIndexKey
 
 	ret = append(ret, eventCacheEvsIndexKey{eventCacheEvsIndexKeyWhatID, event.ID})
@@ -297,7 +307,7 @@ func (eventCacheEvsIndex) keysFromEvent(event *Event) []eventCacheEvsIndexKey {
 	return ret
 }
 
-func (c eventCacheEvsIndex) keysFromReqFilter(filter *ReqFilter) [][]eventCacheEvsIndexKey {
+func (c *eventCacheEvsIndex) keysFromReqFilter(filter *ReqFilter) [][]eventCacheEvsIndexKey {
 	var ret [][]eventCacheEvsIndexKey
 
 	if filter.IDs != nil {
@@ -340,35 +350,35 @@ func (c eventCacheEvsIndex) keysFromReqFilter(filter *ReqFilter) [][]eventCacheE
 	return ret
 }
 
-func (c eventCacheEvsIndex) isFullScanReqFilter(filter *ReqFilter) bool {
+func (c *eventCacheEvsIndex) isFullScanReqFilter(filter *ReqFilter) bool {
 	return filter.IDs == nil && filter.Authors == nil && filter.Kinds == nil && filter.Tags == nil
 }
 
-func (c eventCacheEvsIndex) Add(event *Event) {
+func (c *eventCacheEvsIndex) Add(event *Event) {
 	for _, key := range c.keysFromEvent(event) {
 		var m map[string]*Event
-		if m = c[key]; m == nil {
+		if m = c.idx[key]; m == nil {
 			m = make(map[string]*Event)
-			c[key] = m
+			c.idx[key] = m
 		}
 		m[event.ID] = event
 	}
 }
 
-func (c eventCacheEvsIndex) Delete(event *Event) {
+func (c *eventCacheEvsIndex) Delete(event *Event) {
 	for _, key := range c.keysFromEvent(event) {
-		m, ok := c[key]
+		m, ok := c.idx[key]
 		if !ok {
 			continue
 		}
 		delete(m, event.ID)
 		if len(m) == 0 {
-			delete(c, key)
+			delete(c.idx, key)
 		}
 	}
 }
 
-func (c eventCacheEvsIndex) Find(
+func (c *eventCacheEvsIndex) Find(
 	filter *ReqFilter,
 ) (ret *treemap.TreeMap[eventCacheEvsCreatedAtKey, *Event], ok bool) {
 	ok = !c.isFullScanReqFilter(filter)
@@ -385,9 +395,14 @@ func (c eventCacheEvsIndex) Find(
 	idMaps := make([]map[string]*Event, 0, len(keysSlice))
 
 	for _, keys := range keysSlice {
-		m := make(map[string]*Event)
+		size := 0
 		for _, key := range keys {
-			for id, ev := range c[key] {
+			size += len(c.idx[key])
+		}
+
+		m := make(map[string]*Event, min(size, c.total))
+		for _, key := range keys {
+			for id, ev := range c.idx[key] {
 				m[id] = ev
 			}
 		}
