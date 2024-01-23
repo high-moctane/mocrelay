@@ -1024,11 +1024,10 @@ func BuildMiddlewareFromNIP11(nip11 *NIP11) Middleware {
 	}
 
 	return func(h Handler) Handler {
+		bases := make([]SimpleMiddlewareBaseInterface, 0, 7)
 		if v := nip11.Limitation.MaxSubscriptions; v != 0 {
-			h = NewMaxSubscriptionsMiddleware(v)(h)
+			bases = append(bases, NewSimpleMaxSubscriptionsMiddlewareBase(v))
 		}
-
-		bases := make([]SimpleMiddlewareBaseInterface, 0, 6)
 		if v := nip11.Limitation.MaxFilters; v != 0 {
 			bases = append(bases, NewSimpleMaxReqFiltersMiddlewareBase(v))
 		}
@@ -1123,24 +1122,24 @@ func (m *SimpleEventCreatedAtMiddlewareBase) HandleServerMsg(
 type MaxSubscriptionsMiddleware Middleware
 
 func NewMaxSubscriptionsMiddleware(maxSubs int) MaxSubscriptionsMiddleware {
-	return func(h Handler) Handler {
-		return HandlerFunc(
-			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error {
-				sm := NewSimpleMaxSubscriptionsMiddlewareBase(maxSubs)
-				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(ctx, recv, send)
-			},
-		)
-	}
+	return MaxSubscriptionsMiddleware(
+		NewSimpleMiddleware(NewSimpleMaxSubscriptionsMiddlewareBase(maxSubs)),
+	)
 }
 
 type SimpleMaxSubscriptionsMiddlewareBase struct {
 	maxSubs int
 
-	// map[subID]exist
-	mu   sync.Mutex
-	subs map[string]bool
+	// map[reqID][subID]exist
+	subs *safeMap[string, struct {
+		mu sync.Mutex
+		m  map[string]bool
+	}]
 }
+
+type simpleMaxSubscriptionsMiddlewareBaseCtxKeyType struct{}
+
+var simpleMaxSubscriptionsMiddlewareBaseCtxKey = simpleMaxSubscriptionsMiddlewareBaseCtxKeyType{}
 
 func NewSimpleMaxSubscriptionsMiddlewareBase(
 	maxSubs int,
@@ -1150,39 +1149,71 @@ func NewSimpleMaxSubscriptionsMiddlewareBase(
 	}
 	return &SimpleMaxSubscriptionsMiddlewareBase{
 		maxSubs: maxSubs,
-		subs:    make(map[string]bool, maxSubs+1),
+		subs: newSafeMap[string, struct {
+			mu sync.Mutex
+			m  map[string]bool
+		}](),
 	}
 }
 
 func (m *SimpleMaxSubscriptionsMiddlewareBase) HandleStart(
 	ctx context.Context,
 ) (context.Context, error) {
+	reqID := uuid.NewString()
+	ctx = context.WithValue(ctx, simpleMaxSubscriptionsMiddlewareBaseCtxKey, reqID)
+
+	m.subs.Add(reqID, struct {
+		mu sync.Mutex
+		m  map[string]bool
+	}{
+		m: make(map[string]bool, m.maxSubs),
+	})
+
 	return ctx, nil
 }
 
 func (m *SimpleMaxSubscriptionsMiddlewareBase) HandleStop(ctx context.Context) error {
+	reqID := ctx.Value(simpleMaxSubscriptionsMiddlewareBaseCtxKey).(string)
+
+	m.subs.Delete(reqID)
+
 	return nil
 }
 
 func (m *SimpleMaxSubscriptionsMiddlewareBase) HandleClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
-) (<-chan ClientMsg, <-chan ServerMsg, error) {
-	// TODO(high-moctane) small critical section
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+) (cmsgCh <-chan ClientMsg, smsgCh <-chan ServerMsg, err error) {
 	switch msg := msg.(type) {
 	case *ClientReqMsg:
-		m.subs[msg.SubscriptionID] = true
-		if len(m.subs) > m.maxSubs {
-			delete(m.subs, msg.SubscriptionID)
-			closed := NewServerClosedMsgf(msg.SubscriptionID, "", "too many req: max subscriptions is %d", m.maxSubs)
-			return nil, newClosedBufCh[ServerMsg](closed), nil
+		reqID := ctx.Value(simpleMaxSubscriptionsMiddlewareBaseCtxKey).(string)
+		mm := m.subs.Get(reqID)
+		done := func() bool {
+			mm.mu.Lock()
+			defer mm.mu.Unlock()
+
+			mm.m[msg.SubscriptionID] = true
+			if len(mm.m) > m.maxSubs {
+				delete(mm.m, msg.SubscriptionID)
+				closed := NewServerClosedMsgf(msg.SubscriptionID, "", "too many req: max subscriptions is %d", m.maxSubs)
+				smsgCh = newClosedBufCh[ServerMsg](closed)
+				return true
+			}
+			return false
+		}()
+		if done {
+			return
 		}
 
 	case *ClientCloseMsg:
-		delete(m.subs, msg.SubscriptionID)
+		reqID := ctx.Value(simpleMaxSubscriptionsMiddlewareBaseCtxKey).(string)
+		mm := m.subs.Get(reqID)
+		func() {
+			mm.mu.Lock()
+			defer mm.mu.Unlock()
+
+			delete(mm.m, msg.SubscriptionID)
+		}()
 	}
 
 	return newClosedBufCh(msg), nil, nil
