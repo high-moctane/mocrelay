@@ -866,7 +866,9 @@ func NewSimpleMiddleware(bases ...SimpleMiddlewareBaseInterface) SimpleMiddlewar
 		return HandlerFunc(
 			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
 				for _, base := range bases {
-					defer func() { err = errors.Join(err, base.HandleStop(ctx)) }()
+					defer func(base SimpleMiddlewareBaseInterface) {
+						err = errors.Join(err, base.HandleStop(ctx))
+					}(base)
 
 					ctx, err = base.HandleStart(ctx)
 					if err != nil {
