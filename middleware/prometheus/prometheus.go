@@ -15,7 +15,7 @@ import (
 type PrometheusMiddleware mocrelay.SimpleMiddleware
 
 func NewPrometheusMiddleware(reg prometheus.Registerer) PrometheusMiddleware {
-	m := newSimplePrometheusMiddleware(reg)
+	m := NewSimplePrometheusMiddlewareBase(reg)
 	return PrometheusMiddleware(mocrelay.NewSimpleMiddleware(m))
 }
 
@@ -32,7 +32,7 @@ func getRequestID(ctx context.Context) string {
 	return reqID
 }
 
-type simplePrometheusMiddleware struct {
+type SimplePrometheusMiddlewareBase struct {
 	connectionCount prometheus.Gauge
 	recvMsgTotal    *prometheus.CounterVec
 	recvEventTotal  *prometheus.CounterVec
@@ -47,10 +47,10 @@ type simplePrometheusMiddleware struct {
 	reqStartTime   map[string]map[string]time.Time
 }
 
-func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusMiddleware {
+func NewSimplePrometheusMiddlewareBase(reg prometheus.Registerer) *SimplePrometheusMiddlewareBase {
 	reqCounter := newReqCounter()
 
-	m := &simplePrometheusMiddleware{
+	m := &SimplePrometheusMiddlewareBase{
 		connectionCount: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "mocrelay_connection_count",
 			Help: "Current websocket connection count.",
@@ -104,7 +104,7 @@ func newSimplePrometheusMiddleware(reg prometheus.Registerer) *simplePrometheusM
 	return m
 }
 
-func (m *simplePrometheusMiddleware) HandleStart(ctx context.Context) (context.Context, error) {
+func (m *SimplePrometheusMiddlewareBase) HandleStart(ctx context.Context) (context.Context, error) {
 	m.connectionCount.Inc()
 
 	reqID := uuid.NewString()
@@ -114,7 +114,7 @@ func (m *simplePrometheusMiddleware) HandleStart(ctx context.Context) (context.C
 	return ctx, nil
 }
 
-func (m *simplePrometheusMiddleware) HandleStop(ctx context.Context) error {
+func (m *SimplePrometheusMiddlewareBase) HandleStop(ctx context.Context) error {
 	m.connectionCount.Dec()
 
 	reqID := getRequestID(ctx)
@@ -124,7 +124,7 @@ func (m *simplePrometheusMiddleware) HandleStop(ctx context.Context) error {
 	return nil
 }
 
-func (m *simplePrometheusMiddleware) HandleClientMsg(
+func (m *SimplePrometheusMiddlewareBase) HandleClientMsg(
 	ctx context.Context,
 	msg mocrelay.ClientMsg,
 ) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
@@ -165,7 +165,7 @@ func (m *simplePrometheusMiddleware) HandleClientMsg(
 	return res, nil, nil
 }
 
-func (m *simplePrometheusMiddleware) HandleServerMsg(
+func (m *SimplePrometheusMiddlewareBase) HandleServerMsg(
 	ctx context.Context,
 	msg mocrelay.ServerMsg,
 ) (<-chan mocrelay.ServerMsg, error) {
@@ -203,7 +203,7 @@ func (m *simplePrometheusMiddleware) HandleServerMsg(
 	return res, nil
 }
 
-func (m *simplePrometheusMiddleware) startReqTimer(reqID, subID string) {
+func (m *SimplePrometheusMiddlewareBase) startReqTimer(reqID, subID string) {
 	m.reqStartTimeMu.Lock()
 	defer m.reqStartTimeMu.Unlock()
 
@@ -215,7 +215,7 @@ func (m *simplePrometheusMiddleware) startReqTimer(reqID, subID string) {
 	mm[subID] = time.Now()
 }
 
-func (m *simplePrometheusMiddleware) stopReqTimer(reqID, subID string) time.Duration {
+func (m *SimplePrometheusMiddlewareBase) stopReqTimer(reqID, subID string) time.Duration {
 	m.reqStartTimeMu.Lock()
 	defer m.reqStartTimeMu.Unlock()
 
@@ -228,7 +228,7 @@ func (m *simplePrometheusMiddleware) stopReqTimer(reqID, subID string) time.Dura
 	return time.Since(start)
 }
 
-func (m *simplePrometheusMiddleware) deleteReqTimer(reqID string) {
+func (m *SimplePrometheusMiddlewareBase) deleteReqTimer(reqID string) {
 	m.reqStartTimeMu.Lock()
 	defer m.reqStartTimeMu.Unlock()
 

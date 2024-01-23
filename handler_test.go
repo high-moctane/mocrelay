@@ -1103,16 +1103,16 @@ func TestMergeHandler(t *testing.T) {
 	}
 }
 
-type testSimpleMiddlewareInterfaceEntry struct {
+type testSimpleMiddlewareBaseInterfaceEntry struct {
 	input     any
 	wantCmsgs []ClientMsg
 	wantSmsgs []ServerMsg
 }
 
-func helperTestSimpleMiddlewareInterface(
+func helperTestSimpleMiddlewareBaseInterface(
 	t *testing.T,
-	m SimpleMiddlewareInterface,
-	entries []testSimpleMiddlewareInterfaceEntry,
+	m SimpleMiddlewareBaseInterface,
+	entries []testSimpleMiddlewareBaseInterfaceEntry,
 ) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1193,12 +1193,12 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 	tests := []struct {
 		name    string
 		maxSubs int
-		entries []testSimpleMiddlewareInterfaceEntry
+		entries []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:    "req only",
 			maxSubs: 3,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "sub1",
@@ -1258,7 +1258,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 		{
 			name:    "with close",
 			maxSubs: 3,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "sub1",
@@ -1331,7 +1331,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 		{
 			name:    "with duplication",
 			maxSubs: 3,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "sub1",
@@ -1395,8 +1395,8 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleMaxSubscriptionsMiddleware(tt.maxSubs)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleMaxSubscriptionsMiddlewareBase(tt.maxSubs)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1405,12 +1405,12 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 	tests := []struct {
 		name       string
 		maxFilters int
-		entries    []testSimpleMiddlewareInterfaceEntry
+		entries    []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:       "req: ok",
 			maxFilters: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "req1",
@@ -1428,7 +1428,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 		{
 			name:       "req: ng",
 			maxFilters: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "req1",
@@ -1443,7 +1443,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 		{
 			name:       "count: ok",
 			maxFilters: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientCountMsg{
 						SubscriptionID: "count1",
@@ -1461,7 +1461,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 		{
 			name:       "count: ng",
 			maxFilters: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientCountMsg{
 						SubscriptionID: "count1",
@@ -1481,8 +1481,8 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleMaxReqFiltersMiddleware(tt.maxFilters)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleMaxReqFiltersMiddlewareBase(tt.maxFilters)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1491,12 +1491,12 @@ func TestMaxLimitMiddleware(t *testing.T) {
 	tests := []struct {
 		name     string
 		maxLimit int
-		entries  []testSimpleMiddlewareInterfaceEntry
+		entries  []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:     "req: ok: no limit",
 			maxLimit: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "req1",
@@ -1514,7 +1514,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 		{
 			name:     "req: ok: with limit",
 			maxLimit: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "req1",
@@ -1532,7 +1532,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 		{
 			name:     "req: ng",
 			maxLimit: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "req1",
@@ -1547,7 +1547,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 		{
 			name:     "count: ok: no limit",
 			maxLimit: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientCountMsg{
 						SubscriptionID: "count",
@@ -1565,7 +1565,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 		{
 			name:     "count: ok: with limit",
 			maxLimit: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientCountMsg{
 						SubscriptionID: "count",
@@ -1583,7 +1583,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 		{
 			name:     "count: ng",
 			maxLimit: 2,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientCountMsg{
 						SubscriptionID: "count",
@@ -1599,8 +1599,8 @@ func TestMaxLimitMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleMaxLimitMiddleware(tt.maxLimit)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleMaxLimitMiddlewareBase(tt.maxLimit)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1609,12 +1609,12 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 	tests := []struct {
 		name     string
 		maxLimit int
-		entries  []testSimpleMiddlewareInterfaceEntry
+		entries  []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:     "req: ok",
 			maxLimit: 5,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "12345",
@@ -1632,7 +1632,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 		{
 			name:     "req: ng",
 			maxLimit: 5,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientReqMsg{
 						SubscriptionID: "123456",
@@ -1647,7 +1647,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 		{
 			name:     "count: ok",
 			maxLimit: 5,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientCountMsg{
 						SubscriptionID: "12345",
@@ -1665,7 +1665,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 		{
 			name:     "count: ng",
 			maxLimit: 5,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientCountMsg{
 						SubscriptionID: "123456",
@@ -1681,8 +1681,8 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleMaxSubIDLengthMiddleware(tt.maxLimit)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleMaxSubIDLengthMiddlewareBase(tt.maxLimit)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1691,12 +1691,12 @@ func TestMaxEventTagsMiddleware(t *testing.T) {
 	tests := []struct {
 		name         string
 		maxEventTags int
-		entries      []testSimpleMiddlewareInterfaceEntry
+		entries      []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:         "ok",
 			maxEventTags: 3,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1718,7 +1718,7 @@ func TestMaxEventTagsMiddleware(t *testing.T) {
 		{
 			name:         "ng",
 			maxEventTags: 3,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1741,8 +1741,8 @@ func TestMaxEventTagsMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleMaxEventTagsMiddleware(tt.maxEventTags)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleMaxEventTagsMiddlewareBase(tt.maxEventTags)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1751,12 +1751,12 @@ func TestMaxContentLengthMiddleware(t *testing.T) {
 	tests := []struct {
 		name             string
 		maxContentLength int
-		entries          []testSimpleMiddlewareInterfaceEntry
+		entries          []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:             "ok",
 			maxContentLength: 5,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1778,7 +1778,7 @@ func TestMaxContentLengthMiddleware(t *testing.T) {
 		{
 			name:             "ng",
 			maxContentLength: 5,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1801,8 +1801,8 @@ func TestMaxContentLengthMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleMaxContentLengthMiddleware(tt.maxContentLength)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleMaxContentLengthMiddlewareBase(tt.maxContentLength)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1811,12 +1811,12 @@ func TestCreatedAtLowerLimitMiddleware(t *testing.T) {
 	tests := []struct {
 		name    string
 		lower   int64
-		entries []testSimpleMiddlewareInterfaceEntry
+		entries []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:  "ok: past",
 			lower: 10,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1838,7 +1838,7 @@ func TestCreatedAtLowerLimitMiddleware(t *testing.T) {
 		{
 			name:  "ok: future",
 			lower: 10,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1860,7 +1860,7 @@ func TestCreatedAtLowerLimitMiddleware(t *testing.T) {
 		{
 			name:  "ng",
 			lower: 10,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1878,8 +1878,8 @@ func TestCreatedAtLowerLimitMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleCreatedAtLowerLimitMiddleware(tt.lower)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleCreatedAtLowerLimitMiddlewareBase(tt.lower)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
@@ -1888,12 +1888,12 @@ func TestCreatedAtUpperLimitMiddleware(t *testing.T) {
 	tests := []struct {
 		name    string
 		upper   int64
-		entries []testSimpleMiddlewareInterfaceEntry
+		entries []testSimpleMiddlewareBaseInterfaceEntry
 	}{
 		{
 			name:  "ok: past",
 			upper: 10,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1915,7 +1915,7 @@ func TestCreatedAtUpperLimitMiddleware(t *testing.T) {
 		{
 			name:  "ok: future",
 			upper: 10,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1937,7 +1937,7 @@ func TestCreatedAtUpperLimitMiddleware(t *testing.T) {
 		{
 			name:  "ng",
 			upper: 10,
-			entries: []testSimpleMiddlewareInterfaceEntry{
+			entries: []testSimpleMiddlewareBaseInterfaceEntry{
 				{
 					input: &ClientEventMsg{
 						&Event{
@@ -1955,8 +1955,8 @@ func TestCreatedAtUpperLimitMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newSimpleCreatedAtUpperLimitMiddleware(tt.upper)
-			helperTestSimpleMiddlewareInterface(t, m, tt.entries)
+			m := NewSimpleCreatedAtUpperLimitMiddlewareBase(tt.upper)
+			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
 }
