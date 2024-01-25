@@ -13,7 +13,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			pubkey     text not null,
 			created_at integer not null,
 			kind       integer not null,
-			tags       text not null,
+			tags       blob not null,
 			content    text not null,
 			sig        text not null
 		) strict, without rowid;
