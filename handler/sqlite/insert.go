@@ -112,9 +112,13 @@ func buildInsertEvents(
 		}
 
 		var tagBytes []byte
-		tagBytes, err = json.Marshal(event.Tags)
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to marshal tags: %w", err)
+		if len(event.Tags) == 0 {
+			tagBytes = []byte("[]")
+		} else {
+			tagBytes, err = json.Marshal(event.Tags)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal tags: %w", err)
+			}
 		}
 
 		entries = append(entries, entry{
