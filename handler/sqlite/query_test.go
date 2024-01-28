@@ -776,11 +776,8 @@ func Test_queryEvent(t *testing.T) {
 				t.Fatalf("failed to migrate: %v", err)
 			}
 
-			for _, event := range tt.input {
-				_, err := insertEvent(ctx, db, event)
-				if err != nil {
-					t.Fatalf("failed to insert event: %v", err)
-				}
+			if _, err := insertEvents(ctx, db, tt.input); err != nil {
+				t.Fatalf("failed to insert event: %v", err)
 			}
 
 			got, err := queryEvent(ctx, db, tt.fs)

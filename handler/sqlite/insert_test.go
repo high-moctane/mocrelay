@@ -10,25 +10,27 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_insertEvent(t *testing.T) {
+func Test_insertEvents(t *testing.T) {
 	tests := []struct {
 		name         string
-		event        *mocrelay.Event
+		events       []*mocrelay.Event
 		wantAffected int64
 		wantErr      bool
 	}{
 		{
 			name: "insert event",
-			event: &mocrelay.Event{
-				ID:        "id",
-				Pubkey:    "pubkey",
-				CreatedAt: 1234,
-				Kind:      1,
-				Tags: []mocrelay.Tag{
-					{"e", "value"},
+			events: []*mocrelay.Event{
+				{
+					ID:        "id",
+					Pubkey:    "pubkey",
+					CreatedAt: 1234,
+					Kind:      1,
+					Tags: []mocrelay.Tag{
+						{"e", "value"},
+					},
+					Content: "content",
+					Sig:     "sig",
 				},
-				Content: "content",
-				Sig:     "sig",
 			},
 			wantAffected: 1,
 			wantErr:      false,
@@ -47,7 +49,7 @@ func Test_insertEvent(t *testing.T) {
 				t.Fatalf("failed to migrate: %v", err)
 			}
 
-			affected, err := insertEvent(ctx, db, tt.event)
+			affected, err := insertEvents(ctx, db, tt.events)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("insertEvent() error = %v, wantErr %v", err, tt.wantErr)
 				return
