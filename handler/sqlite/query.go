@@ -14,9 +14,9 @@ import (
 func queryEvent(
 	ctx context.Context,
 	db *sql.DB,
-	f *mocrelay.ReqFilter,
+	fs []*mocrelay.ReqFilter,
 ) (events []*mocrelay.Event, err error) {
-	q, param, err := buildEventQuery(f)
+	q, param, err := buildEventQuery(fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -29,57 +29,71 @@ func queryEvent(
 	return
 }
 
-func buildEventQuery(f *mocrelay.ReqFilter) (query string, param []any, err error) {
+func buildEventQuery(fs []*mocrelay.ReqFilter) (query string, param []any, err error) {
 	e := goqu.T("events")
-	b := goqu.Dialect("sqlite3").Select(
-		e.Col("id"),
-		e.Col("pubkey"),
-		e.Col("created_at"),
-		e.Col("kind"),
-		e.Col("tags"),
-		e.Col("content"),
-		e.Col("sig"),
-	).From("events").Order(goqu.I("events.created_at").Desc())
 
-	if f != nil {
-		if f.IDs != nil {
-			b = b.Where(e.Col("id").In(f.IDs))
-		}
+	var builder *goqu.SelectDataset
 
-		if f.Authors != nil {
-			b = b.Where(e.Col("pubkey").In(f.Authors))
-		}
+	for i, f := range fs {
+		b := goqu.Dialect("sqlite3").Select(
+			e.Col("id"),
+			e.Col("pubkey"),
+			e.Col("created_at"),
+			e.Col("kind"),
+			e.Col("tags"),
+			e.Col("content"),
+			e.Col("sig"),
+		).From("events")
 
-		if f.Kinds != nil {
-			b = b.Where(e.Col("kind").In(f.Kinds))
-		}
+		if f != nil {
+			if f.IDs != nil {
+				b = b.Where(e.Col("id").In(f.IDs))
+			}
 
-		if f.Tags != nil {
-			for tag, values := range f.Tags {
-				tname := fmt.Sprintf("tag%s", tag)
-				b = b.Join(goqu.L(fmt.Sprintf("json_each(events.tags) as %s", tname)), goqu.On(
-					goqu.And(
-						goqu.L(fmt.Sprintf("%s.value->>0", tname)).Eq(tag),
-						goqu.L(fmt.Sprintf("ifnull(%s.value->>1, '')", tname)).In(values),
-					),
-				))
+			if f.Authors != nil {
+				b = b.Where(e.Col("pubkey").In(f.Authors))
+			}
+
+			if f.Kinds != nil {
+				b = b.Where(e.Col("kind").In(f.Kinds))
+			}
+
+			if f.Tags != nil {
+				for tag, values := range f.Tags {
+					tname := fmt.Sprintf("tag%s", tag)
+					b = b.Join(goqu.L(fmt.Sprintf("json_each(events.tags) as %s", tname)), goqu.On(
+						goqu.And(
+							goqu.L(fmt.Sprintf("%s.value->>0", tname)).Eq(tag),
+							goqu.L(fmt.Sprintf("ifnull(%s.value->>1, '')", tname)).In(values),
+						),
+					))
+				}
+			}
+
+			if f.Since != nil {
+				b = b.Where(e.Col("created_at").Gte(*f.Since))
+			}
+
+			if f.Until != nil {
+				b = b.Where(e.Col("created_at").Lte(*f.Until))
+			}
+
+			if f.Limit != nil {
+				b = b.Order(goqu.I("created_at").Desc())
+				b = b.Limit(uint(*f.Limit))
 			}
 		}
 
-		if f.Since != nil {
-			b = b.Where(e.Col("created_at").Gte(*f.Since))
-		}
-
-		if f.Until != nil {
-			b = b.Where(e.Col("created_at").Lte(*f.Until))
-		}
-
-		if f.Limit != nil {
-			b = b.Limit(uint(*f.Limit))
+		if i == 0 {
+			builder = b
+		} else {
+			builder = builder.Union(b)
 		}
 	}
 
-	return b.ToSQL()
+	builder = builder.Order(goqu.I("created_at").Desc())
+
+	return builder.ToSQL()
 }
 
 func fetchEventQuery(

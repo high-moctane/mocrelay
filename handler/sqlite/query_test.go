@@ -15,7 +15,7 @@ func Test_queryEvent(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   []*mocrelay.Event
-		f       *mocrelay.ReqFilter
+		fs      []*mocrelay.ReqFilter
 		want    []*mocrelay.Event
 		wantErr bool
 	}{
@@ -32,7 +32,7 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{},
+			fs: []*mocrelay.ReqFilter{{}},
 			want: []*mocrelay.Event{
 				{
 					ID:        "id",
@@ -77,8 +77,10 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				IDs: []string{"id2", "id3"},
+			fs: []*mocrelay.ReqFilter{
+				{
+					IDs: []string{"id2", "id3"},
+				},
 			},
 			want: []*mocrelay.Event{
 				{
@@ -142,8 +144,10 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				Authors: []string{"pubkey1", "pubkey2"},
+			fs: []*mocrelay.ReqFilter{
+				{
+					Authors: []string{"pubkey1", "pubkey2"},
+				},
 			},
 			want: []*mocrelay.Event{
 				{
@@ -216,8 +220,10 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				Kinds: []int64{1, 10000},
+			fs: []*mocrelay.ReqFilter{
+				{
+					Kinds: []int64{1, 10000},
+				},
 			},
 			want: []*mocrelay.Event{
 				{
@@ -290,8 +296,10 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				Kinds: []int64{1, 10000},
+			fs: []*mocrelay.ReqFilter{
+				{
+					Kinds: []int64{1, 10000},
+				},
 			},
 			want: []*mocrelay.Event{
 				{
@@ -388,10 +396,12 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				Tags: map[string][]string{
-					"e": {"value1", "value3"},
-					"p": {""},
+			fs: []*mocrelay.ReqFilter{
+				{
+					Tags: map[string][]string{
+						"e": {"value1", "value3"},
+						"p": {""},
+					},
 				},
 			},
 			want: []*mocrelay.Event{
@@ -459,8 +469,10 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				Since: toPtr[int64](1235),
+			fs: []*mocrelay.ReqFilter{
+				{
+					Since: toPtr[int64](1235),
+				},
 			},
 			want: []*mocrelay.Event{
 				{
@@ -515,8 +527,10 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				Until: toPtr[int64](1235),
+			fs: []*mocrelay.ReqFilter{
+				{
+					Until: toPtr[int64](1235),
+				},
 			},
 			want: []*mocrelay.Event{
 				{
@@ -571,8 +585,10 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 			},
-			f: &mocrelay.ReqFilter{
-				Limit: toPtr[int64](2),
+			fs: []*mocrelay.ReqFilter{
+				{
+					Limit: toPtr[int64](2),
+				},
 			},
 			want: []*mocrelay.Event{
 				{
@@ -630,16 +646,18 @@ func Test_queryEvent(t *testing.T) {
 
 				return events
 			}(),
-			f: &mocrelay.ReqFilter{
-				Authors: []string{"pubkey1", "pubkey3"},
-				Kinds:   []int64{1, 10000},
-				Tags: map[string][]string{
-					"e": {"value1", "value2"},
-					"p": {""},
+			fs: []*mocrelay.ReqFilter{
+				{
+					Authors: []string{"pubkey1", "pubkey3"},
+					Kinds:   []int64{1, 10000},
+					Tags: map[string][]string{
+						"e": {"value1", "value2"},
+						"p": {""},
+					},
+					Since: toPtr[int64](50),
+					Until: toPtr[int64](67),
+					Limit: toPtr[int64](2),
 				},
-				Since: toPtr[int64](50),
-				Until: toPtr[int64](67),
-				Limit: toPtr[int64](2),
 			},
 			want: []*mocrelay.Event{
 				{
@@ -665,6 +683,85 @@ func Test_queryEvent(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "multiple filters",
+			input: []*mocrelay.Event{
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey1",
+					CreatedAt: 1,
+					Kind:      1,
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey1",
+					CreatedAt: 2,
+					Kind:      1,
+				},
+				{
+					ID:        "id3",
+					Pubkey:    "pubkey1",
+					CreatedAt: 3,
+					Kind:      1,
+				},
+				{
+					ID:        "id4",
+					Pubkey:    "pubkey1",
+					CreatedAt: 4,
+					Kind:      1,
+				},
+				{
+					ID:        "id5",
+					Pubkey:    "pubkey2",
+					CreatedAt: 5,
+					Kind:      1,
+				},
+				{
+					ID:        "id6",
+					Pubkey:    "pubkey2",
+					CreatedAt: 6,
+					Kind:      1,
+				},
+			},
+			fs: []*mocrelay.ReqFilter{
+				{
+					Authors: []string{"pubkey2"},
+				},
+				{
+					IDs: []string{"id1", "id5"},
+				},
+				{
+					IDs: []string{"id2", "id5"},
+				},
+			},
+			want: []*mocrelay.Event{
+				{
+					ID:        "id6",
+					Pubkey:    "pubkey2",
+					CreatedAt: 6,
+					Kind:      1,
+				},
+				{
+					ID:        "id5",
+					Pubkey:    "pubkey2",
+					CreatedAt: 5,
+					Kind:      1,
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey1",
+					CreatedAt: 2,
+					Kind:      1,
+				},
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey1",
+					CreatedAt: 1,
+					Kind:      1,
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -686,7 +783,7 @@ func Test_queryEvent(t *testing.T) {
 				}
 			}
 
-			got, err := queryEvent(ctx, db, tt.f)
+			got, err := queryEvent(ctx, db, tt.fs)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("queryEvent() error = %v, wantErr %v", err, tt.wantErr)
 				return
