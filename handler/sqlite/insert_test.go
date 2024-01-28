@@ -11,29 +11,685 @@ import (
 )
 
 func Test_insertEvents(t *testing.T) {
-	tests := []struct {
-		name         string
+	type try struct {
 		events       []*mocrelay.Event
 		wantAffected int64
 		wantErr      bool
+	}
+
+	tests := []struct {
+		name  string
+		try1  try
+		try2  try
+		total int64
 	}{
 		{
-			name: "insert event",
-			events: []*mocrelay.Event{
-				{
-					ID:        "id",
-					Pubkey:    "pubkey",
-					CreatedAt: 1234,
-					Kind:      1,
-					Tags: []mocrelay.Tag{
-						{"e", "value"},
+			name: "insert regular event",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      1,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
 					},
-					Content: "content",
-					Sig:     "sig",
 				},
+				wantAffected: 1,
+				wantErr:      false,
 			},
-			wantAffected: 1,
-			wantErr:      false,
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      1,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 2,
+		},
+		{
+			name: "insert regular event: duplicate id",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      1,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      1,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 0,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert replaceable event",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert replaceable event: duplicate id",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 0,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert replaceable event: same",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert replaceable event: different pubkey",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey2",
+						CreatedAt: 2,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 2,
+		},
+		{
+			name: "insert replaceable event: different kind",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      10001,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 2,
+		},
+		{
+			name: "insert replaceable event: duplicate pubkey and kind but too old",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 100,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 0,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert ephemeral event",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      20000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 0,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      20000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+				},
+				wantAffected: 0,
+				wantErr:      false,
+			},
+			total: 0,
+		},
+		{
+			name: "insert parametrized replaceable event",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert parametrized replaceable event: duplicate",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 0,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert parametrized replaceable event: same",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert parametrized replaceable event: same but too old",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 100,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 0,
+				wantErr:      false,
+			},
+			total: 1,
+		},
+		{
+			name: "insert parametrized replaceable event: different pubkey",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey2",
+						CreatedAt: 2,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 2,
+		},
+		{
+			name: "insert parametrized replaceable event: different kind",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      30001,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 2,
+		},
+		{
+			name: "insert parametrized replaceable event: different tag",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey",
+						CreatedAt: 2,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 1,
+				wantErr:      false,
+			},
+			total: 2,
+		},
+		{
+			name: "all",
+			try1: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      1,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id3",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      20000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id4",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 3,
+				wantErr:      false,
+			},
+			try2: try{
+				events: []*mocrelay.Event{
+					{
+						ID:        "id1",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      1,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id11",
+						Pubkey:    "pubkey1",
+						CreatedAt: 2,
+						Kind:      1,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id2",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id21",
+						Pubkey:    "pubkey1",
+						CreatedAt: 2,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id22",
+						Pubkey:    "pubkey2",
+						CreatedAt: 2,
+						Kind:      10000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id3",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      20000,
+						Tags: []mocrelay.Tag{
+							{"e", "value"},
+						},
+					},
+					{
+						ID:        "id4",
+						Pubkey:    "pubkey1",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+					{
+						ID:        "id41",
+						Pubkey:    "pubkey2",
+						CreatedAt: 1,
+						Kind:      30000,
+						Tags: []mocrelay.Tag{
+							{"d", "value"},
+						},
+					},
+				},
+				wantAffected: 4,
+				wantErr:      false,
+			},
+			total: 6,
 		},
 	}
 
@@ -49,12 +705,29 @@ func Test_insertEvents(t *testing.T) {
 				t.Fatalf("failed to migrate: %v", err)
 			}
 
-			affected, err := insertEvents(ctx, db, tt.events)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("insertEvent() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.try1.events != nil {
+				affected, err := insertEvents(ctx, db, tt.try1.events)
+				if (err != nil) != tt.try1.wantErr {
+					t.Errorf("try1: insertEvent() error = %v, wantErr %v", err, tt.try1.wantErr)
+					return
+				}
+				assert.Equal(t, tt.try1.wantAffected, affected)
 			}
-			assert.Equal(t, affected, tt.wantAffected)
+
+			if tt.try2.events != nil {
+				affected, err := insertEvents(ctx, db, tt.try2.events)
+				if (err != nil) != tt.try2.wantErr {
+					t.Errorf("try2: insertEvent() error = %v, wantErr %v", err, tt.try2.wantErr)
+					return
+				}
+				assert.Equal(t, tt.try2.wantAffected, affected)
+			}
+
+			var total int64
+			if err := db.QueryRowContext(ctx, "select count(*) from events").Scan(&total); err != nil {
+				t.Fatalf("failed to get total: %v", err)
+			}
+			assert.Equal(t, tt.total, total)
 		})
 	}
 }
