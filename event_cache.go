@@ -206,7 +206,7 @@ func (c *EventCache) getEventKey(event *Event) string {
 		return event.ID
 
 	case EventTypeReplaceable:
-		return fmt.Sprintf("%s:%d", event.Pubkey, event.Kind)
+		return fmt.Sprintf("%d:%s", event.Kind, event.Pubkey)
 
 	case EventTypeParamReplaceable:
 		idx := slices.IndexFunc(event.Tags, func(t Tag) bool {
@@ -221,7 +221,7 @@ func (c *EventCache) getEventKey(event *Event) string {
 			d = event.Tags[idx][1]
 		}
 
-		return fmt.Sprintf("%s:%d:%s", event.Pubkey, event.Kind, d)
+		return fmt.Sprintf("%d:%s:%s", event.Kind, event.Pubkey, d)
 	}
 
 	return ""
