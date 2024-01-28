@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net"
 	"net/http"
@@ -10,7 +11,9 @@ import (
 	"time"
 
 	"github.com/high-moctane/mocrelay"
+	mocsqlite "github.com/high-moctane/mocrelay/handler/sqlite"
 	mocprom "github.com/high-moctane/mocrelay/middleware/prometheus"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -23,12 +26,22 @@ func main() {
 
 	reg := prometheus.NewRegistry()
 
+	db, err := sql.Open("sqlite3", ":memory:?cache=shared")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	sqliteHandler, err := mocsqlite.NewSQLiteHandler(ctx, db)
+	if err != nil {
+		panic(err)
+	}
+
 	h := mocrelay.NewMergeHandler(
 		mocrelay.NewCacheHandler(100),
-		mocrelay.NewSendEventUniqueFilterMiddleware(10)(mocrelay.NewRouterHandler(100)),
+		mocrelay.NewRouterHandler(100),
+		sqliteHandler,
 	)
-	h = mocrelay.NewEventCreatedAtMiddleware(-5*time.Minute, 1*time.Minute)(h)
-	h = mocrelay.NewRecvEventUniqueFilterMiddleware(10)(h)
 	h = mocprom.NewPrometheusMiddleware(reg)(h)
 
 	opt := mocrelay.NewDefaultRelayOption()
@@ -71,6 +84,6 @@ func main() {
 		srv.Shutdown(c)
 	}()
 
-	err := srv.ListenAndServe()
+	err = srv.ListenAndServe()
 	slog.ErrorContext(ctx, "mocrelay terminated", "err", err)
 }

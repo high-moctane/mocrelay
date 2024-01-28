@@ -15,6 +15,7 @@ func TestMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open sqlite3 database: %v", err)
 	}
+	defer db.Close()
 
 	err = Migrate(ctx, db)
 	assert.NoError(t, err)

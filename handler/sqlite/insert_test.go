@@ -700,6 +700,7 @@ func Test_insertEvents(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to open db: %v", err)
 			}
+			defer db.Close()
 
 			if err := Migrate(ctx, db); err != nil {
 				t.Fatalf("failed to migrate: %v", err)
@@ -846,6 +847,7 @@ func Test_insertDeletedKeys(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to open db: %v", err)
 			}
+			defer db.Close()
 
 			if err := Migrate(ctx, db); err != nil {
 				t.Fatalf("failed to migrate: %v", err)
