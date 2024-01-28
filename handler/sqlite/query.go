@@ -11,6 +11,8 @@ import (
 	"github.com/high-moctane/mocrelay"
 )
 
+const maxLimit = 1000
+
 func queryEvent(
 	ctx context.Context,
 	db *sql.DB,
@@ -43,7 +45,7 @@ func buildEventQuery(fs []*mocrelay.ReqFilter) (query string, param []any, err e
 			e.Col("tags"),
 			e.Col("content"),
 			e.Col("sig"),
-		).From("events")
+		).From("events").Order(goqu.I("created_at").Desc())
 
 		d := goqu.T("deleted_keys")
 		b = b.Where(goqu.L("(events.key, events.pubkey)").NotIn(
@@ -86,10 +88,11 @@ func buildEventQuery(fs []*mocrelay.ReqFilter) (query string, param []any, err e
 				b = b.Where(e.Col("created_at").Lte(*f.Until))
 			}
 
+			var limit uint = maxLimit
 			if f.Limit != nil {
-				b = b.Order(goqu.I("created_at").Desc())
-				b = b.Limit(uint(*f.Limit))
+				limit = min(limit, uint(*f.Limit))
 			}
+			b = b.Limit(uint(limit))
 		}
 
 		if i == 0 {
