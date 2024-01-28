@@ -707,7 +707,7 @@ func Test_insertEvents(t *testing.T) {
 			}
 
 			if tt.try1.events != nil {
-				affected, err := insertEvents(ctx, db, tt.try1.events)
+				affected, err := insertEvents(ctx, db, 0, tt.try1.events)
 				if (err != nil) != tt.try1.wantErr {
 					t.Errorf("try1: insertEvent() error = %v, wantErr %v", err, tt.try1.wantErr)
 					return
@@ -716,7 +716,7 @@ func Test_insertEvents(t *testing.T) {
 			}
 
 			if tt.try2.events != nil {
-				affected, err := insertEvents(ctx, db, tt.try2.events)
+				affected, err := insertEvents(ctx, db, 0, tt.try2.events)
 				if (err != nil) != tt.try2.wantErr {
 					t.Errorf("try2: insertEvent() error = %v, wantErr %v", err, tt.try2.wantErr)
 					return
@@ -853,7 +853,7 @@ func Test_insertDeletedKeys(t *testing.T) {
 				t.Fatalf("failed to migrate: %v", err)
 			}
 
-			if _, err := insertEvents(ctx, db, tt.inputs); err != nil {
+			if _, err := insertEvents(ctx, db, 0, tt.inputs); err != nil {
 				t.Fatalf("failed to insert events: %v", err)
 			}
 

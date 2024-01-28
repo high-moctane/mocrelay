@@ -154,7 +154,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			if len(events) > 0 {
-				if _, err := insertEvents(ctx, h.db, events); err != nil {
+				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					// TODO(high-moctane): log
 					_ = err
 				}
@@ -164,7 +164,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 		case msg := <-h.eventCh:
 			events = append(events, msg)
 			if len(events) >= bulkInsertNum {
-				if _, err := insertEvents(ctx, h.db, events); err != nil {
+				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					// TODO(high-moctane): log
 					_ = err
 				}
@@ -173,7 +173,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 
 		case <-ticker.C:
 			if len(events) > 0 {
-				if _, err := insertEvents(ctx, h.db, events); err != nil {
+				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					// TODO(high-moctane): log
 					_ = err
 				}

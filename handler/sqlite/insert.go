@@ -16,11 +16,13 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
+	"github.com/pierrec/xxHash/xxHash32"
 )
 
 func insertEvents(
 	ctx context.Context,
 	db *sql.DB,
+	seed uint32,
 	events []*mocrelay.Event,
 ) (affected int64, err error) {
 	// kind5
@@ -37,7 +39,7 @@ func insertEvents(
 	}
 
 	// events
-	query, param, err := buildInsertEvents(ctx, events)
+	query, param, err := buildInsertEvents(ctx, seed, events)
 	if err != nil {
 		if errors.Is(err, errNoEventToInsert) {
 			return 0, nil
@@ -60,19 +62,20 @@ func insertEvents(
 
 var insertEventsTemplate = template.Must(template.New("insertEvent").Parse(`
 insert into events (
-	key, id, pubkey, created_at, kind, tags, content, sig
+	key, id, pubkey, created_at, kind, tags, content, sig, hashed_key
 ) values
 {{- range $i, $event := .}}{{if ne $i 0}},{{end}}
-	(?, ?, ?, ?, ?, ?, ?, ?)
+	(?, ?, ?, ?, ?, ?, ?, ?, ?)
 {{- end}}
 on conflict(key) do update set
-	id = excluded.id,
-	pubkey = excluded.pubkey,
+	id         = excluded.id,
+	pubkey     = excluded.pubkey,
 	created_at = excluded.created_at,
-	kind = excluded.kind,
-	tags = excluded.tags,
-	content = excluded.content,
-	sig = excluded.sig
+	kind       = excluded.kind,
+	tags       = excluded.tags,
+	content    = excluded.content,
+	sig        = excluded.sig,
+	hashed_key = excluded.hashed_key
 where
 	events.id != excluded.id
 	and
@@ -93,6 +96,7 @@ var errNoEventToInsert = fmt.Errorf("no event to insert")
 
 func buildInsertEvents(
 	ctx context.Context,
+	seed uint32,
 	events []*mocrelay.Event,
 ) (query string, param []any, err error) {
 	type entry struct {
@@ -104,6 +108,7 @@ func buildInsertEvents(
 		Tags      []byte
 		Content   string
 		Sig       string
+		HashedKey uint32
 	}
 
 	entries := make([]entry, 0, len(events))
@@ -124,6 +129,10 @@ func buildInsertEvents(
 			}
 		}
 
+		x := xxHash32.New(seed)
+		x.Write([]byte(key))
+		hashedKey := x.Sum32()
+
 		entries = append(entries, entry{
 			Key:       key,
 			ID:        event.ID,
@@ -133,6 +142,7 @@ func buildInsertEvents(
 			Tags:      tagBytes,
 			Content:   event.Content,
 			Sig:       event.Sig,
+			HashedKey: hashedKey,
 		})
 	}
 
@@ -155,6 +165,7 @@ func buildInsertEvents(
 		param = append(param, e.Tags)
 		param = append(param, e.Content)
 		param = append(param, e.Sig)
+		param = append(param, e.HashedKey)
 	}
 
 	return
