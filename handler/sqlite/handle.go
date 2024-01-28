@@ -17,6 +17,7 @@ const (
 type SQLiteHandler struct {
 	db      *sql.DB
 	eventCh chan *mocrelay.Event
+	seed    uint32
 }
 
 func NewSQLiteHandler(ctx context.Context, db *sql.DB) (*SQLiteHandler, error) {
@@ -24,9 +25,15 @@ func NewSQLiteHandler(ctx context.Context, db *sql.DB) (*SQLiteHandler, error) {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
 
+	seed, err := getOrSetSeed(ctx, db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get or set seed: %w", err)
+	}
+
 	h := &SQLiteHandler{
 		db:      db,
 		eventCh: make(chan *mocrelay.Event, bulkInsertNum),
+		seed:    seed,
 	}
 
 	go h.serveBulkInsert(ctx)

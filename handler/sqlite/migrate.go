@@ -49,5 +49,14 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("failed to create deleted_keys table: %w", err)
 	}
 
+	// table hash_seed
+	if _, err := db.ExecContext(ctx, `
+		create table if not exists hash_seed (
+			seed integer not null primary key
+		) strict, without rowid;
+	`); err != nil {
+		return fmt.Errorf("failed to create hash_seed table: %w", err)
+	}
+
 	return nil
 }

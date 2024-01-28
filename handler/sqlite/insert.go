@@ -3,10 +3,13 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
 	"slices"
 	"text/template"
 
@@ -244,4 +247,37 @@ func buildInsertDeletedKeys(
 	b := goqu.Dialect("sqlite3").Insert("deleted_keys").Rows(records).OnConflict(goqu.DoNothing())
 
 	return b.ToSQL()
+}
+
+func getOrSetSeed(ctx context.Context, db *sql.DB) (seed uint32, err error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+			return
+		}
+		err = tx.Commit()
+	}()
+
+	if err := tx.QueryRowContext(ctx, "select seed from hash_seed").Scan(&seed); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			n, err := rand.Int(rand.Reader, big.NewInt(math.MaxUint32))
+			if err != nil {
+				return 0, fmt.Errorf("failed to generate random number: %w", err)
+			}
+			seed = uint32(n.Int64())
+
+			if _, err := tx.ExecContext(ctx, "insert into hash_seed (seed) values (?)", seed); err != nil {
+				return 0, fmt.Errorf("failed to insert seed: %w", err)
+			}
+
+		} else {
+			return 0, fmt.Errorf("failed to query seed: %w", err)
+		}
+	}
+
+	return
 }
