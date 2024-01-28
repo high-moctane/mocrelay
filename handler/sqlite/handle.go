@@ -4,12 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/high-moctane/mocrelay"
 )
 
+const (
+	bulkInsertNum = 100
+	bulkInsertDur = 2 * time.Minute
+)
+
 type SQLiteHandler struct {
-	db *sql.DB
+	db      *sql.DB
+	eventCh chan *mocrelay.Event
 }
 
 func NewSQLiteHandler(ctx context.Context, db *sql.DB) (*SQLiteHandler, error) {
@@ -17,9 +24,14 @@ func NewSQLiteHandler(ctx context.Context, db *sql.DB) (*SQLiteHandler, error) {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
 
-	return &SQLiteHandler{
-		db: db,
-	}, nil
+	h := &SQLiteHandler{
+		db:      db,
+		eventCh: make(chan *mocrelay.Event, bulkInsertNum),
+	}
+
+	go h.serveBulkInsert(ctx)
+
+	return h, nil
 }
 
 func (h *SQLiteHandler) Handle(
@@ -110,41 +122,56 @@ func (h *SQLiteHandler) serveClientEventMsg(
 	send chan<- mocrelay.ServerMsg,
 	msg *mocrelay.ClientEventMsg,
 ) error {
-	affected, err := insertEvents(ctx, h.db, []*mocrelay.Event{msg.Event})
-	if err != nil {
-		smsg := mocrelay.NewServerOKMsg(
-			msg.Event.ID,
-			false,
-			mocrelay.ServerOkMsgPrefixError,
-			"failed to save the event",
-		)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case send <- smsg:
-			return nil
-		}
-	}
-	if affected == 0 {
-		smsg := mocrelay.NewServerOKMsg(
-			msg.Event.ID,
-			false,
-			mocrelay.ServerOKMsgPrefixDuplicate,
-			"the event is already saved",
-		)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case send <- smsg:
-			return nil
-		}
-	}
-
-	smsg := mocrelay.NewServerOKMsg(msg.Event.ID, true, "", "")
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case send <- smsg:
-		return nil
+
+	case h.eventCh <- msg.Event:
+		smsg := mocrelay.NewServerOKMsg(msg.Event.ID, true, "", "")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case send <- smsg:
+			return nil
+		}
+	}
+}
+
+func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
+	events := make([]*mocrelay.Event, 0, bulkInsertNum)
+
+	ticker := time.NewTicker(bulkInsertDur)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			if len(events) > 0 {
+				if _, err := insertEvents(ctx, h.db, events); err != nil {
+					// TODO(high-moctane): log
+					_ = err
+				}
+				events = events[:0]
+			}
+
+		case msg := <-h.eventCh:
+			events = append(events, msg)
+			if len(events) >= bulkInsertNum {
+				if _, err := insertEvents(ctx, h.db, events); err != nil {
+					// TODO(high-moctane): log
+					_ = err
+				}
+				events = events[:0]
+			}
+
+		case <-ticker.C:
+			if len(events) > 0 {
+				if _, err := insertEvents(ctx, h.db, events); err != nil {
+					// TODO(high-moctane): log
+					_ = err
+				}
+				events = events[:0]
+			}
+		}
 	}
 }
