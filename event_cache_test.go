@@ -426,7 +426,7 @@ func TestEventCache_getEventCache(t *testing.T) {
 				CreatedAt: 1,
 				Tags:      []Tag{},
 			},
-			want: "replaceable:10000",
+			want: "10000:replaceable",
 		},
 		{
 			name: "parametrized replaceable",
@@ -439,7 +439,7 @@ func TestEventCache_getEventCache(t *testing.T) {
 					{"d", "param"},
 				},
 			},
-			want: "param-replaceable:30000:param",
+			want: "30000:param-replaceable:param",
 		},
 	}
 
@@ -559,7 +559,7 @@ func TestEventCache_AddKind5(t *testing.T) {
 						Pubkey: "pubkey01",
 						Kind:   5,
 						Tags: []Tag{
-							{"a", "pubkey01:30000:param"},
+							{"a", "30000:pubkey01:param"},
 						},
 						CreatedAt: 2,
 					},
@@ -585,7 +585,7 @@ func TestEventCache_AddKind5(t *testing.T) {
 					Pubkey: "pubkey01",
 					Kind:   5,
 					Tags: []Tag{
-						{"a", "pubkey01:30000:param"},
+						{"a", "30000:pubkey01:param"},
 					},
 					CreatedAt: 2,
 				},
