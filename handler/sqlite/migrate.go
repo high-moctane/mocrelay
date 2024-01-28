@@ -16,7 +16,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			tags       blob not null,
 			content    text not null,
 			sig        text not null
-		) strict, without rowid;
+		) strict;
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to create events table: %w", err)
