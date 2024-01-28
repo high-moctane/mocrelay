@@ -10,6 +10,8 @@ import (
 	"slices"
 	"text/template"
 
+	"github.com/doug-martin/goqu/v9"
+	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
 )
 
@@ -18,6 +20,20 @@ func insertEvents(
 	db *sql.DB,
 	events []*mocrelay.Event,
 ) (affected int64, err error) {
+	// kind5
+	for _, event := range events {
+		var kind5s []*mocrelay.Event
+		if event.Kind == 5 {
+			kind5s = append(kind5s, event)
+		}
+		if len(kind5s) > 0 {
+			if _, err := insertDeletedKeys(ctx, db, kind5s); err != nil {
+				return 0, fmt.Errorf("failed to insert deleted key: %w", err)
+			}
+		}
+	}
+
+	// events
 	query, param, err := buildInsertEvents(ctx, events)
 	if err != nil {
 		if errors.Is(err, errNoEventToInsert) {
@@ -143,7 +159,7 @@ func getEventKey(event *mocrelay.Event) string {
 		return event.ID
 
 	case mocrelay.EventTypeReplaceable:
-		return fmt.Sprintf("%s:%d", event.Pubkey, event.Kind)
+		return fmt.Sprintf("%d:%s", event.Kind, event.Pubkey)
 
 	case mocrelay.EventTypeParamReplaceable:
 		idx := slices.IndexFunc(event.Tags, func(t mocrelay.Tag) bool {
@@ -158,9 +174,70 @@ func getEventKey(event *mocrelay.Event) string {
 			d = event.Tags[idx][1]
 		}
 
-		return fmt.Sprintf("%s:%d:%s", event.Pubkey, event.Kind, d)
+		return fmt.Sprintf("%d:%s:%s", event.Kind, event.Pubkey, d)
 
 	default:
 		return ""
 	}
+}
+
+func insertDeletedKeys(
+	ctx context.Context,
+	db *sql.DB,
+	kind5s []*mocrelay.Event,
+) (affected int64, err error) {
+	query, param, err := buildInsertDeletedKeys(ctx, kind5s)
+	if err != nil {
+		if errors.Is(err, errNoKeyToDelete) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	res, err := db.ExecContext(ctx, query, param...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert deleted key: %w", err)
+	}
+
+	affected, err = res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	return
+}
+
+func gatherDeletedKeys(kind5 *mocrelay.Event) (keys []string) {
+	for _, tag := range kind5.Tags {
+		if len(tag) == 0 {
+			continue
+		}
+		if tag[0] == "e" || tag[0] == "a" {
+			var value string
+			if len(tag) > 1 {
+				value = tag[1]
+			}
+			keys = append(keys, value)
+		}
+	}
+	return
+}
+
+var errNoKeyToDelete = fmt.Errorf("no key to delete")
+
+func buildInsertDeletedKeys(
+	ctx context.Context,
+	kind5s []*mocrelay.Event,
+) (query string, param []any, err error) {
+	var records []goqu.Record
+
+	for _, kind5 := range kind5s {
+		for _, key := range gatherDeletedKeys(kind5) {
+			records = append(records, goqu.Record{"key": key, "pubkey": kind5.Pubkey})
+		}
+	}
+
+	b := goqu.Dialect("sqlite3").Insert("deleted_keys").Rows(records).OnConflict(goqu.DoNothing())
+
+	return b.ToSQL()
 }

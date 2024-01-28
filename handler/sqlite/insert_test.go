@@ -731,3 +731,141 @@ func Test_insertEvents(t *testing.T) {
 		})
 	}
 }
+
+func Test_insertDeletedKeys(t *testing.T) {
+	tests := []struct {
+		name             string
+		inputs           []*mocrelay.Event
+		eventsTotal      int64
+		deletedKeysTotal int64
+	}{
+		{
+			name: "one kind5",
+			inputs: []*mocrelay.Event{
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey",
+					CreatedAt: 1,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id2"},
+						{"e", "id3"},
+					},
+				},
+			},
+			eventsTotal:      1,
+			deletedKeysTotal: 2,
+		},
+		{
+			name: "two kind5",
+			inputs: []*mocrelay.Event{
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey1",
+					CreatedAt: 1,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id2"},
+						{"a", "30000:pubkey:value"},
+					},
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey2",
+					CreatedAt: 2,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id4"},
+						{"a", "30000:pubkey2:value"},
+					},
+				},
+			},
+			eventsTotal:      2,
+			deletedKeysTotal: 4,
+		},
+		{
+			name: "two kind5 with duplicate tag",
+			inputs: []*mocrelay.Event{
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey",
+					CreatedAt: 1,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id2"},
+						{"e", "id3"},
+					},
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey",
+					CreatedAt: 2,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id3"},
+						{"e", "id4"},
+					},
+				},
+			},
+			eventsTotal:      2,
+			deletedKeysTotal: 3,
+		},
+		{
+			name: "two kind5 with duplicate tag different pubkey",
+			inputs: []*mocrelay.Event{
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey1",
+					CreatedAt: 1,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id2"},
+						{"e", "id3"},
+					},
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey2",
+					CreatedAt: 2,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id3"},
+						{"e", "id4"},
+					},
+				},
+			},
+			eventsTotal:      2,
+			deletedKeysTotal: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, err := sql.Open("sqlite3", ":memory:?cache=shared")
+			if err != nil {
+				t.Fatalf("failed to open db: %v", err)
+			}
+
+			if err := Migrate(ctx, db); err != nil {
+				t.Fatalf("failed to migrate: %v", err)
+			}
+
+			if _, err := insertEvents(ctx, db, tt.inputs); err != nil {
+				t.Fatalf("failed to insert events: %v", err)
+			}
+
+			var eventsTotal int64
+			if err := db.QueryRowContext(ctx, "select count(*) from events").Scan(&eventsTotal); err != nil {
+				t.Fatalf("failed to get total: %v", err)
+			}
+			assert.Equal(t, tt.eventsTotal, eventsTotal)
+
+			var deletedKeysTotal int64
+			if err := db.QueryRowContext(ctx, "select count(*) from deleted_keys").Scan(&deletedKeysTotal); err != nil {
+				t.Fatalf("failed to get total: %v", err)
+			}
+			assert.Equal(t, tt.deletedKeysTotal, deletedKeysTotal)
+		})
+	}
+}

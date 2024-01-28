@@ -762,6 +762,104 @@ func Test_queryEvent(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "kind5",
+			input: []*mocrelay.Event{
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey1",
+					CreatedAt: 1,
+					Kind:      1,
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey2",
+					CreatedAt: 2,
+					Kind:      1,
+				},
+				{
+					ID:        "id3",
+					Pubkey:    "pubkey1",
+					CreatedAt: 3,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value"},
+					},
+				},
+				{
+					ID:        "id4",
+					Pubkey:    "pubkey2",
+					CreatedAt: 4,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value"},
+					},
+				},
+				{
+					ID:        "id5",
+					Pubkey:    "pubkey1",
+					CreatedAt: 5,
+					Kind:      10000,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "id6",
+					Pubkey:    "pubkey2",
+					CreatedAt: 6,
+					Kind:      10000,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "kind5",
+					Pubkey:    "pubkey1",
+					CreatedAt: 100,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id1"},
+						{"e", "id2"},
+						{"a", "10000:pubkey1"},
+						{"a", "30000:pubkey1:value"},
+					},
+				},
+			},
+			fs: []*mocrelay.ReqFilter{{}},
+			want: []*mocrelay.Event{
+				{
+					ID:        "kind5",
+					Pubkey:    "pubkey1",
+					CreatedAt: 100,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id1"},
+						{"e", "id2"},
+						{"a", "10000:pubkey1"},
+						{"a", "30000:pubkey1:value"},
+					},
+				},
+				{
+					ID:        "id6",
+					Pubkey:    "pubkey2",
+					CreatedAt: 6,
+					Kind:      10000,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "id4",
+					Pubkey:    "pubkey2",
+					CreatedAt: 4,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value"},
+					},
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey2",
+					CreatedAt: 2,
+					Kind:      1,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
