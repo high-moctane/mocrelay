@@ -62,7 +62,7 @@ func insertEvents(
 
 var insertEventsTemplate = template.Must(template.New("insertEvent").Parse(`
 insert into events (
-	key, id, pubkey, created_at, kind, tags, content, sig, hashed_key
+	key, id, pubkey, created_at, kind, tags, content, sig, hashed_id
 ) values
 {{- range $i, $event := .}}{{if ne $i 0}},{{end}}
 	(?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -75,7 +75,7 @@ on conflict(key) do update set
 	tags       = excluded.tags,
 	content    = excluded.content,
 	sig        = excluded.sig,
-	hashed_key = excluded.hashed_key
+	hashed_id  = excluded.hashed_id
 where
 	events.id != excluded.id
 	and
@@ -108,7 +108,7 @@ func buildInsertEvents(
 		Tags      []byte
 		Content   string
 		Sig       string
-		HashedKey uint32
+		HashedID  uint32
 	}
 
 	entries := make([]entry, 0, len(events))
@@ -130,8 +130,8 @@ func buildInsertEvents(
 		}
 
 		x := xxHash32.New(seed)
-		x.Write([]byte(key))
-		hashedKey := x.Sum32()
+		x.Write([]byte(event.ID))
+		hashedID := x.Sum32()
 
 		entries = append(entries, entry{
 			Key:       key,
@@ -142,7 +142,7 @@ func buildInsertEvents(
 			Tags:      tagBytes,
 			Content:   event.Content,
 			Sig:       event.Sig,
-			HashedKey: hashedKey,
+			HashedID:  hashedID,
 		})
 	}
 
@@ -165,7 +165,7 @@ func buildInsertEvents(
 		param = append(param, e.Tags)
 		param = append(param, e.Content)
 		param = append(param, e.Sig)
-		param = append(param, e.HashedKey)
+		param = append(param, e.HashedID)
 	}
 
 	return

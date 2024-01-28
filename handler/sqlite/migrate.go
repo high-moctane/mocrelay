@@ -18,7 +18,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			tags       blob not null,
 			content    text not null,
 			sig        text not null,
-			hashed_key integer not null
+			hashed_id  integer not null
 		) strict;
 	`); err != nil {
 		return fmt.Errorf("failed to create events table: %w", err)
@@ -31,11 +31,11 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("failed to create index idx_events_created_at: %w", err)
 	}
 
-	// index events_hashed_key
+	// index events_hashed_id
 	if _, err := db.ExecContext(ctx, `
-		create index if not exists idx_events_hashed_key on events (hashed_key);
+		create unique index if not exists idx_events_hashed_id on events (hashed_id);
 	`); err != nil {
-		return fmt.Errorf("failed to create index idx_events_hashed_key: %w", err)
+		return fmt.Errorf("failed to create index idx_events_hashed_id: %w", err)
 	}
 
 	// table deleted_keys
@@ -57,6 +57,26 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		) strict, without rowid;
 	`); err != nil {
 		return fmt.Errorf("failed to create hash_seed table: %w", err)
+	}
+
+	// table hashes
+	if _, err := db.ExecContext(ctx, `
+		create table if not exists hashes (
+			hashed_id    integer not null,
+			hashed_value integer not null,
+			created_at   integer not null,
+
+			primary key (hashed_id, hashed_value, created_at)
+		) strict, without rowid;
+	`); err != nil {
+		return fmt.Errorf("failed to create hashes table: %w", err)
+	}
+
+	// index hashes_hashed_value_created_at
+	if _, err := db.ExecContext(ctx, `
+		create index if not exists idx_hashes_hashed_value_created_at on hashes (hashed_value, created_at desc);
+	`); err != nil {
+		return fmt.Errorf("failed to create index idx_hashes_hashed_value_created_at: %w", err)
 	}
 
 	return nil
