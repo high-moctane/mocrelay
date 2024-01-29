@@ -225,7 +225,10 @@ func insertDeletedKeys(
 	return
 }
 
-func gatherDeletedKeys(kind5 *mocrelay.Event) (keys []string) {
+// map[tag][]key
+func gatherDeletedKeys(kind5 *mocrelay.Event) map[string][]string {
+	ret := make(map[string][]string)
+
 	for _, tag := range kind5.Tags {
 		if len(tag) == 0 {
 			continue
@@ -235,10 +238,11 @@ func gatherDeletedKeys(kind5 *mocrelay.Event) (keys []string) {
 			if len(tag) > 1 {
 				value = tag[1]
 			}
-			keys = append(keys, value)
+			ret[tag[0]] = append(ret[tag[0]], value)
 		}
 	}
-	return
+
+	return ret
 }
 
 var errNoKeyToDelete = fmt.Errorf("no key to delete")
@@ -250,8 +254,13 @@ func buildInsertDeletedKeys(
 	var records []goqu.Record
 
 	for _, kind5 := range kind5s {
-		for _, key := range gatherDeletedKeys(kind5) {
-			records = append(records, goqu.Record{"key": key, "pubkey": kind5.Pubkey})
+		for tag, key := range gatherDeletedKeys(kind5) {
+			for _, k := range key {
+				records = append(
+					records,
+					goqu.Record{"value": k, "tag": tag, "pubkey": kind5.Pubkey},
+				)
+			}
 		}
 	}
 

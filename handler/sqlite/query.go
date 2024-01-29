@@ -50,9 +50,17 @@ func buildEventQuery(fs []*mocrelay.ReqFilter) (query string, param []any, err e
 		d := goqu.T("deleted_keys")
 		b = b.Where(goqu.L("(events.key, events.pubkey)").NotIn(
 			goqu.Dialect("sqlite3").Select(
-				d.Col("key"),
+				d.Col("value"),
 				d.Col("pubkey"),
-			).From("deleted_keys"),
+			).From("deleted_keys").
+				Where(goqu.I("tag").Eq("a")),
+		))
+		b = b.Where(goqu.L("(events.id, events.pubkey)").NotIn(
+			goqu.Dialect("sqlite3").Select(
+				d.Col("value"),
+				d.Col("pubkey"),
+			).From("deleted_keys").
+				Where(goqu.I("tag").Eq("e")),
 		))
 
 		if f != nil {

@@ -41,10 +41,11 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	// table deleted_keys
 	if _, err := db.ExecContext(ctx, `
 		create table if not exists deleted_keys (
-			key    text not null,
+			value  text not null,
+			tag	   text not null,
 			pubkey text not null,
 
-			primary key (key, pubkey)
+			primary key (value, tag, pubkey)
 		) strict, without rowid;
 	`); err != nil {
 		return fmt.Errorf("failed to create deleted_keys table: %w", err)

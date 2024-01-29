@@ -822,6 +822,15 @@ func Test_queryEvent(t *testing.T) {
 					Tags:      []mocrelay.Tag{},
 				},
 				{
+					ID:        "id7",
+					Pubkey:    "pubkey1",
+					CreatedAt: 7,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value1"},
+					},
+				},
+				{
 					ID:        "kind5",
 					Pubkey:    "pubkey1",
 					CreatedAt: 100,
@@ -829,6 +838,7 @@ func Test_queryEvent(t *testing.T) {
 					Tags: []mocrelay.Tag{
 						{"e", "id1"},
 						{"e", "id2"},
+						{"e", "id7"},
 						{"a", "10000:pubkey1"},
 						{"a", "30000:pubkey1:value"},
 					},
@@ -844,6 +854,7 @@ func Test_queryEvent(t *testing.T) {
 					Tags: []mocrelay.Tag{
 						{"e", "id1"},
 						{"e", "id2"},
+						{"e", "id7"},
 						{"a", "10000:pubkey1"},
 						{"a", "30000:pubkey1:value"},
 					},
