@@ -18,10 +18,11 @@ func Test_insertEvents(t *testing.T) {
 	}
 
 	tests := []struct {
-		name  string
-		try1  try
-		try2  try
-		total int64
+		name        string
+		try1        try
+		try2        try
+		total       int64
+		totalHashes int64
 	}{
 		{
 			name: "insert regular event",
@@ -55,7 +56,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 2,
+			total:       2,
+			totalHashes: 8,
 		},
 		{
 			name: "insert regular event: duplicate id",
@@ -89,7 +91,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 0,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 4,
 		},
 		{
 			name: "insert replaceable event",
@@ -123,7 +126,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 8,
 		},
 		{
 			name: "insert replaceable event: duplicate id",
@@ -157,7 +161,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 0,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 4,
 		},
 		{
 			name: "insert replaceable event: same",
@@ -191,7 +196,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 8,
 		},
 		{
 			name: "insert replaceable event: different pubkey",
@@ -225,7 +231,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 2,
+			total:       2,
+			totalHashes: 8,
 		},
 		{
 			name: "insert replaceable event: different kind",
@@ -259,7 +266,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 2,
+			total:       2,
+			totalHashes: 8,
 		},
 		{
 			name: "insert replaceable event: duplicate pubkey and kind but too old",
@@ -293,7 +301,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 0,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 4,
 		},
 		{
 			name: "insert ephemeral event",
@@ -327,7 +336,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 0,
 				wantErr:      false,
 			},
-			total: 0,
+			total:       0,
+			totalHashes: 0,
 		},
 		{
 			name: "insert parametrized replaceable event",
@@ -361,7 +371,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 8,
 		},
 		{
 			name: "insert parametrized replaceable event: duplicate",
@@ -395,7 +406,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 0,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 4,
 		},
 		{
 			name: "insert parametrized replaceable event: same",
@@ -429,7 +441,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 8,
 		},
 		{
 			name: "insert parametrized replaceable event: same but too old",
@@ -463,7 +476,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 0,
 				wantErr:      false,
 			},
-			total: 1,
+			total:       1,
+			totalHashes: 4,
 		},
 		{
 			name: "insert parametrized replaceable event: different pubkey",
@@ -497,7 +511,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 2,
+			total:       2,
+			totalHashes: 8,
 		},
 		{
 			name: "insert parametrized replaceable event: different kind",
@@ -531,7 +546,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 2,
+			total:       2,
+			totalHashes: 8,
 		},
 		{
 			name: "insert parametrized replaceable event: different tag",
@@ -565,7 +581,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 1,
 				wantErr:      false,
 			},
-			total: 2,
+			total:       2,
+			totalHashes: 8,
 		},
 		{
 			name: "all",
@@ -689,7 +706,8 @@ func Test_insertEvents(t *testing.T) {
 				wantAffected: 4,
 				wantErr:      false,
 			},
-			total: 6,
+			total:       6,
+			totalHashes: 28,
 		},
 	}
 
@@ -729,6 +747,12 @@ func Test_insertEvents(t *testing.T) {
 				t.Fatalf("failed to get total: %v", err)
 			}
 			assert.Equal(t, tt.total, total)
+
+			var totalHashes int64
+			if err := db.QueryRowContext(ctx, "select count(*) from hashes").Scan(&totalHashes); err != nil {
+				t.Fatalf("failed to get total: %v", err)
+			}
+			assert.Equal(t, tt.totalHashes, totalHashes)
 		})
 	}
 }

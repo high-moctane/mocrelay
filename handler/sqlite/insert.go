@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"strconv"
 	"text/template"
 
 	"github.com/doug-martin/goqu/v9"
@@ -25,6 +26,18 @@ func insertEvents(
 	seed uint32,
 	events []*mocrelay.Event,
 ) (affected int64, err error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+			return
+		}
+		err = tx.Commit()
+	}()
+
 	// kind5
 	for _, event := range events {
 		var kind5s []*mocrelay.Event
@@ -32,7 +45,7 @@ func insertEvents(
 			kind5s = append(kind5s, event)
 		}
 		if len(kind5s) > 0 {
-			if _, err := insertDeletedKeys(ctx, db, kind5s); err != nil {
+			if _, err := insertDeletedKeys(ctx, tx, kind5s); err != nil {
 				return 0, fmt.Errorf("failed to insert deleted key: %w", err)
 			}
 		}
@@ -47,7 +60,7 @@ func insertEvents(
 		return 0, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	res, err := db.ExecContext(ctx, query, param...)
+	res, err := tx.ExecContext(ctx, query, param...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert event: %w", err)
 	}
@@ -55,6 +68,16 @@ func insertEvents(
 	affected, err = res.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	// hashes
+	query, param, err = buildInsertHashes(seed, events)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, query, param...); err != nil {
+		return 0, fmt.Errorf("failed to insert hash: %w", err)
 	}
 
 	return
@@ -201,7 +224,7 @@ func getEventKey(event *mocrelay.Event) string {
 
 func insertDeletedKeys(
 	ctx context.Context,
-	db *sql.DB,
+	tx *sql.Tx,
 	kind5s []*mocrelay.Event,
 ) (affected int64, err error) {
 	query, param, err := buildInsertDeletedKeys(ctx, kind5s)
@@ -212,7 +235,7 @@ func insertDeletedKeys(
 		return 0, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	res, err := db.ExecContext(ctx, query, param...)
+	res, err := tx.ExecContext(ctx, query, param...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert deleted key: %w", err)
 	}
@@ -267,6 +290,110 @@ func buildInsertDeletedKeys(
 	b := goqu.Dialect("sqlite3").Insert("deleted_keys").Rows(records).OnConflict(goqu.DoNothing())
 
 	return b.ToSQL()
+}
+
+var insertHashesTemplate = template.Must(template.New("insertEvent").Parse(`
+insert into hashes (
+	hashed_id, hashed_value, created_at
+)
+{{- range $i, $record := .}}
+{{ if ne $i 0}}union{{end}}
+select ?, ?, ? where ? in (select hashed_id from events)
+{{- end}}
+on conflict do nothing
+`))
+
+func buildInsertHashes(
+	seed uint32,
+	events []*mocrelay.Event,
+) (query string, param []any, err error) {
+	records := gatherEventHashes(seed, events)
+
+	var b bytes.Buffer
+	if err = insertHashesTemplate.Execute(&b, records); err != nil {
+		return "", nil, fmt.Errorf("failed to execute template: %w", err)
+	}
+	query = b.String()
+
+	for _, r := range records {
+		param = append(param, r["hashed_id"])
+		param = append(param, r["hashed_value"])
+		param = append(param, r["created_at"])
+		param = append(param, r["hashed_id"])
+	}
+
+	return
+}
+
+func gatherEventHashes(seed uint32, events []*mocrelay.Event) []goqu.Record {
+	var ret []goqu.Record
+
+	x := xxHash32.New(seed)
+
+	for _, event := range events {
+		x.Reset()
+		x.Write([]byte(event.ID))
+		hashedID := x.Sum32()
+		ret = append(
+			ret,
+			goqu.Record{
+				"hashed_id":    hashedID,
+				"hashed_value": hashedID,
+				"created_at":   event.CreatedAt,
+			},
+		)
+
+		x.Reset()
+		x.Write([]byte(event.Pubkey))
+		ret = append(
+			ret,
+			goqu.Record{
+				"hashed_id":    hashedID,
+				"hashed_value": x.Sum32(),
+				"created_at":   event.CreatedAt,
+			},
+		)
+
+		x.Reset()
+		x.Write([]byte(strconv.FormatInt(event.Kind, 10)))
+		ret = append(
+			ret,
+			goqu.Record{
+				"hashed_id":    hashedID,
+				"hashed_value": x.Sum32(),
+				"created_at":   event.CreatedAt,
+			},
+		)
+
+		for _, tag := range event.Tags {
+			if len(tag) == 0 {
+				continue
+			}
+			if len(tag[0]) != 1 {
+				continue
+			}
+			if !('a' <= tag[0][0] && tag[0][0] <= 'z' || 'A' <= tag[0][0] && tag[0][0] <= 'Z') {
+				continue
+			}
+			var value string
+			if len(tag) > 1 {
+				value = tag[1]
+			}
+
+			x.Reset()
+			x.Write([]byte(tag[0] + value))
+			ret = append(
+				ret,
+				goqu.Record{
+					"hashed_id":    hashedID,
+					"hashed_value": x.Sum32(),
+					"created_at":   event.CreatedAt,
+				},
+			)
+		}
+	}
+
+	return ret
 }
 
 func getOrSetSeed(ctx context.Context, db *sql.DB) (seed uint32, err error) {
