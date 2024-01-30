@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/high-moctane/mocrelay"
@@ -12,6 +13,8 @@ import (
 type SQLiteHandlerOption struct {
 	EventBulkInsertNum int
 	EventBulkInsertDur time.Duration
+
+	Logger *slog.Logger
 }
 
 func NewDefaultSQLiteHandlerOption() *SQLiteHandlerOption {
@@ -104,6 +107,8 @@ func (h *SQLiteHandler) serveClientReqMsg(
 ) error {
 	events, err := queryEvent(ctx, h.db, h.seed, msg.ReqFilters)
 	if err != nil {
+		errorLog(ctx, h.opt.Logger, "failed to query events", "err", err)
+
 		smsg := mocrelay.NewServerEOSEMsg(msg.SubscriptionID)
 		select {
 		case <-ctx.Done():
@@ -176,8 +181,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 		case <-ctx.Done():
 			if len(events) > 0 {
 				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
-					// TODO(high-moctane): log
-					_ = err
+					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				events = events[:0]
 			}
@@ -186,8 +190,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 			events = append(events, msg)
 			if len(events) >= h.opt.EventBulkInsertNum {
 				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
-					// TODO(high-moctane): log
-					_ = err
+					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				events = events[:0]
 			}
@@ -195,8 +198,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 		case <-ticker.C:
 			if len(events) > 0 {
 				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
-					// TODO(high-moctane): log
-					_ = err
+					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				events = events[:0]
 			}
