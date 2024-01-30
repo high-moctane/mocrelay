@@ -25,7 +25,6 @@ func queryEvent(
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
-	fmt.Println(q, param)
 
 	events, err = fetchEventQuery(ctx, db, q, param)
 	if err != nil {
