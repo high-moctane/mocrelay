@@ -71,13 +71,21 @@ func insertEvents(
 	}
 
 	// hashes
-	query, param, err = buildInsertHashes(seed, events)
+	query, params, err := buildInsertHashesStmt(seed, events)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, query, param...); err != nil {
-		return 0, fmt.Errorf("failed to insert hash: %w", err)
+	stmt, err := tx.PrepareContext(ctx, query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, param := range params {
+		if _, err := stmt.ExecContext(ctx, param...); err != nil {
+			return 0, fmt.Errorf("failed to insert hash: %w", err)
+		}
 	}
 
 	return
@@ -292,34 +300,27 @@ func buildInsertDeletedKeys(
 	return b.ToSQL()
 }
 
-var insertHashesTemplate = template.Must(template.New("insertEvent").Parse(`
+const insertHashesQuery = `
 insert into hashes (
 	hashed_id, hashed_value, created_at
 )
-{{- range $i, $record := .}}
-{{ if ne $i 0}}union{{end}}
 select ?, ?, ? where ? in (select hashed_id from events)
-{{- end}}
 on conflict do nothing
-`))
+`
 
-func buildInsertHashes(
+func buildInsertHashesStmt(
 	seed uint32,
 	events []*mocrelay.Event,
-) (query string, param []any, err error) {
-	records := gatherEventHashes(seed, events)
+) (query string, params [][]any, err error) {
+	query = insertHashesQuery
 
-	var b bytes.Buffer
-	if err = insertHashesTemplate.Execute(&b, records); err != nil {
-		return "", nil, fmt.Errorf("failed to execute template: %w", err)
-	}
-	query = b.String()
-
-	for _, r := range records {
+	for _, r := range gatherEventHashes(seed, events) {
+		param := []any{}
 		param = append(param, r["hashed_id"])
 		param = append(param, r["hashed_value"])
 		param = append(param, r["created_at"])
 		param = append(param, r["hashed_id"])
+		params = append(params, param)
 	}
 
 	return
