@@ -81,7 +81,7 @@ func (h *SQLiteHandler) serveClientReqMsg(
 	send chan<- mocrelay.ServerMsg,
 	msg *mocrelay.ClientReqMsg,
 ) error {
-	events, err := queryEvent(ctx, h.db, msg.ReqFilters)
+	events, err := queryEvent(ctx, h.db, h.seed, msg.ReqFilters)
 	if err != nil {
 		smsg := mocrelay.NewServerEOSEMsg(msg.SubscriptionID)
 		select {

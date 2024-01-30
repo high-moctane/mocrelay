@@ -903,7 +903,7 @@ func Test_queryEvent(t *testing.T) {
 				t.Fatalf("failed to insert event: %v", err)
 			}
 
-			got, err := queryEvent(ctx, db, tt.fs)
+			got, err := queryEvent(ctx, db, 0, tt.fs)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("queryEvent() error = %v, wantErr %v", err, tt.wantErr)
 				return
