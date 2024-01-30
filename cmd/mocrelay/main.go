@@ -31,8 +31,11 @@ func main() {
 		panic(err)
 	}
 	defer db.Close()
+	if err := db.Ping(); err != nil {
+		panic(err)
+	}
 
-	sqliteHandler, err := mocsqlite.NewSQLiteHandler(ctx, db)
+	sqliteHandler, err := mocsqlite.NewSQLiteHandler(ctx, db, nil)
 	if err != nil {
 		panic(err)
 	}

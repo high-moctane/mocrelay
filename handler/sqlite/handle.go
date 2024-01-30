@@ -9,18 +9,31 @@ import (
 	"github.com/high-moctane/mocrelay"
 )
 
-const (
-	bulkInsertNum = 100
-	bulkInsertDur = 2 * time.Minute
-)
+type SQLiteHandlerOption struct {
+	EventBulkInsertNum int
+	EventBulkInsertDur time.Duration
+}
+
+func NewDefaultSQLiteHandlerOption() *SQLiteHandlerOption {
+	return &SQLiteHandlerOption{
+		EventBulkInsertNum: 1000,
+		EventBulkInsertDur: 2 * time.Minute,
+	}
+}
 
 type SQLiteHandler struct {
 	db      *sql.DB
 	eventCh chan *mocrelay.Event
 	seed    uint32
+
+	opt SQLiteHandlerOption
 }
 
-func NewSQLiteHandler(ctx context.Context, db *sql.DB) (*SQLiteHandler, error) {
+func NewSQLiteHandler(
+	ctx context.Context,
+	db *sql.DB,
+	opt *SQLiteHandlerOption,
+) (*SQLiteHandler, error) {
 	if err := Migrate(ctx, db); err != nil {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
@@ -30,10 +43,18 @@ func NewSQLiteHandler(ctx context.Context, db *sql.DB) (*SQLiteHandler, error) {
 		return nil, fmt.Errorf("failed to get or set seed: %w", err)
 	}
 
+	var option SQLiteHandlerOption
+	if opt != nil {
+		option = *opt
+	} else {
+		option = *NewDefaultSQLiteHandlerOption()
+	}
+
 	h := &SQLiteHandler{
 		db:      db,
-		eventCh: make(chan *mocrelay.Event, bulkInsertNum),
+		eventCh: make(chan *mocrelay.Event, opt.EventBulkInsertNum),
 		seed:    seed,
+		opt:     option,
 	}
 
 	go h.serveBulkInsert(ctx)
@@ -145,9 +166,9 @@ func (h *SQLiteHandler) serveClientEventMsg(
 }
 
 func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
-	events := make([]*mocrelay.Event, 0, bulkInsertNum)
+	events := make([]*mocrelay.Event, 0, h.opt.EventBulkInsertNum)
 
-	ticker := time.NewTicker(bulkInsertDur)
+	ticker := time.NewTicker(h.opt.EventBulkInsertDur)
 	defer ticker.Stop()
 
 	for {
@@ -163,7 +184,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 
 		case msg := <-h.eventCh:
 			events = append(events, msg)
-			if len(events) >= bulkInsertNum {
+			if len(events) >= h.opt.EventBulkInsertNum {
 				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					// TODO(high-moctane): log
 					_ = err
