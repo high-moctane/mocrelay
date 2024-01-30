@@ -302,7 +302,7 @@ func Test_insertEvents(t *testing.T) {
 				wantErr:      false,
 			},
 			total:       1,
-			totalHashes: 4,
+			totalHashes: 8,
 		},
 		{
 			name: "insert ephemeral event",
@@ -477,7 +477,7 @@ func Test_insertEvents(t *testing.T) {
 				wantErr:      false,
 			},
 			total:       1,
-			totalHashes: 4,
+			totalHashes: 8,
 		},
 		{
 			name: "insert parametrized replaceable event: different pubkey",
@@ -707,7 +707,7 @@ func Test_insertEvents(t *testing.T) {
 				wantErr:      false,
 			},
 			total:       6,
-			totalHashes: 28,
+			totalHashes: 32,
 		},
 	}
 

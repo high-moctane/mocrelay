@@ -71,21 +71,12 @@ func insertEvents(
 	}
 
 	// hashes
-	query, params, err := buildInsertHashesStmt(seed, events)
+	query, param, err = buildInsertHashes(seed, events)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build query: %w", err)
 	}
-
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return 0, fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
-
-	for _, param := range params {
-		if _, err := stmt.ExecContext(ctx, param...); err != nil {
-			return 0, fmt.Errorf("failed to insert hash: %w", err)
-		}
+	if _, err := tx.ExecContext(ctx, query, param...); err != nil {
+		return 0, fmt.Errorf("failed to insert hashes: %w", err)
 	}
 
 	return
@@ -300,30 +291,17 @@ func buildInsertDeletedKeys(
 	return b.ToSQL()
 }
 
-const insertHashesQuery = `
-insert into hashes (
-	hashed_id, hashed_value, created_at
-)
-select ?, ?, ? where ? in (select hashed_id from events)
-on conflict do nothing
-`
-
-func buildInsertHashesStmt(
+func buildInsertHashes(
 	seed uint32,
 	events []*mocrelay.Event,
-) (query string, params [][]any, err error) {
-	query = insertHashesQuery
+) (query string, param []any, err error) {
+	records := gatherEventHashes(seed, events)
 
-	for _, r := range gatherEventHashes(seed, events) {
-		param := []any{}
-		param = append(param, r["hashed_id"])
-		param = append(param, r["hashed_value"])
-		param = append(param, r["created_at"])
-		param = append(param, r["hashed_id"])
-		params = append(params, param)
-	}
-
-	return
+	return goqu.Dialect("sqlite3").
+		Insert("hashes").
+		Rows(records).
+		OnConflict(goqu.DoNothing()).
+		ToSQL()
 }
 
 func gatherEventHashes(seed uint32, events []*mocrelay.Event) []goqu.Record {
