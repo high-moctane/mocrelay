@@ -33,9 +33,9 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 
 	// index events_hashed_id
 	if _, err := db.ExecContext(ctx, `
-		create unique index if not exists idx_events_hashed_id on events (hashed_id);
+		create index if not exists idx_events_hashed_id_created_at on events (hashed_id, created_at desc);
 	`); err != nil {
-		return fmt.Errorf("failed to create index idx_events_hashed_id: %w", err)
+		return fmt.Errorf("failed to create index idx_events_hashed_id_created_at: %w", err)
 	}
 
 	// table deleted_keys

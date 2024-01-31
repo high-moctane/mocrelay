@@ -113,6 +113,7 @@ func buildEventQuery(seed uint32, fs []*mocrelay.ReqFilter) (query string, param
 		if len(hashes) == 0 {
 			b = b.Order(e.Col("created_at").Desc())
 		} else {
+			b = b.Where(goqu.I("hashes0.created_at").Eq(e.Col("created_at")))
 			b = b.Order(goqu.I("hashes0.created_at").Desc())
 		}
 

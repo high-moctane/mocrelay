@@ -55,7 +55,7 @@ func NewSQLiteHandler(
 
 	h := &SQLiteHandler{
 		db:      db,
-		eventCh: make(chan *mocrelay.Event, opt.EventBulkInsertNum),
+		eventCh: make(chan *mocrelay.Event, option.EventBulkInsertNum),
 		seed:    seed,
 		opt:     option,
 	}
