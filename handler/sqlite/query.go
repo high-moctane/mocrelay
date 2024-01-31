@@ -49,6 +49,7 @@ func gathereReqFilterHashes(seed uint32, f *mocrelay.ReqFilter) (hashes [][]uint
 
 	if f.Tags != nil {
 		for tag, values := range f.Tags {
+			tag := string(tag[1])
 			hs := make([]uint32, 0, len(values))
 			for _, value := range values {
 				x.Reset()
@@ -139,6 +140,7 @@ func buildEventQuery(seed uint32, fs []*mocrelay.ReqFilter) (query string, param
 
 			if f.Tags != nil {
 				for tag, values := range f.Tags {
+					tag := string(tag[1])
 					tname := fmt.Sprintf("tag%s", tag)
 					b = b.Join(goqu.L(fmt.Sprintf("json_each(events.tags) as %s", tname)), goqu.On(
 						goqu.And(
