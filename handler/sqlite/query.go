@@ -190,7 +190,7 @@ func buildEventQuery(seed uint32, fs []*mocrelay.ReqFilter) (query string, param
 			Limit(maxLimit)
 	}
 
-	return builder.ToSQL()
+	return builder.Prepared(true).ToSQL()
 }
 
 func fetchEventQuery(
