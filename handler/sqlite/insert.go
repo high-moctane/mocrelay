@@ -26,6 +26,36 @@ func insertEvents(
 	seed uint32,
 	events []*mocrelay.Event,
 ) (affected int64, err error) {
+	eventsQuery, eventsParam, err := buildInsertEvents(ctx, seed, events)
+	if err != nil {
+		if errors.Is(err, errNoEventToInsert) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	hashesQuery, hashesParam, err := buildInsertHashes(seed, events)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	// kind5
+	var kind5s []*mocrelay.Event
+	for _, event := range events {
+		if event.Kind == 5 {
+			kind5s = append(kind5s, event)
+		}
+	}
+
+	var deletedQuery string
+	var deletedParam []any
+	if len(kind5s) > 0 {
+		deletedQuery, deletedParam, err = buildInsertDeletedKeys(ctx, kind5s)
+		if err != nil && !errors.Is(err, errNoKeyToDelete) {
+			return 0, fmt.Errorf("failed to build query: %w", err)
+		}
+	}
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -38,29 +68,7 @@ func insertEvents(
 		err = tx.Commit()
 	}()
 
-	// kind5
-	for _, event := range events {
-		var kind5s []*mocrelay.Event
-		if event.Kind == 5 {
-			kind5s = append(kind5s, event)
-		}
-		if len(kind5s) > 0 {
-			if _, err := insertDeletedKeys(ctx, tx, kind5s); err != nil {
-				return 0, fmt.Errorf("failed to insert deleted key: %w", err)
-			}
-		}
-	}
-
-	// events
-	query, param, err := buildInsertEvents(ctx, seed, events)
-	if err != nil {
-		if errors.Is(err, errNoEventToInsert) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("failed to build query: %w", err)
-	}
-
-	res, err := tx.ExecContext(ctx, query, param...)
+	res, err := tx.ExecContext(ctx, eventsQuery, eventsParam...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert event: %w", err)
 	}
@@ -69,14 +77,18 @@ func insertEvents(
 	if err != nil {
 		return 0, fmt.Errorf("failed to get affected rows: %w", err)
 	}
-
-	// hashes
-	query, param, err = buildInsertHashes(seed, events)
-	if err != nil {
-		return 0, fmt.Errorf("failed to build query: %w", err)
+	if affected == 0 {
+		return
 	}
-	if _, err := tx.ExecContext(ctx, query, param...); err != nil {
+
+	if _, err := tx.ExecContext(ctx, hashesQuery, hashesParam...); err != nil {
 		return 0, fmt.Errorf("failed to insert hashes: %w", err)
+	}
+
+	if deletedQuery != "" {
+		if _, err := tx.ExecContext(ctx, deletedQuery, deletedParam...); err != nil {
+			return 0, fmt.Errorf("failed to insert deleted keys: %w", err)
+		}
 	}
 
 	return
@@ -219,32 +231,6 @@ func getEventKey(event *mocrelay.Event) string {
 	default:
 		return ""
 	}
-}
-
-func insertDeletedKeys(
-	ctx context.Context,
-	tx *sql.Tx,
-	kind5s []*mocrelay.Event,
-) (affected int64, err error) {
-	query, param, err := buildInsertDeletedKeys(ctx, kind5s)
-	if err != nil {
-		if errors.Is(err, errNoKeyToDelete) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("failed to build query: %w", err)
-	}
-
-	res, err := tx.ExecContext(ctx, query, param...)
-	if err != nil {
-		return 0, fmt.Errorf("failed to insert deleted key: %w", err)
-	}
-
-	affected, err = res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get affected rows: %w", err)
-	}
-
-	return
 }
 
 // map[tag][]key
