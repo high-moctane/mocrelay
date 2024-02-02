@@ -13,15 +13,14 @@ import (
 	"github.com/pierrec/xxHash/xxHash32"
 )
 
-const maxLimit = 1000
-
 func queryEvent(
 	ctx context.Context,
 	db *sql.DB,
 	seed uint32,
 	fs []*mocrelay.ReqFilter,
+	maxLimit uint,
 ) (events []*mocrelay.Event, err error) {
-	q, param, err := buildEventQuery(seed, fs)
+	q, param, err := buildEventQuery(seed, fs, maxLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -83,7 +82,11 @@ func gathereReqFilterHashes(seed uint32, f *mocrelay.ReqFilter) (hashes [][]uint
 	return
 }
 
-func buildEventQuery(seed uint32, fs []*mocrelay.ReqFilter) (query string, param []any, err error) {
+func buildEventQuery(
+	seed uint32,
+	fs []*mocrelay.ReqFilter,
+	maxLimit uint,
+) (query string, param []any, err error) {
 	e := goqu.T("events")
 
 	var builder *goqu.SelectDataset
@@ -159,11 +162,13 @@ func buildEventQuery(seed uint32, fs []*mocrelay.ReqFilter) (query string, param
 				b = b.Where(e.Col("created_at").Lte(*f.Until))
 			}
 
-			var limit uint = maxLimit
+			limit := maxLimit
 			if f.Limit != nil {
 				limit = min(limit, uint(*f.Limit))
 			}
-			b = b.Limit(uint(limit))
+			if limit != NoLimit {
+				b = b.Limit(uint(limit))
+			}
 		}
 
 		if i == 0 {
@@ -186,8 +191,11 @@ func buildEventQuery(seed uint32, fs []*mocrelay.ReqFilter) (query string, param
 			From(builder).
 			Distinct().
 			Order(goqu.I("created_at").
-				Desc()).
-			Limit(maxLimit)
+				Desc())
+
+		if maxLimit != NoLimit {
+			builder = builder.Limit(maxLimit)
+		}
 	}
 
 	return builder.Prepared(true).ToSQL()

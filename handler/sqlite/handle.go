@@ -5,14 +5,19 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/high-moctane/mocrelay"
 )
 
+const NoLimit = math.MaxUint
+
 type SQLiteHandlerOption struct {
 	EventBulkInsertNum int
 	EventBulkInsertDur time.Duration
+
+	MaxLimit uint
 
 	Logger *slog.Logger
 }
@@ -21,6 +26,7 @@ func NewDefaultSQLiteHandlerOption() *SQLiteHandlerOption {
 	return &SQLiteHandlerOption{
 		EventBulkInsertNum: 1000,
 		EventBulkInsertDur: 2 * time.Minute,
+		MaxLimit:           NoLimit,
 	}
 }
 
@@ -105,7 +111,7 @@ func (h *SQLiteHandler) serveClientReqMsg(
 	send chan<- mocrelay.ServerMsg,
 	msg *mocrelay.ClientReqMsg,
 ) error {
-	events, err := queryEvent(ctx, h.db, h.seed, msg.ReqFilters)
+	events, err := queryEvent(ctx, h.db, h.seed, msg.ReqFilters, h.opt.MaxLimit)
 	if err != nil {
 		errorLog(ctx, h.opt.Logger, "failed to query events", "err", err)
 
