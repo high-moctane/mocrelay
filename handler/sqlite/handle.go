@@ -67,6 +67,7 @@ func NewSQLiteHandler(
 	}
 
 	go h.serveBulkInsert(ctx)
+	go h.servePragmaOptimize(ctx, db)
 
 	return h, nil
 }
@@ -207,6 +208,21 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				events = events[:0]
+			}
+		}
+	}
+}
+
+func (h *SQLiteHandler) servePragmaOptimize(ctx context.Context, db *sql.DB) {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+		case <-ticker.C:
+			if _, err := db.ExecContext(ctx, "pragma optimize"); err != nil {
+				errorLog(ctx, h.opt.Logger, "failed to pragma optimize", "err", err)
 			}
 		}
 	}
