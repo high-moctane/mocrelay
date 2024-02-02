@@ -199,38 +199,82 @@ func fetchEventQuery(
 	query string,
 	param []any,
 ) (events []*mocrelay.Event, err error) {
+	raws, err := fetchRawEvent(ctx, db, query, param)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch raw events: %w", err)
+	}
+
+	for _, raw := range raws {
+		event, err := raw.toEvent()
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert raw event to event: %w", err)
+		}
+		events = append(events, event)
+	}
+
+	return
+}
+
+func fetchRawEvent(
+	ctx context.Context,
+	db *sql.DB,
+	query string,
+	param []any,
+) (raws []*rawEvent, err error) {
 	rows, err := db.QueryContext(ctx, query, param...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query events: %w", err)
+		return nil, fmt.Errorf("failed to query raw events: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var (
-			event mocrelay.Event
-			tags  []byte
+			raw rawEvent
 		)
 		if err := rows.Scan(
-			&event.ID,
-			&event.Pubkey,
-			&event.CreatedAt,
-			&event.Kind,
-			&tags,
-			&event.Content,
-			&event.Sig,
+			&raw.ID,
+			&raw.Pubkey,
+			&raw.CreatedAt,
+			&raw.Kind,
+			&raw.Tags,
+			&raw.Content,
+			&raw.Sig,
 		); err != nil {
-			return nil, fmt.Errorf("failed to scan event: %w", err)
+			return nil, fmt.Errorf("failed to scan raw event: %w", err)
 		}
 
-		if err := json.Unmarshal(tags, &event.Tags); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
-		}
-
-		events = append(events, &event)
+		raws = append(raws, &raw)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
 
 	return
+}
+
+type rawEvent struct {
+	ID        string
+	Pubkey    string
+	CreatedAt int64
+	Kind      int64
+	Tags      []byte
+	Content   string
+	Sig       string
+}
+
+func (r *rawEvent) toEvent() (*mocrelay.Event, error) {
+	var tags []mocrelay.Tag
+	if err := json.Unmarshal(r.Tags, &tags); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
+	}
+
+	return &mocrelay.Event{
+		ID:        r.ID,
+		Pubkey:    r.Pubkey,
+		CreatedAt: r.CreatedAt,
+		Kind:      r.Kind,
+		Tags:      tags,
+		Content:   r.Content,
+		Sig:       r.Sig,
+	}, nil
 }
