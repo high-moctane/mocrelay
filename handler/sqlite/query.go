@@ -27,7 +27,7 @@ func queryEvent(
 
 	events, err = fetchEventQuery(ctx, db, q, param)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch events: %w", err)
+		return nil, fmt.Errorf("failed to fetch events with (%s, %v): %w", q, param, err)
 	}
 
 	return
