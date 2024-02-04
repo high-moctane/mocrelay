@@ -181,8 +181,12 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 	events := make([]*mocrelay.Event, 0, h.opt.EventBulkInsertNum)
 	seen := make(map[string]bool, h.opt.EventBulkInsertNum)
 
-	ticker := time.NewTicker(h.opt.EventBulkInsertDur)
-	defer ticker.Stop()
+	var tickCh <-chan time.Time
+	if h.opt.EventBulkInsertDur > 0 {
+		ticker := time.NewTicker(h.opt.EventBulkInsertDur)
+		defer ticker.Stop()
+		tickCh = ticker.C
+	}
 
 	for {
 		select {
@@ -210,7 +214,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 				seen = make(map[string]bool, h.opt.EventBulkInsertNum)
 			}
 
-		case <-ticker.C:
+		case <-tickCh:
 			if len(events) > 0 {
 				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
