@@ -35,13 +35,13 @@ func (f HandlerFunc) Handle(
 
 type SimpleHandler Handler
 
-type SimpleHandlerInterface interface {
+type SimpleHandlerBase interface {
 	HandleStart(context.Context) (context.Context, error)
 	HandleStop(context.Context) error
 	HandleClientMsg(context.Context, ClientMsg) (<-chan ServerMsg, error)
 }
 
-func NewSimpleHandler(h SimpleHandlerInterface) SimpleHandler {
+func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
 	return HandlerFunc(
 		func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
 			defer func() { err = errors.Join(err, h.HandleStop(ctx)) }()

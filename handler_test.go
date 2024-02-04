@@ -87,7 +87,7 @@ type testSimpleHandlerInterfaceEntry struct {
 
 func helperTestSimpleHandlerInterface(
 	t *testing.T,
-	h SimpleHandlerInterface,
+	h SimpleHandlerBase,
 	entries []testSimpleHandlerInterfaceEntry,
 ) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
