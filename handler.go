@@ -45,12 +45,11 @@ type SimpleHandlerBase interface {
 func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
 	return HandlerFunc(
 		func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
-			defer func() { err = errors.Join(err, h.HandleStop(ctx)) }()
-
 			ctx, err = h.HandleStart(ctx)
 			if err != nil {
 				return
 			}
+			defer func() { err = errors.Join(err, h.HandleStop(ctx)) }()
 
 			for {
 				select {
