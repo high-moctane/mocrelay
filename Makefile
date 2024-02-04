@@ -12,7 +12,7 @@ all:
 build: $(TARGET)
 
 
-$(TARGET): *.go cmd/*/*.go
+$(TARGET):
 	cd $(EXEDIR) && go build
 
 
