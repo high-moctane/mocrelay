@@ -227,6 +227,8 @@ func (h *SQLiteHandler) servePragmaOptimize(ctx context.Context, db *sql.DB) {
 	for {
 		select {
 		case <-ctx.Done():
+			return
+
 		case <-ticker.C:
 			if _, err := db.ExecContext(ctx, "pragma optimize"); err != nil {
 				errorLog(ctx, h.opt.Logger, "failed to pragma optimize", "err", err)
