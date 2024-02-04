@@ -23,7 +23,7 @@ type ClientMsg interface {
 	ClientMsg()
 }
 
-func IsNilClientMsg(msg ClientMsg) bool {
+func isNilClientMsg(msg ClientMsg) bool {
 	return msg == nil || reflect.ValueOf(msg).IsNil()
 }
 
@@ -609,7 +609,7 @@ type ServerMsg interface {
 	MarshalJSON() ([]byte, error)
 }
 
-func IsNilServerMsg(msg ServerMsg) bool {
+func isNilServerMsg(msg ServerMsg) bool {
 	return msg == nil || reflect.ValueOf(msg).IsNil()
 }
 

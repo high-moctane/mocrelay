@@ -54,14 +54,14 @@ func trySendCtx[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
 }
 
 func sendClientMsgCtx(ctx context.Context, ch chan<- ClientMsg, msg ClientMsg) (sent bool) {
-	if IsNilClientMsg(msg) {
+	if isNilClientMsg(msg) {
 		return
 	}
 	return sendCtx(ctx, ch, msg)
 }
 
 func sendServerMsgCtx(ctx context.Context, ch chan<- ServerMsg, msg ServerMsg) (sent bool) {
-	if IsNilServerMsg(msg) {
+	if isNilServerMsg(msg) {
 		return
 	}
 	return sendCtx(ctx, ch, msg)
