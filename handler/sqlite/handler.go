@@ -188,7 +188,9 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			if len(events) > 0 {
-				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
+				c, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				if _, err := insertEvents(c, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 			}
