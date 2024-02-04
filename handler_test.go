@@ -1111,7 +1111,7 @@ type testSimpleMiddlewareBaseInterfaceEntry struct {
 
 func helperTestSimpleMiddlewareBaseInterface(
 	t *testing.T,
-	m SimpleMiddlewareBaseInterface,
+	m SimpleMiddlewareBase,
 	entries []testSimpleMiddlewareBaseInterfaceEntry,
 ) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -1395,7 +1395,7 @@ func TestMaxSubscriptionsMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleMaxSubscriptionsMiddlewareBase(tt.maxSubs)
+			m := newSimpleMaxSubscriptionsMiddlewareBase(tt.maxSubs)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
@@ -1481,7 +1481,7 @@ func TestMaxReqFiltersMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleMaxReqFiltersMiddlewareBase(tt.maxFilters)
+			m := newSimpleMaxReqFiltersMiddlewareBase(tt.maxFilters)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
@@ -1599,7 +1599,7 @@ func TestMaxLimitMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleMaxLimitMiddlewareBase(tt.maxLimit)
+			m := newSimpleMaxLimitMiddlewareBase(tt.maxLimit)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
@@ -1681,7 +1681,7 @@ func TestMaxSubIDLengthMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleMaxSubIDLengthMiddlewareBase(tt.maxLimit)
+			m := newSimpleMaxSubIDLengthMiddlewareBase(tt.maxLimit)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
@@ -1741,7 +1741,7 @@ func TestMaxEventTagsMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleMaxEventTagsMiddlewareBase(tt.maxEventTags)
+			m := newSimpleMaxEventTagsMiddlewareBase(tt.maxEventTags)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
@@ -1801,7 +1801,7 @@ func TestMaxContentLengthMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleMaxContentLengthMiddlewareBase(tt.maxContentLength)
+			m := newSimpleMaxContentLengthMiddlewareBase(tt.maxContentLength)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
@@ -1878,7 +1878,7 @@ func TestCreatedAtLowerLimitMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleCreatedAtLowerLimitMiddlewareBase(tt.lower)
+			m := newSimpleCreatedAtLowerLimitMiddlewareBase(tt.lower)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
@@ -1955,7 +1955,7 @@ func TestCreatedAtUpperLimitMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewSimpleCreatedAtUpperLimitMiddlewareBase(tt.upper)
+			m := newSimpleCreatedAtUpperLimitMiddlewareBase(tt.upper)
 			helperTestSimpleMiddlewareBaseInterface(t, m, tt.entries)
 		})
 	}
