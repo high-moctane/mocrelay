@@ -269,20 +269,14 @@ const (
 )
 
 type eventCacheEvsIndex struct {
-	total       int
-	idx         map[eventCacheEvsIndexKey]map[*Event]bool
-	findMapPool sync.Pool
+	total int
+	idx   map[eventCacheEvsIndexKey]map[*Event]bool
 }
 
 func newEventCacheEvsIndex(total int) *eventCacheEvsIndex {
 	return &eventCacheEvsIndex{
 		total: total,
 		idx:   make(map[eventCacheEvsIndexKey]map[*Event]bool),
-		findMapPool: sync.Pool{
-			New: func() any {
-				return make(map[*Event]bool, total)
-			},
-		},
 	}
 }
 
@@ -401,10 +395,7 @@ func (c *eventCacheEvsIndex) Find(
 	idMaps := make([]map[*Event]bool, 0, len(keysSlice))
 
 	for _, keys := range keysSlice {
-		m := c.findMapPool.Get().(map[*Event]bool)
-		for ev := range m {
-			delete(m, ev)
-		}
+		m := make(map[*Event]bool, c.total)
 
 		for _, key := range keys {
 			for ev := range c.idx[key] {
@@ -428,7 +419,6 @@ func (c *eventCacheEvsIndex) Find(
 			}
 		}
 
-		c.findMapPool.Put(mlast)
 		idMaps = idMaps[:len(idMaps)-1]
 	}
 
@@ -454,8 +444,6 @@ func (c *eventCacheEvsIndex) Find(
 			cnt--
 		}
 	}
-
-	c.findMapPool.Put(idMaps[0])
 
 	return
 }
