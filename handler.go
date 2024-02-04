@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 var (
@@ -1628,14 +1629,18 @@ func NewRecvEventUniqueFilterMiddleware(size int) RecvEventUniqueFilterMiddlewar
 var _ SimpleMiddlewareBase = (*simpleRecvEventUniqueFilterMiddlewareBase)(nil)
 
 type simpleRecvEventUniqueFilterMiddlewareBase struct {
-	c *randCache[string, struct{}]
+	c *lru.Cache[string, struct{}]
 }
 
 func newSimpleRecvEventUniqueFilterMiddlewareBase(
 	size int,
 ) *simpleRecvEventUniqueFilterMiddlewareBase {
+	c, err := lru.New[string, struct{}](size)
+	if err != nil {
+		panicf("failed to create simpleRecvEventUniqueFilterMiddlewareBase: %v", err)
+	}
 	return &simpleRecvEventUniqueFilterMiddlewareBase{
-		c: newRandCache[string, struct{}](size),
+		c: c,
 	}
 }
 
@@ -1663,7 +1668,7 @@ func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleClientMsg(
 			)
 			return nil, newClosedBufCh[ServerMsg](okMsg), nil
 		}
-		m.c.Set(msg.Event.ID, struct{}{})
+		m.c.Add(msg.Event.ID, struct{}{})
 	}
 
 	return newClosedBufCh[ClientMsg](msg), nil, nil
@@ -1693,14 +1698,18 @@ func NewSendEventUniqueFilterMiddleware(size int) SendEventUniqueFilterMiddlewar
 var _ SimpleMiddlewareBase = (*simpleSendEventUniqueFilterMiddlewareBase)(nil)
 
 type simpleSendEventUniqueFilterMiddlewareBase struct {
-	c *randCache[string, struct{}]
+	c *lru.Cache[string, struct{}]
 }
 
 func newSimpleSendEventUniqueFilterMiddlewareBase(
 	size int,
 ) *simpleSendEventUniqueFilterMiddlewareBase {
+	c, err := lru.New[string, struct{}](size)
+	if err != nil {
+		panicf("failed to create simpleSendEventUniqueFilterMiddlewareBase: %v", err)
+	}
 	return &simpleSendEventUniqueFilterMiddlewareBase{
-		c: newRandCache[string, struct{}](size),
+		c: c,
 	}
 }
 
@@ -1729,7 +1738,7 @@ func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleServerMsg(
 		if _, found := m.c.Get(msg.Event.ID); found {
 			return nil, nil
 		}
-		m.c.Set(msg.Event.ID, struct{}{})
+		m.c.Add(msg.Event.ID, struct{}{})
 	}
 
 	return newClosedBufCh[ServerMsg](msg), nil
