@@ -114,7 +114,7 @@ func (h *SQLiteHandler) serveClientReqMsg(
 ) error {
 	events, err := queryEvent(ctx, h.db, h.seed, msg.ReqFilters, h.opt.MaxLimit)
 	if err != nil {
-		errorLog(ctx, h.opt.Logger, "failed to query events", "err", err)
+		warnLog(ctx, h.opt.Logger, "failed to query events", "err", err)
 
 		smsg := mocrelay.NewServerEOSEMsg(msg.SubscriptionID)
 		select {
