@@ -74,8 +74,8 @@ func NewSQLiteHandler(
 
 func (h *SQLiteHandler) Handle(
 	ctx context.Context,
-	recv <-chan mocrelay.ClientMsg,
 	send chan<- mocrelay.ServerMsg,
+	recv <-chan mocrelay.ClientMsg,
 ) error {
 	for {
 		select {

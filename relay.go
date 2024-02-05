@@ -96,7 +96,7 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	func() {
 		defer cancel()
-		err := relay.Handler.Handle(ctx, recv, send)
+		err := relay.Handler.Handle(ctx, send, recv)
 		errs <- fmt.Errorf("handler terminated: %w", err)
 	}()
 

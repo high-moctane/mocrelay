@@ -21,17 +21,17 @@ var (
 )
 
 type Handler interface {
-	Handle(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error
+	Handle(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error
 }
 
-type HandlerFunc func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error
+type HandlerFunc func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error
 
 func (f HandlerFunc) Handle(
 	ctx context.Context,
-	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
+	recv <-chan ClientMsg,
 ) error {
-	return f(ctx, recv, send)
+	return f(ctx, send, recv)
 }
 
 type SimpleHandler Handler
@@ -44,7 +44,7 @@ type SimpleHandlerBase interface {
 
 func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
 	return HandlerFunc(
-		func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
+		func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) (err error) {
 			ctx, err = h.HandleStart(ctx)
 			if err != nil {
 				return
@@ -141,8 +141,8 @@ func NewRouterHandler(buflen int) *RouterHandler {
 
 func (router *RouterHandler) Handle(
 	ctx context.Context,
-	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
+	recv <-chan ClientMsg,
 ) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -284,10 +284,10 @@ func NewCacheHandler(size int) CacheHandler {
 
 func (h CacheHandler) Handle(
 	ctx context.Context,
-	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
+	recv <-chan ClientMsg,
 ) error {
-	return NewSimpleHandler(h.h).Handle(ctx, recv, send)
+	return NewSimpleHandler(h.h).Handle(ctx, send, recv)
 }
 
 func (h CacheHandler) Dump(w io.Writer) error {
@@ -401,10 +401,10 @@ func NewMergeHandler(handlers ...Handler) Handler {
 
 func (h *MergeHandler) Handle(
 	ctx context.Context,
-	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
+	recv <-chan ClientMsg,
 ) error {
-	return newMergeHandlerSession(h).Handle(ctx, recv, send)
+	return newMergeHandlerSession(h).Handle(ctx, send, recv)
 }
 
 type mergeHandlerSession struct {
@@ -447,8 +447,8 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 
 func (ss *mergeHandlerSession) Handle(
 	ctx context.Context,
-	recv <-chan ClientMsg,
 	send chan<- ServerMsg,
+	recv <-chan ClientMsg,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -486,7 +486,7 @@ func (ss *mergeHandlerSession) runHandlers(ctx context.Context, handlers []Handl
 	}
 
 	defer cancel()
-	return handlers[l-1].Handle(ctx, ss.recvs[l-1], ss.sends[l-1])
+	return handlers[l-1].Handle(ctx, ss.sends[l-1], ss.recvs[l-1])
 }
 
 func (ss *mergeHandlerSession) mergeSends(ctx context.Context) {
@@ -916,7 +916,7 @@ type SimpleMiddlewareBase interface {
 func NewSimpleMiddleware(base SimpleMiddlewareBase) SimpleMiddleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(
-			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) (err error) {
+			func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) (err error) {
 				ctx, err = base.HandleStart(ctx)
 				if err != nil {
 					return
@@ -946,7 +946,7 @@ func NewSimpleMiddleware(base SimpleMiddlewareBase) SimpleMiddleware {
 				}()
 
 				defer cancel()
-				return handler.Handle(ctx, rCh, sCh)
+				return handler.Handle(ctx, sCh, rCh)
 			},
 		)
 	}
@@ -1668,10 +1668,10 @@ type RecvEventUniqueFilterMiddleware Middleware
 func NewRecvEventUniqueFilterMiddleware(size int) RecvEventUniqueFilterMiddleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(
-			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+			func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error {
 				sm := newSimpleRecvEventUniqueFilterMiddlewareBase(size)
 				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(ctx, recv, send)
+				return m(h).Handle(ctx, send, recv)
 			},
 		)
 	}
@@ -1737,10 +1737,10 @@ type SendEventUniqueFilterMiddleware Middleware
 func NewSendEventUniqueFilterMiddleware(size int) SendEventUniqueFilterMiddleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(
-			func(ctx context.Context, recv <-chan ClientMsg, send chan<- ServerMsg) error {
+			func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error {
 				sm := newSimpleSendEventUniqueFilterMiddlewareBase(size)
 				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(ctx, recv, send)
+				return m(h).Handle(ctx, send, recv)
 			},
 		)
 	}

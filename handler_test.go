@@ -23,7 +23,7 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 
 	go func() {
 		defer cancel()
-		errCh <- h.Handle(ctx, recv, send)
+		errCh <- h.Handle(ctx, send, recv)
 	}()
 
 	for _, msg := range in {
