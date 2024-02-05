@@ -38,7 +38,7 @@ type SimpleHandler Handler
 
 type SimpleHandlerBase interface {
 	HandleStart(context.Context) (context.Context, error)
-	HandleStop(context.Context) error
+	HandleEnd(context.Context) error
 	HandleClientMsg(context.Context, ClientMsg) (<-chan ServerMsg, error)
 }
 
@@ -49,7 +49,7 @@ func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
 			if err != nil {
 				return
 			}
-			defer func() { err = errors.Join(err, h.HandleStop(ctx)) }()
+			defer func() { err = errors.Join(err, h.HandleEnd(ctx)) }()
 
 			for {
 				select {
@@ -95,7 +95,7 @@ func (DefaultSimpleHandlerBase) HandleStart(ctx context.Context) (context.Contex
 	return ctx, nil
 }
 
-func (DefaultSimpleHandlerBase) HandleStop(ctx context.Context) error {
+func (DefaultSimpleHandlerBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -312,7 +312,7 @@ func (h *simpleCacheHandler) HandleStart(ctx context.Context) (context.Context, 
 	return ctx, nil
 }
 
-func (h *simpleCacheHandler) HandleStop(ctx context.Context) error {
+func (h *simpleCacheHandler) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -908,7 +908,7 @@ type SimpleMiddleware Middleware
 
 type SimpleMiddlewareBase interface {
 	HandleStart(context.Context) (context.Context, error)
-	HandleStop(context.Context) error
+	HandleEnd(context.Context) error
 	HandleClientMsg(context.Context, ClientMsg) (<-chan ClientMsg, <-chan ServerMsg, error)
 	HandleServerMsg(context.Context, ServerMsg) (<-chan ServerMsg, error)
 }
@@ -921,7 +921,7 @@ func NewSimpleMiddleware(base SimpleMiddlewareBase) SimpleMiddleware {
 				if err != nil {
 					return
 				}
-				defer func() { err = errors.Join(err, base.HandleStop(ctx)) }()
+				defer func() { err = errors.Join(err, base.HandleEnd(ctx)) }()
 
 				ctx, cancel := context.WithCancel(ctx)
 				defer cancel()
@@ -1104,7 +1104,7 @@ func (m *simpleEventCreatedAtMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleEventCreatedAtMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleEventCreatedAtMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1187,7 +1187,7 @@ func (m *simpleMaxSubscriptionsMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleMaxSubscriptionsMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleMaxSubscriptionsMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1279,7 +1279,7 @@ func (m *simpleMaxReqFiltersMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleMaxReqFiltersMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleMaxReqFiltersMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1340,7 +1340,7 @@ func (m *simpleMaxLimitMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleMaxLimitMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleMaxLimitMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1403,7 +1403,7 @@ func (m *simpleMaxSubIDLengthMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleMaxSubIDLengthMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleMaxSubIDLengthMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1464,7 +1464,7 @@ func (m *simpleMaxEventTagsMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleMaxEventTagsMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleMaxEventTagsMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1523,7 +1523,7 @@ func (m *simpleMaxContentLengthMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleMaxContentLengthMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleMaxContentLengthMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1578,7 +1578,7 @@ func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1633,7 +1633,7 @@ func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1701,7 +1701,7 @@ func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1770,7 +1770,7 @@ func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1820,7 +1820,7 @@ func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
@@ -1874,7 +1874,7 @@ func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 

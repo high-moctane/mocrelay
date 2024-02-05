@@ -118,7 +118,7 @@ func helperTestSimpleHandlerInterface(
 		assert.EqualValuesf(t, entry.want, smsgs, "at %d", i)
 	}
 
-	err = h.HandleStop(ctx)
+	err = h.HandleEnd(ctx)
 	assert.NoError(t, err)
 }
 
@@ -1185,7 +1185,7 @@ func helperTestSimpleMiddlewareBaseInterface(
 		}
 	}
 
-	err = m.HandleStop(ctx)
+	err = m.HandleEnd(ctx)
 	assert.NoError(t, err)
 }
 

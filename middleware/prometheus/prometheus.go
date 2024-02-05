@@ -114,7 +114,7 @@ func (m *simplePrometheusMiddlewareBase) HandleStart(ctx context.Context) (conte
 	return ctx, nil
 }
 
-func (m *simplePrometheusMiddlewareBase) HandleStop(ctx context.Context) error {
+func (m *simplePrometheusMiddlewareBase) HandleEnd(ctx context.Context) error {
 	m.connectionCount.Dec()
 
 	reqID := getRequestID(ctx)
