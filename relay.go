@@ -162,12 +162,6 @@ func (relay *Relay) serveRead(
 		return nil
 	}
 
-	if relay.opt.RawRecvHook != nil {
-		if err := relay.opt.RawRecvHook(ctx, payload); err != nil {
-			return fmt.Errorf("raw recv hook: %w", err)
-		}
-	}
-
 	msg, err := ParseClientMsg(payload)
 	if err != nil {
 		relay.logWarn(ctx, relay.opt.Logger, "failed to parse client msg", "error", err)
@@ -235,12 +229,6 @@ func (relay *Relay) serveWriteLoop(
 			if err := relay.sendMsgWithTimeout(ctx, conn, jsonMsg); err != nil {
 				return fmt.Errorf("failed to write websocket: %w", err)
 			}
-
-			if relay.opt.RawSendHook != nil {
-				if err := relay.opt.RawSendHook(ctx, jsonMsg); err != nil {
-					return fmt.Errorf("raw send hook: %w", err)
-				}
-			}
 		}
 	}
 }
@@ -283,9 +271,6 @@ func (relay *Relay) logWarn(ctx context.Context, logger *slog.Logger, msg string
 
 type RelayOption struct {
 	Logger *slog.Logger
-
-	RawRecvHook func(ctx context.Context, msg []byte) error
-	RawSendHook func(ctx context.Context, msg []byte) error
 
 	SendTimeout time.Duration
 
