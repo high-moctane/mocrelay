@@ -197,6 +197,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 				if _, err := insertEvents(c, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
+				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
 			}
 			return
 
@@ -210,6 +211,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
+				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
 				events = events[:0]
 				seen = make(map[string]bool, h.opt.EventBulkInsertNum)
 			}
@@ -219,6 +221,7 @@ func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
 				if _, err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
+				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
 				events = events[:0]
 				seen = make(map[string]bool, h.opt.EventBulkInsertNum)
 			}
