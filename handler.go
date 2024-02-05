@@ -85,6 +85,45 @@ func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
 	)
 }
 
+type DefaultSimpleHandlerBase struct{}
+
+func NewDefaultHandler() Handler {
+	return NewSimpleHandler(DefaultSimpleHandlerBase{})
+}
+
+func (DefaultSimpleHandlerBase) HandleStart(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+func (DefaultSimpleHandlerBase) HandleStop(ctx context.Context) error {
+	return nil
+}
+
+func (DefaultSimpleHandlerBase) HandleClientMsg(
+	ctx context.Context,
+	msg ClientMsg,
+) (<-chan ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientEventMsg:
+		return newClosedBufCh[ServerMsg](NewServerOKMsg(msg.Event.ID, false, "", "")), nil
+
+	case *ClientReqMsg:
+		return newClosedBufCh[ServerMsg](NewServerClosedMsg(msg.SubscriptionID, "", "")), nil
+
+	case *ClientCloseMsg:
+		return nil, nil
+
+	case *ClientAuthMsg:
+		return nil, nil
+
+	case *ClientCountMsg:
+		return newClosedBufCh[ServerMsg](NewServerCountMsg(msg.SubscriptionID, 0, nil)), nil
+
+	default:
+		return nil, nil
+	}
+}
+
 type RouterHandler struct {
 	buflen int
 	subs   *subscribers
