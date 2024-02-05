@@ -4,9 +4,12 @@ go 1.21.0
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
+	github.com/doug-martin/goqu/v9 v9.19.0
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.1
 	github.com/igrmk/treemap/v2 v2.0.1
+	github.com/mattn/go-sqlite3 v1.14.19
+	github.com/pierrec/xxHash v0.1.5
 	github.com/prometheus/client_golang v1.17.0
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/time v0.5.0

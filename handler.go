@@ -521,7 +521,7 @@ func (ss *mergeHandlerSession) handleRecvEventMsg(msg *ClientEventMsg) ClientMsg
 func (ss *mergeHandlerSession) handleRecvReqMsg(msg *ClientReqMsg) ClientMsg {
 	s := <-ss.reqStat
 	defer func() { ss.reqStat <- s }()
-	s.SetSubID(msg.SubscriptionID)
+	s.SetSubID(msg.SubscriptionID, msg.ReqFilters)
 	return msg
 }
 
@@ -727,6 +727,8 @@ type mergeHandlerSessionReqState struct {
 	lastEvent map[string]*ServerEventMsg
 	// map[subID]map[eventID]seen
 	seen map[string]map[string]bool
+	// map[subID]EventMatcher
+	matcher map[string]EventCountMatcher
 }
 
 func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
@@ -735,13 +737,15 @@ func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
 		eose:      make(map[string][]bool),
 		lastEvent: make(map[string]*ServerEventMsg),
 		seen:      make(map[string]map[string]bool),
+		matcher:   make(map[string]EventCountMatcher),
 	}
 }
 
-func (stat *mergeHandlerSessionReqState) SetSubID(subID string) {
+func (stat *mergeHandlerSessionReqState) SetSubID(subID string, fs []*ReqFilter) {
 	stat.eose[subID] = make([]bool, stat.size)
 	stat.lastEvent[subID] = nil
 	stat.seen[subID] = make(map[string]bool)
+	stat.matcher[subID] = NewReqFiltersEventMatchers(fs)
 }
 
 func (stat *mergeHandlerSessionReqState) SetEOSE(subID string, chIdx int) {
@@ -762,6 +766,7 @@ func (stat *mergeHandlerSessionReqState) AllEOSE(subID string) bool {
 		delete(stat.eose, subID)
 		delete(stat.lastEvent, subID)
 		delete(stat.seen, subID)
+		delete(stat.matcher, subID)
 	}
 	return res
 }
@@ -797,6 +802,13 @@ func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
 	}
 	stat.seen[msg.SubscriptionID][msg.Event.ID] = true
 
+	if stat.matcher[msg.SubscriptionID].Done() {
+		return false
+	}
+	if !stat.matcher[msg.SubscriptionID].CountMatch(msg.Event) {
+		return false
+	}
+
 	return true
 }
 
@@ -804,6 +816,7 @@ func (stat *mergeHandlerSessionReqState) ClearSubID(subID string) {
 	delete(stat.eose, subID)
 	delete(stat.lastEvent, subID)
 	delete(stat.seen, subID)
+	delete(stat.matcher, subID)
 }
 
 type mergeHandlerSessionCountState struct {
