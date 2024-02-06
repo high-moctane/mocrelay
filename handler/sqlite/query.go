@@ -109,15 +109,15 @@ func buildEventQuery(
 			tn := goqu.T(tname)
 			b = b.Join(goqu.I("hashes").As(tname), goqu.On(
 				goqu.And(
-					tn.Col("hashed_id").Eq(e.Col("hashed_id")),
 					goqu.T(tname).Col("hashed_value").In(hs),
+					goqu.T(tname).Col("created_at").Eq(e.Col("created_at")),
+					tn.Col("hashed_id").Eq(e.Col("hashed_id")),
 				),
 			))
 		}
 		if len(hashes) == 0 {
 			b = b.Order(e.Col("created_at").Desc())
 		} else {
-			b = b.Where(goqu.I("hashes0.created_at").Eq(e.Col("created_at")))
 			b = b.Order(goqu.I("hashes0.created_at").Desc())
 		}
 

@@ -63,21 +63,14 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	// table hashes
 	if _, err := db.ExecContext(ctx, `
 		create table if not exists hashes (
-			hashed_id    integer not null,
 			hashed_value integer not null,
 			created_at   integer not null,
+			hashed_id    integer not null,
 
-			primary key (hashed_id, hashed_value, created_at)
+			primary key (hashed_value, created_at, hashed_id)
 		) strict, without rowid;
 	`); err != nil {
 		return fmt.Errorf("failed to create hashes table: %w", err)
-	}
-
-	// index hashes_hashed_value_created_at
-	if _, err := db.ExecContext(ctx, `
-		create index if not exists idx_hashes_hashed_value_created_at on hashes (hashed_value, created_at desc);
-	`); err != nil {
-		return fmt.Errorf("failed to create index idx_hashes_hashed_value_created_at: %w", err)
 	}
 
 	return nil
