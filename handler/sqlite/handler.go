@@ -30,7 +30,21 @@ func NewDefaultSQLiteHandlerOption() *SQLiteHandlerOption {
 	}
 }
 
-type SQLiteHandler struct {
+type SQLiteHandler mocrelay.Handler
+
+func NewSQLiteHandler(
+	ctx context.Context,
+	db *sql.DB,
+	opt *SQLiteHandlerOption,
+) (SQLiteHandler, error) {
+	h, err := newSimpleSQLiteHandler(ctx, db, opt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SQLiteHandler: %w", err)
+	}
+	return SQLiteHandler(mocrelay.NewSimpleHandler(h)), nil
+}
+
+type simpleSQLiteHandler struct {
 	db      *sql.DB
 	eventCh chan *mocrelay.Event
 	seed    uint32
@@ -38,11 +52,11 @@ type SQLiteHandler struct {
 	opt SQLiteHandlerOption
 }
 
-func NewSQLiteHandler(
+func newSimpleSQLiteHandler(
 	ctx context.Context,
 	db *sql.DB,
 	opt *SQLiteHandlerOption,
-) (*SQLiteHandler, error) {
+) (*simpleSQLiteHandler, error) {
 	if err := Migrate(ctx, db); err != nil {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
@@ -59,7 +73,7 @@ func NewSQLiteHandler(
 		option = *NewDefaultSQLiteHandlerOption()
 	}
 
-	h := &SQLiteHandler{
+	h := &simpleSQLiteHandler{
 		db:      db,
 		eventCh: make(chan *mocrelay.Event, option.EventBulkInsertNum),
 		seed:    seed,
@@ -71,112 +85,79 @@ func NewSQLiteHandler(
 	return h, nil
 }
 
-func (h *SQLiteHandler) ServeNostr(
+func (h *simpleSQLiteHandler) ServeNostrStart(
 	ctx context.Context,
-	send chan<- mocrelay.ServerMsg,
-	recv <-chan mocrelay.ClientMsg,
-) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
+) (context.Context, error) {
+	return ctx, nil
+}
 
-		case msg, ok := <-recv:
-			if !ok {
-				return mocrelay.ErrRecvClosed
-			}
+func (h *simpleSQLiteHandler) ServeNostrEnd(ctx context.Context) error {
+	return nil
+}
 
-			switch msg := msg.(type) {
-			case *mocrelay.ClientReqMsg:
-				if err := h.serveClientReqMsg(ctx, send, msg); err != nil {
-					return err
-				}
+func (h *simpleSQLiteHandler) ServeNostrClientMsg(
+	ctx context.Context,
+	msg mocrelay.ClientMsg,
+) (<-chan mocrelay.ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *mocrelay.ClientReqMsg:
+		return h.serveClientReqMsg(ctx, msg)
 
-			case *mocrelay.ClientCountMsg:
-				if err := h.serveClientCountMsg(ctx, send, msg); err != nil {
-					return err
-				}
+	case *mocrelay.ClientEventMsg:
+		return h.serveClientEventMsg(ctx, msg)
 
-			case *mocrelay.ClientEventMsg:
-				if err := h.serveClientEventMsg(ctx, send, msg); err != nil {
-					return err
-				}
-			}
-		}
+	default:
+		return mocrelay.DefaultSimpleHandlerBase{}.ServeNostrClientMsg(ctx, msg)
 	}
 }
 
-func (h *SQLiteHandler) serveClientReqMsg(
+func (h *simpleSQLiteHandler) serveClientReqMsg(
 	ctx context.Context,
-	send chan<- mocrelay.ServerMsg,
 	msg *mocrelay.ClientReqMsg,
-) error {
+) (<-chan mocrelay.ServerMsg, error) {
 	events, err := queryEvent(ctx, h.db, h.seed, msg.ReqFilters, h.opt.MaxLimit)
 	if err != nil {
 		warnLog(ctx, h.opt.Logger, "failed to query events", "err", err)
 
-		smsg := mocrelay.NewServerEOSEMsg(msg.SubscriptionID)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case send <- smsg:
-			return nil
-		}
+		smsgCh := make(chan mocrelay.ServerMsg, 1)
+		defer close(smsgCh)
+
+		smsgCh <- mocrelay.NewServerEOSEMsg(msg.SubscriptionID)
+
+		return smsgCh, nil
 	}
+
+	smsgCh := make(chan mocrelay.ServerMsg, len(events)+1)
+	defer close(smsgCh)
 
 	for _, event := range events {
-		smsg := mocrelay.NewServerEventMsg(msg.SubscriptionID, event)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case send <- smsg:
-		}
+		smsgCh <- mocrelay.NewServerEventMsg(msg.SubscriptionID, event)
 	}
 
-	smsg := mocrelay.NewServerEOSEMsg(msg.SubscriptionID)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case send <- smsg:
-		return nil
-	}
+	smsgCh <- mocrelay.NewServerEOSEMsg(msg.SubscriptionID)
+
+	return smsgCh, nil
 }
 
-func (h *SQLiteHandler) serveClientCountMsg(
+func (h *simpleSQLiteHandler) serveClientEventMsg(
 	ctx context.Context,
-	send chan<- mocrelay.ServerMsg,
-	msg *mocrelay.ClientCountMsg,
-) error {
-	smsg := mocrelay.NewServerCountMsg(msg.SubscriptionID, 0, nil)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case send <- smsg:
-		return nil
-	}
-}
-
-func (h *SQLiteHandler) serveClientEventMsg(
-	ctx context.Context,
-	send chan<- mocrelay.ServerMsg,
 	msg *mocrelay.ClientEventMsg,
-) error {
+) (<-chan mocrelay.ServerMsg, error) {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 
 	case h.eventCh <- msg.Event:
-		smsg := mocrelay.NewServerOKMsg(msg.Event.ID, true, "", "")
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case send <- smsg:
-			return nil
-		}
+		smsgCh := make(chan mocrelay.ServerMsg, 1)
+		defer close(smsgCh)
+
+		smsgCh <- mocrelay.NewServerOKMsg(msg.Event.ID, true, "", "")
+
+		return smsgCh, nil
 	}
 }
 
-func (h *SQLiteHandler) serveBulkInsert(ctx context.Context) {
+func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 	events := make([]*mocrelay.Event, 0, h.opt.EventBulkInsertNum)
 	seen := make(map[string]bool, h.opt.EventBulkInsertNum)
 
