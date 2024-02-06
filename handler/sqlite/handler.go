@@ -71,7 +71,7 @@ func NewSQLiteHandler(
 	return h, nil
 }
 
-func (h *SQLiteHandler) Handle(
+func (h *SQLiteHandler) ServeNostr(
 	ctx context.Context,
 	send chan<- mocrelay.ServerMsg,
 	recv <-chan mocrelay.ClientMsg,

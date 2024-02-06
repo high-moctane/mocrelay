@@ -21,12 +21,12 @@ var (
 )
 
 type Handler interface {
-	Handle(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error
+	ServeNostr(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error
 }
 
 type HandlerFunc func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error
 
-func (f HandlerFunc) Handle(
+func (f HandlerFunc) ServeNostr(
 	ctx context.Context,
 	send chan<- ServerMsg,
 	recv <-chan ClientMsg,
@@ -37,19 +37,19 @@ func (f HandlerFunc) Handle(
 type SimpleHandler Handler
 
 type SimpleHandlerBase interface {
-	HandleStart(context.Context) (context.Context, error)
-	HandleEnd(context.Context) error
-	HandleClientMsg(context.Context, ClientMsg) (<-chan ServerMsg, error)
+	ServeNostrStart(context.Context) (context.Context, error)
+	ServeNostrEnd(context.Context) error
+	ServeNostrClientMsg(context.Context, ClientMsg) (<-chan ServerMsg, error)
 }
 
 func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
 	return HandlerFunc(
 		func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) (err error) {
-			ctx, err = h.HandleStart(ctx)
+			ctx, err = h.ServeNostrStart(ctx)
 			if err != nil {
 				return
 			}
-			defer func() { err = errors.Join(err, h.HandleEnd(ctx)) }()
+			defer func() { err = errors.Join(err, h.ServeNostrEnd(ctx)) }()
 
 			for {
 				select {
@@ -60,7 +60,7 @@ func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
 					if !ok {
 						return ErrRecvClosed
 					}
-					smsgCh, err := h.HandleClientMsg(ctx, cmsg)
+					smsgCh, err := h.ServeNostrClientMsg(ctx, cmsg)
 					if err != nil {
 						return err
 					}
@@ -91,15 +91,15 @@ func NewDefaultHandler() Handler {
 	return NewSimpleHandler(DefaultSimpleHandlerBase{})
 }
 
-func (DefaultSimpleHandlerBase) HandleStart(ctx context.Context) (context.Context, error) {
+func (DefaultSimpleHandlerBase) ServeNostrStart(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
-func (DefaultSimpleHandlerBase) HandleEnd(ctx context.Context) error {
+func (DefaultSimpleHandlerBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (DefaultSimpleHandlerBase) HandleClientMsg(
+func (DefaultSimpleHandlerBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ServerMsg, error) {
@@ -139,7 +139,7 @@ func NewRouterHandler(buflen int) *RouterHandler {
 	}
 }
 
-func (router *RouterHandler) Handle(
+func (router *RouterHandler) ServeNostr(
 	ctx context.Context,
 	send chan<- ServerMsg,
 	recv <-chan ClientMsg,
@@ -282,12 +282,12 @@ func NewCacheHandler(size int) CacheHandler {
 	return CacheHandler{h: newSimpleCacheHandler(size)}
 }
 
-func (h CacheHandler) Handle(
+func (h CacheHandler) ServeNostr(
 	ctx context.Context,
 	send chan<- ServerMsg,
 	recv <-chan ClientMsg,
 ) error {
-	return NewSimpleHandler(h.h).Handle(ctx, send, recv)
+	return NewSimpleHandler(h.h).ServeNostr(ctx, send, recv)
 }
 
 func (h CacheHandler) Dump(w io.Writer) error {
@@ -308,15 +308,15 @@ func newSimpleCacheHandler(size int) *simpleCacheHandler {
 	}
 }
 
-func (h *simpleCacheHandler) HandleStart(ctx context.Context) (context.Context, error) {
+func (h *simpleCacheHandler) ServeNostrStart(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
-func (h *simpleCacheHandler) HandleEnd(ctx context.Context) error {
+func (h *simpleCacheHandler) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (h *simpleCacheHandler) HandleClientMsg(
+func (h *simpleCacheHandler) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ServerMsg, error) {
@@ -399,12 +399,12 @@ func NewMergeHandler(handlers ...Handler) Handler {
 	}
 }
 
-func (h *MergeHandler) Handle(
+func (h *MergeHandler) ServeNostr(
 	ctx context.Context,
 	send chan<- ServerMsg,
 	recv <-chan ClientMsg,
 ) error {
-	return newMergeHandlerSession(h).Handle(ctx, send, recv)
+	return newMergeHandlerSession(h).ServeNostr(ctx, send, recv)
 }
 
 type mergeHandlerSession struct {
@@ -445,7 +445,7 @@ func newMergeHandlerSession(h *MergeHandler) *mergeHandlerSession {
 	return ss
 }
 
-func (ss *mergeHandlerSession) Handle(
+func (ss *mergeHandlerSession) ServeNostr(
 	ctx context.Context,
 	send chan<- ServerMsg,
 	recv <-chan ClientMsg,
@@ -486,7 +486,7 @@ func (ss *mergeHandlerSession) runHandlers(ctx context.Context, handlers []Handl
 	}
 
 	defer cancel()
-	return handlers[l-1].Handle(ctx, ss.sends[l-1], ss.recvs[l-1])
+	return handlers[l-1].ServeNostr(ctx, ss.sends[l-1], ss.recvs[l-1])
 }
 
 func (ss *mergeHandlerSession) mergeSends(ctx context.Context) {
@@ -907,21 +907,21 @@ type Middleware func(Handler) Handler
 type SimpleMiddleware Middleware
 
 type SimpleMiddlewareBase interface {
-	HandleStart(context.Context) (context.Context, error)
-	HandleEnd(context.Context) error
-	HandleClientMsg(context.Context, ClientMsg) (<-chan ClientMsg, <-chan ServerMsg, error)
-	HandleServerMsg(context.Context, ServerMsg) (<-chan ServerMsg, error)
+	ServeNostrStart(context.Context) (context.Context, error)
+	ServeNostrEnd(context.Context) error
+	ServeNostrClientMsg(context.Context, ClientMsg) (<-chan ClientMsg, <-chan ServerMsg, error)
+	ServeNostrServerMsg(context.Context, ServerMsg) (<-chan ServerMsg, error)
 }
 
 func NewSimpleMiddleware(base SimpleMiddlewareBase) SimpleMiddleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(
 			func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) (err error) {
-				ctx, err = base.HandleStart(ctx)
+				ctx, err = base.ServeNostrStart(ctx)
 				if err != nil {
 					return
 				}
-				defer func() { err = errors.Join(err, base.HandleEnd(ctx)) }()
+				defer func() { err = errors.Join(err, base.ServeNostrEnd(ctx)) }()
 
 				ctx, cancel := context.WithCancel(ctx)
 				defer cancel()
@@ -946,7 +946,7 @@ func NewSimpleMiddleware(base SimpleMiddlewareBase) SimpleMiddleware {
 				}()
 
 				defer cancel()
-				return handler.Handle(ctx, sCh, rCh)
+				return handler.ServeNostr(ctx, sCh, rCh)
 			},
 		)
 	}
@@ -969,7 +969,7 @@ func simpleMiddlewareHandleRecv(
 				return ErrRecvClosed
 			}
 
-			cmsgCh, smsgCh, err := base.HandleClientMsg(ctx, cmsg)
+			cmsgCh, smsgCh, err := base.ServeNostrClientMsg(ctx, cmsg)
 			if err != nil {
 				return err
 			}
@@ -1021,7 +1021,7 @@ func simpleMiddlewareHandleSend(
 			return ctx.Err()
 
 		case smsg := <-sCh:
-			smsgCh, err := base.HandleServerMsg(ctx, smsg)
+			smsgCh, err := base.ServeNostrServerMsg(ctx, smsg)
 			if err != nil {
 				return err
 			}
@@ -1098,17 +1098,17 @@ func newSimpleEventCreatedAtMiddlewareBase(
 	return &simpleEventCreatedAtMiddlewareBase{from: from, to: to}
 }
 
-func (m *simpleEventCreatedAtMiddlewareBase) HandleStart(
+func (m *simpleEventCreatedAtMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleEventCreatedAtMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleEventCreatedAtMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleEventCreatedAtMiddlewareBase) HandleClientMsg(
+func (m *simpleEventCreatedAtMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1136,7 +1136,7 @@ func (m *simpleEventCreatedAtMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleEventCreatedAtMiddlewareBase) HandleServerMsg(
+func (m *simpleEventCreatedAtMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1176,7 +1176,7 @@ func newSimpleMaxSubscriptionsMiddlewareBase(
 	}
 }
 
-func (m *simpleMaxSubscriptionsMiddlewareBase) HandleStart(
+func (m *simpleMaxSubscriptionsMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	v := &simpleMaxSubscriptionsMiddlewareBaseCtxValue{
@@ -1187,11 +1187,11 @@ func (m *simpleMaxSubscriptionsMiddlewareBase) HandleStart(
 	return ctx, nil
 }
 
-func (m *simpleMaxSubscriptionsMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleMaxSubscriptionsMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleMaxSubscriptionsMiddlewareBase) HandleClientMsg(
+func (m *simpleMaxSubscriptionsMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (cmsgCh <-chan ClientMsg, smsgCh <-chan ServerMsg, err error) {
@@ -1243,7 +1243,7 @@ func (m *simpleMaxSubscriptionsMiddlewareBase) handleClientCloseMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleMaxSubscriptionsMiddlewareBase) HandleServerMsg(
+func (m *simpleMaxSubscriptionsMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1273,17 +1273,17 @@ func newSimpleMaxReqFiltersMiddlewareBase(
 	return &simpleMaxReqFiltersMiddlewareBase{maxFilters: maxFilters}
 }
 
-func (m *simpleMaxReqFiltersMiddlewareBase) HandleStart(
+func (m *simpleMaxReqFiltersMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleMaxReqFiltersMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleMaxReqFiltersMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleMaxReqFiltersMiddlewareBase) HandleClientMsg(
+func (m *simpleMaxReqFiltersMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1304,7 +1304,7 @@ func (m *simpleMaxReqFiltersMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxReqFiltersMiddlewareBase) HandleServerMsg(
+func (m *simpleMaxReqFiltersMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1334,17 +1334,17 @@ func newSimpleMaxLimitMiddlewareBase(
 	return &simpleMaxLimitMiddlewareBase{maxLimit: maxLimit}
 }
 
-func (m *simpleMaxLimitMiddlewareBase) HandleStart(
+func (m *simpleMaxLimitMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleMaxLimitMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleMaxLimitMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleMaxLimitMiddlewareBase) HandleClientMsg(
+func (m *simpleMaxLimitMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1367,7 +1367,7 @@ func (m *simpleMaxLimitMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxLimitMiddlewareBase) HandleServerMsg(
+func (m *simpleMaxLimitMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1397,17 +1397,17 @@ func newSimpleMaxSubIDLengthMiddlewareBase(
 	return &simpleMaxSubIDLengthMiddlewareBase{maxSubIDLength: maxSubIDLength}
 }
 
-func (m *simpleMaxSubIDLengthMiddlewareBase) HandleStart(
+func (m *simpleMaxSubIDLengthMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleMaxSubIDLengthMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleMaxSubIDLengthMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleMaxSubIDLengthMiddlewareBase) HandleClientMsg(
+func (m *simpleMaxSubIDLengthMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1428,7 +1428,7 @@ func (m *simpleMaxSubIDLengthMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxSubIDLengthMiddlewareBase) HandleServerMsg(
+func (m *simpleMaxSubIDLengthMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1458,17 +1458,17 @@ func newSimpleMaxEventTagsMiddlewareBase(
 	return &simpleMaxEventTagsMiddlewareBase{maxEventTags: maxEventTags}
 }
 
-func (m *simpleMaxEventTagsMiddlewareBase) HandleStart(
+func (m *simpleMaxEventTagsMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleMaxEventTagsMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleMaxEventTagsMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleMaxEventTagsMiddlewareBase) HandleClientMsg(
+func (m *simpleMaxEventTagsMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1487,7 +1487,7 @@ func (m *simpleMaxEventTagsMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxEventTagsMiddlewareBase) HandleServerMsg(
+func (m *simpleMaxEventTagsMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1517,17 +1517,17 @@ func newSimpleMaxContentLengthMiddlewareBase(
 	return &simpleMaxContentLengthMiddlewareBase{maxContentLength: maxContentLength}
 }
 
-func (m *simpleMaxContentLengthMiddlewareBase) HandleStart(
+func (m *simpleMaxContentLengthMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleMaxContentLengthMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleMaxContentLengthMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleMaxContentLengthMiddlewareBase) HandleClientMsg(
+func (m *simpleMaxContentLengthMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1546,7 +1546,7 @@ func (m *simpleMaxContentLengthMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh(msg), nil, nil
 }
 
-func (m *simpleMaxContentLengthMiddlewareBase) HandleServerMsg(
+func (m *simpleMaxContentLengthMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1572,17 +1572,17 @@ func newSimpleCreatedAtLowerLimitMiddlewareBase(
 	return &simpleCreatedAtLowerLimitMiddlewareBase{lower: lower}
 }
 
-func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleStart(
+func (m *simpleCreatedAtLowerLimitMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleCreatedAtLowerLimitMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleClientMsg(
+func (m *simpleCreatedAtLowerLimitMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1601,7 +1601,7 @@ func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleCreatedAtLowerLimitMiddlewareBase) HandleServerMsg(
+func (m *simpleCreatedAtLowerLimitMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1627,17 +1627,17 @@ func newSimpleCreatedAtUpperLimitMiddlewareBase(
 	return &simpleCreatedAtUpperLimitMiddlewareBase{upper: upper}
 }
 
-func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleStart(
+func (m *simpleCreatedAtUpperLimitMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleCreatedAtUpperLimitMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleClientMsg(
+func (m *simpleCreatedAtUpperLimitMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1656,7 +1656,7 @@ func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleCreatedAtUpperLimitMiddlewareBase) HandleServerMsg(
+func (m *simpleCreatedAtUpperLimitMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1671,7 +1671,7 @@ func NewRecvEventUniqueFilterMiddleware(size int) RecvEventUniqueFilterMiddlewar
 			func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error {
 				sm := newSimpleRecvEventUniqueFilterMiddlewareBase(size)
 				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(ctx, send, recv)
+				return m(h).ServeNostr(ctx, send, recv)
 			},
 		)
 	}
@@ -1695,17 +1695,17 @@ func newSimpleRecvEventUniqueFilterMiddlewareBase(
 	}
 }
 
-func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleStart(
+func (m *simpleRecvEventUniqueFilterMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleRecvEventUniqueFilterMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleClientMsg(
+func (m *simpleRecvEventUniqueFilterMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1725,7 +1725,7 @@ func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleRecvEventUniqueFilterMiddlewareBase) HandleServerMsg(
+func (m *simpleRecvEventUniqueFilterMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1740,7 +1740,7 @@ func NewSendEventUniqueFilterMiddleware(size int) SendEventUniqueFilterMiddlewar
 			func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error {
 				sm := newSimpleSendEventUniqueFilterMiddlewareBase(size)
 				m := NewSimpleMiddleware(sm)
-				return m(h).Handle(ctx, send, recv)
+				return m(h).ServeNostr(ctx, send, recv)
 			},
 		)
 	}
@@ -1764,24 +1764,24 @@ func newSimpleSendEventUniqueFilterMiddlewareBase(
 	}
 }
 
-func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleStart(
+func (m *simpleSendEventUniqueFilterMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleSendEventUniqueFilterMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleClientMsg(
+func (m *simpleSendEventUniqueFilterMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleSendEventUniqueFilterMiddlewareBase) HandleServerMsg(
+func (m *simpleSendEventUniqueFilterMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1814,17 +1814,17 @@ func newSimpleRecvEventAllowFilterMiddlewareBase(
 	return &simpleRecvEventAllowFilterMiddlewareBase{matcher: matcher}
 }
 
-func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleStart(
+func (m *simpleRecvEventAllowFilterMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleRecvEventAllowFilterMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleClientMsg(
+func (m *simpleRecvEventAllowFilterMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1842,7 +1842,7 @@ func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleRecvEventAllowFilterMiddlewareBase) HandleServerMsg(
+func (m *simpleRecvEventAllowFilterMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
@@ -1868,17 +1868,17 @@ func newSimpleRecvEventDenyFilterMiddlewareBase(
 	return &simpleRecvEventDenyFilterMiddlewareBase{matcher: matcher}
 }
 
-func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleStart(
+func (m *simpleRecvEventDenyFilterMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
 	return ctx, nil
 }
 
-func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simpleRecvEventDenyFilterMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleClientMsg(
+func (m *simpleRecvEventDenyFilterMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg ClientMsg,
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
@@ -1896,7 +1896,7 @@ func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleClientMsg(
 	return newClosedBufCh[ClientMsg](msg), nil, nil
 }
 
-func (m *simpleRecvEventDenyFilterMiddlewareBase) HandleServerMsg(
+func (m *simpleRecvEventDenyFilterMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {

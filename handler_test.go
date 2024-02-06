@@ -23,7 +23,7 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 
 	go func() {
 		defer cancel()
-		errCh <- h.Handle(ctx, send, recv)
+		errCh <- h.ServeNostr(ctx, send, recv)
 	}()
 
 	for _, msg := range in {
@@ -93,11 +93,11 @@ func helperTestSimpleHandlerInterface(
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	ctx, err := h.HandleStart(ctx)
+	ctx, err := h.ServeNostrStart(ctx)
 	assert.NoError(t, err)
 
 	for i, entry := range entries {
-		smsgCh, err := h.HandleClientMsg(ctx, entry.input)
+		smsgCh, err := h.ServeNostrClientMsg(ctx, entry.input)
 		assert.NoError(t, err)
 
 		var smsgs []ServerMsg
@@ -118,7 +118,7 @@ func helperTestSimpleHandlerInterface(
 		assert.EqualValuesf(t, entry.want, smsgs, "at %d", i)
 	}
 
-	err = h.HandleEnd(ctx)
+	err = h.ServeNostrEnd(ctx)
 	assert.NoError(t, err)
 }
 
@@ -1117,13 +1117,13 @@ func helperTestSimpleMiddlewareBaseInterface(
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	ctx, err := m.HandleStart(ctx)
+	ctx, err := m.ServeNostrStart(ctx)
 	assert.NoError(t, err)
 
 	for i, entry := range entries {
 		switch msg := entry.input.(type) {
 		case ClientMsg:
-			cmsgCh, sMsgCh, err := m.HandleClientMsg(ctx, msg)
+			cmsgCh, sMsgCh, err := m.ServeNostrClientMsg(ctx, msg)
 			assert.NoError(t, err)
 
 			var smsgs []ServerMsg
@@ -1161,7 +1161,7 @@ func helperTestSimpleMiddlewareBaseInterface(
 			assert.EqualValuesf(t, entry.wantCmsgs, cmsgs, "at %d", i)
 
 		case ServerMsg:
-			sMsgCh, err := m.HandleServerMsg(ctx, msg)
+			sMsgCh, err := m.ServeNostrServerMsg(ctx, msg)
 			assert.NoError(t, err)
 
 			var smsgs []ServerMsg
@@ -1185,7 +1185,7 @@ func helperTestSimpleMiddlewareBaseInterface(
 		}
 	}
 
-	err = m.HandleEnd(ctx)
+	err = m.ServeNostrEnd(ctx)
 	assert.NoError(t, err)
 }
 

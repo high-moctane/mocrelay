@@ -104,7 +104,9 @@ func newSimplePrometheusMiddlewareBase(reg prometheus.Registerer) *simplePrometh
 	return m
 }
 
-func (m *simplePrometheusMiddlewareBase) HandleStart(ctx context.Context) (context.Context, error) {
+func (m *simplePrometheusMiddlewareBase) ServeNostrStart(
+	ctx context.Context,
+) (context.Context, error) {
 	m.connectionCount.Inc()
 
 	reqID := uuid.NewString()
@@ -114,7 +116,7 @@ func (m *simplePrometheusMiddlewareBase) HandleStart(ctx context.Context) (conte
 	return ctx, nil
 }
 
-func (m *simplePrometheusMiddlewareBase) HandleEnd(ctx context.Context) error {
+func (m *simplePrometheusMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
 	m.connectionCount.Dec()
 
 	reqID := getRequestID(ctx)
@@ -124,7 +126,7 @@ func (m *simplePrometheusMiddlewareBase) HandleEnd(ctx context.Context) error {
 	return nil
 }
 
-func (m *simplePrometheusMiddlewareBase) HandleClientMsg(
+func (m *simplePrometheusMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg mocrelay.ClientMsg,
 ) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
@@ -165,7 +167,7 @@ func (m *simplePrometheusMiddlewareBase) HandleClientMsg(
 	return res, nil, nil
 }
 
-func (m *simplePrometheusMiddlewareBase) HandleServerMsg(
+func (m *simplePrometheusMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg mocrelay.ServerMsg,
 ) (<-chan mocrelay.ServerMsg, error) {
