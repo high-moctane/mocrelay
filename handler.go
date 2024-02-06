@@ -34,15 +34,13 @@ func (f HandlerFunc) ServeNostr(
 	return f(ctx, send, recv)
 }
 
-type SimpleHandler Handler
-
 type SimpleHandlerBase interface {
 	ServeNostrStart(context.Context) (context.Context, error)
 	ServeNostrEnd(context.Context) error
 	ServeNostrClientMsg(context.Context, ClientMsg) (<-chan ServerMsg, error)
 }
 
-func NewSimpleHandler(h SimpleHandlerBase) SimpleHandler {
+func NewSimpleHandler(h SimpleHandlerBase) Handler {
 	return HandlerFunc(
 		func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) (err error) {
 			ctx, err = h.ServeNostrStart(ctx)
@@ -904,8 +902,6 @@ func (stat *mergeHandlerSessionCountState) ClearSubID(subID string) {
 
 type Middleware func(Handler) Handler
 
-type SimpleMiddleware Middleware
-
 type SimpleMiddlewareBase interface {
 	ServeNostrStart(context.Context) (context.Context, error)
 	ServeNostrEnd(context.Context) error
@@ -913,7 +909,7 @@ type SimpleMiddlewareBase interface {
 	ServeNostrServerMsg(context.Context, ServerMsg) (<-chan ServerMsg, error)
 }
 
-func NewSimpleMiddleware(base SimpleMiddlewareBase) SimpleMiddleware {
+func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(
 			func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) (err error) {

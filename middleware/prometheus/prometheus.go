@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type PrometheusMiddleware mocrelay.SimpleMiddleware
+type PrometheusMiddleware mocrelay.Middleware
 
 func NewPrometheusMiddleware(reg prometheus.Registerer) PrometheusMiddleware {
 	m := newSimplePrometheusMiddlewareBase(reg)
