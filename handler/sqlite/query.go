@@ -198,7 +198,7 @@ func buildEventQuery(
 		}
 	}
 
-	return builder.Prepared(true).ToSQL()
+	return builder.ToSQL()
 }
 
 func fetchEventQuery(

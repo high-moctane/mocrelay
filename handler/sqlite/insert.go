@@ -277,7 +277,6 @@ func buildInsertDeletedKeys(
 		Insert("deleted_keys").
 		Rows(records).
 		OnConflict(goqu.DoNothing()).
-		Prepared(true).
 		ToSQL()
 }
 
@@ -291,7 +290,6 @@ func buildInsertHashes(
 		Insert("hashes").
 		Rows(records).
 		OnConflict(goqu.DoNothing()).
-		Prepared(true).
 		ToSQL()
 }
 
