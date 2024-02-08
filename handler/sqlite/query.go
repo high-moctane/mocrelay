@@ -102,7 +102,7 @@ func buildEventQuery(
 			e.Col("tags"),
 			e.Col("content"),
 			e.Col("sig"),
-		).From("events")
+		).Order(e.Col("created_at").Desc()).From("events")
 
 		for n, hs := range hashes {
 			tname := fmt.Sprintf("hashes%d", n)
@@ -114,11 +114,6 @@ func buildEventQuery(
 					tn.Col("hashed_id").Eq(e.Col("hashed_id")),
 				),
 			))
-		}
-		if len(hashes) == 0 {
-			b = b.Order(e.Col("created_at").Desc())
-		} else {
-			b = b.Order(goqu.I("hashes0.created_at").Desc())
 		}
 
 		b = b.Where(goqu.L("(events.key, 'a', events.pubkey)").NotIn(
