@@ -102,7 +102,7 @@ func buildEventQuery(
 			e.Col("tags"),
 			e.Col("content"),
 			e.Col("sig"),
-		).Distinct().From("events")
+		).From("events")
 
 		for n, hs := range hashes {
 			tname := fmt.Sprintf("hashes%d", n)
@@ -143,13 +143,14 @@ func buildEventQuery(
 
 			if f.Tags != nil {
 				for tag, values := range f.Tags {
-					tag := string(tag[1])
-					tname := fmt.Sprintf("tag%s", tag)
-					b = b.Join(goqu.L(fmt.Sprintf("json_each(events.tags) as %s", tname)), goqu.On(
-						goqu.And(
-							goqu.L(fmt.Sprintf("%s.value->>0", tname)).Eq(tag),
-							goqu.L(fmt.Sprintf("ifnull(%s.value->>1, '')", tname)).In(values),
-						),
+					b = b.Where(goqu.L(
+						"EXISTS ?",
+						goqu.
+							Dialect("sqlite3").
+							Select(goqu.L("1")).
+							From(goqu.L("json_each(events.tags)")).
+							Where(goqu.L("json_each.value->>0").Eq(string(tag[1]))).
+							Where(goqu.L("ifnull(json_each.value->>1, '')").In(values)),
 					))
 				}
 			}
