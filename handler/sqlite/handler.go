@@ -67,6 +67,10 @@ func newSimpleSQLiteHandler(
 		option = *NewDefaultSQLiteHandlerOption()
 	}
 
+	if _, err := db.ExecContext(ctx, "pragma foreign_keys = on"); err != nil {
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
 	h := &simpleSQLiteHandler{
 		db:      db,
 		eventCh: make(chan *mocrelay.Event, option.EventBulkInsertNum),
