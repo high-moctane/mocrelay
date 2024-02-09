@@ -47,6 +47,33 @@ func Test_queryEvent(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "query event with two filters",
+			input: []*mocrelay.Event{
+				{
+					ID:        "id",
+					Pubkey:    "pubkey",
+					CreatedAt: 1234,
+					Kind:      1,
+					Tags: []mocrelay.Tag{
+						{"e", "value"},
+					},
+				},
+			},
+			fs: []*mocrelay.ReqFilter{{}, {}},
+			want: []*mocrelay.Event{
+				{
+					ID:        "id",
+					Pubkey:    "pubkey",
+					CreatedAt: 1234,
+					Kind:      1,
+					Tags: []mocrelay.Tag{
+						{"e", "value"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "query ids",
 			input: []*mocrelay.Event{
 				{
@@ -884,6 +911,122 @@ func Test_queryEvent(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "kind5 with ids",
+			input: []*mocrelay.Event{
+				{
+					ID:        "id1",
+					Pubkey:    "pubkey1",
+					CreatedAt: 1,
+					Kind:      1,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey2",
+					CreatedAt: 2,
+					Kind:      1,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "id3",
+					Pubkey:    "pubkey1",
+					CreatedAt: 3,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value"},
+					},
+				},
+				{
+					ID:        "id4",
+					Pubkey:    "pubkey2",
+					CreatedAt: 4,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value"},
+					},
+				},
+				{
+					ID:        "id5",
+					Pubkey:    "pubkey1",
+					CreatedAt: 5,
+					Kind:      10000,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "id6",
+					Pubkey:    "pubkey2",
+					CreatedAt: 6,
+					Kind:      10000,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "id7",
+					Pubkey:    "pubkey1",
+					CreatedAt: 7,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value1"},
+					},
+				},
+				{
+					ID:        "kind5",
+					Pubkey:    "pubkey1",
+					CreatedAt: 100,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id1"},
+						{"e", "id2"},
+						{"e", "id7"},
+						{"a", "10000:pubkey1"},
+						{"a", "30000:pubkey1:value"},
+					},
+				},
+			},
+			fs: []*mocrelay.ReqFilter{
+				{
+					IDs: []string{"id1", "id2", "id3", "id4", "id5", "id6", "id7", "kind5"},
+				},
+			},
+			want: []*mocrelay.Event{
+				{
+					ID:        "kind5",
+					Pubkey:    "pubkey1",
+					CreatedAt: 100,
+					Kind:      5,
+					Tags: []mocrelay.Tag{
+						{"e", "id1"},
+						{"e", "id2"},
+						{"e", "id7"},
+						{"a", "10000:pubkey1"},
+						{"a", "30000:pubkey1:value"},
+					},
+				},
+				{
+					ID:        "id6",
+					Pubkey:    "pubkey2",
+					CreatedAt: 6,
+					Kind:      10000,
+					Tags:      []mocrelay.Tag{},
+				},
+				{
+					ID:        "id4",
+					Pubkey:    "pubkey2",
+					CreatedAt: 4,
+					Kind:      30000,
+					Tags: []mocrelay.Tag{
+						{"d", "value"},
+					},
+				},
+				{
+					ID:        "id2",
+					Pubkey:    "pubkey2",
+					CreatedAt: 2,
+					Kind:      1,
+					Tags:      []mocrelay.Tag{},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -895,6 +1038,10 @@ func Test_queryEvent(t *testing.T) {
 			}
 			defer db.Close()
 
+			if _, err := db.ExecContext(ctx, `pragma foreign_keys = on`); err != nil {
+				t.Fatalf("failed to enable foreign keys: %v", err)
+			}
+
 			if err := Migrate(ctx, db); err != nil {
 				t.Fatalf("failed to migrate: %v", err)
 			}
@@ -903,12 +1050,15 @@ func Test_queryEvent(t *testing.T) {
 				t.Fatalf("failed to insert event: %v", err)
 			}
 
-			got, err := queryEvent(ctx, db, 0, tt.fs, NoLimit)
+			got, err := queryEvent(ctx, db, tt.fs, NoLimit)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("queryEvent() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			assert.Equal(t, tt.want, got)
+
+			q, p, _ := buildEventQuery(tt.fs, NoLimit)
+			t.Logf("query: %s, param: %v", q, p)
 		})
 	}
 }

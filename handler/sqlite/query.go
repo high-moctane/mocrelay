@@ -10,17 +10,15 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
-	"github.com/pierrec/xxHash/xxHash32"
 )
 
 func queryEvent(
 	ctx context.Context,
 	db *sql.DB,
-	seed uint32,
 	fs []*mocrelay.ReqFilter,
 	maxLimit uint,
 ) (events []*mocrelay.Event, err error) {
-	q, param, err := buildEventQuery(seed, fs, maxLimit)
+	q, param, err := buildEventQuery(fs, maxLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -33,168 +31,170 @@ func queryEvent(
 	return
 }
 
-func gathereReqFilterHashes(seed uint32, f *mocrelay.ReqFilter) (hashes [][]uint32) {
-	x := xxHash32.New(seed)
-
-	if f.IDs != nil {
-		hs := make([]uint32, 0, len(f.IDs))
-		for _, id := range f.IDs {
-			x.Reset()
-			x.Write([]byte(id))
-			hs = append(hs, x.Sum32())
-		}
-		hashes = append(hashes, hs)
-	}
-
-	if f.Tags != nil {
-		for tag, values := range f.Tags {
-			tag := string(tag[1])
-			hs := make([]uint32, 0, len(values))
-			for _, value := range values {
-				x.Reset()
-				x.Write([]byte(tag + value))
-				hs = append(hs, x.Sum32())
-			}
-			hashes = append(hashes, hs)
-		}
-	}
-
-	if f.Authors != nil {
-		hs := make([]uint32, 0, len(f.Authors))
-		for _, author := range f.Authors {
-			x.Reset()
-			x.Write([]byte(author))
-			hs = append(hs, x.Sum32())
-		}
-		hashes = append(hashes, hs)
-	}
-
-	if f.Kinds != nil {
-		hs := make([]uint32, 0, len(f.Kinds))
-		for _, kind := range f.Kinds {
-			x.Reset()
-			x.Write([]byte(strconv.FormatInt(kind, 10)))
-			hs = append(hs, x.Sum32())
-		}
-		hashes = append(hashes, hs)
-	}
-
-	return
-}
-
 func buildEventQuery(
-	seed uint32,
 	fs []*mocrelay.ReqFilter,
 	maxLimit uint,
 ) (query string, param []any, err error) {
-	e := goqu.T("events")
+	sqlite3 := goqu.Dialect("sqlite3")
 
-	var builder *goqu.SelectDataset
+	e := goqu.T("events")
+	eRecordID := e.Col("record_id")
+	eEventKey := e.Col("event_key")
+	eID := e.Col("id")
+	ePubkey := e.Col("pubkey")
+	eCreatedAt := e.Col("created_at")
+	eKind := e.Col("kind")
+	eTags := e.Col("tags")
+	eContent := e.Col("content")
+	eSig := e.Col("sig")
+
+	l := goqu.T("lookups")
+	lCreatedAt := l.Col("created_at")
+	lEventKey := l.Col("event_key")
+
+	d := goqu.T("deleted_events")
+	dEventKeyOrID := d.Col("event_key_or_id")
+	dPubkey := d.Col("pubkey")
+
+	var subquery *goqu.SelectDataset
 
 	for i, f := range fs {
-		hashes := gathereReqFilterHashes(seed, f)
+		var b *goqu.SelectDataset
 
-		b := goqu.Dialect("sqlite3").Select(
-			e.Col("id"),
-			e.Col("pubkey"),
-			e.Col("created_at"),
-			e.Col("kind"),
-			e.Col("tags"),
-			e.Col("content"),
-			e.Col("sig"),
-		).Order(e.Col("created_at").Desc()).From("events")
+		if needJoinLookup(f) {
+			b = sqlite3.
+				Select(eRecordID).
+				Distinct().
+				From(l).
+				Join(e, goqu.On(lEventKey.Eq(eEventKey))).
+				Order(lCreatedAt.Desc())
 
-		for n, hs := range hashes {
-			tname := fmt.Sprintf("hashes%d", n)
-			tn := goqu.T(tname)
-			b = b.Join(goqu.I("hashes").As(tname), goqu.On(
-				goqu.And(
-					goqu.T(tname).Col("hashed_value").In(hs),
-					goqu.T(tname).Col("created_at").Eq(e.Col("created_at")),
-					tn.Col("hashed_id").Eq(e.Col("hashed_id")),
-				),
-			))
-		}
-
-		b = b.Where(goqu.L("(events.key, 'a', events.pubkey)").NotIn(
-			goqu.Dialect("sqlite3").From("deleted_keys"),
-		))
-		b = b.Where(goqu.L("(events.id, 'e', events.pubkey)").NotIn(
-			goqu.Dialect("sqlite3").From("deleted_keys"),
-		))
-
-		if f != nil {
 			if f.IDs != nil {
-				b = b.Where(e.Col("id").In(f.IDs))
+				t := goqu.T(fmt.Sprintf("lookups_ids_%d", i))
+				b = b.Join(l.As(t), goqu.On(
+					lEventKey.Eq(t.Col("event_key")),
+					lCreatedAt.Eq(t.Col("created_at")),
+					t.Col("value").In(f.IDs),
+					t.Col("what").Eq(lookupWhatID),
+				))
 			}
 
 			if f.Authors != nil {
-				b = b.Where(e.Col("pubkey").In(f.Authors))
+				t := goqu.T(fmt.Sprintf("lookups_authors_%d", i))
+				b = b.Join(l.As(t), goqu.On(
+					lEventKey.Eq(t.Col("event_key")),
+					lCreatedAt.Eq(t.Col("created_at")),
+					t.Col("value").In(f.Authors),
+					t.Col("what").Eq(lookupWhatPubkey),
+				))
 			}
 
 			if f.Kinds != nil {
-				b = b.Where(e.Col("kind").In(f.Kinds))
+				t := goqu.T(fmt.Sprintf("lookups_kinds_%d", i))
+
+				kindsStr := make([]string, len(f.Kinds))
+				for i, kind := range f.Kinds {
+					kindsStr[i] = strconv.FormatInt(kind, 10)
+				}
+
+				b = b.Join(l.As(t), goqu.On(
+					lEventKey.Eq(t.Col("event_key")),
+					lCreatedAt.Eq(t.Col("created_at")),
+					t.Col("value").In(f.Kinds),
+					t.Col("what").Eq(lookupWhatKind),
+				))
 			}
 
 			if f.Tags != nil {
-				for tag, values := range f.Tags {
-					b = b.Where(goqu.L(
-						"EXISTS ?",
-						goqu.
-							Dialect("sqlite3").
-							Select(goqu.L("1")).
-							From(goqu.L("json_each(events.tags)")).
-							Where(goqu.L("json_each.value->>0").Eq(string(tag[1]))).
-							Where(goqu.L("ifnull(json_each.value->>1, '')").In(values)),
+				for k, vs := range f.Tags {
+					tagName := k[1:2]
+					t := goqu.T(fmt.Sprintf("lookups_tags_%d_%s", i, tagName))
+
+					b = b.Join(l.As(t), goqu.On(
+						lEventKey.Eq(t.Col("event_key")),
+						lCreatedAt.Eq(t.Col("created_at")),
+						t.Col("value").In(vs),
+						t.Col("what").Eq(tagName),
 					))
 				}
 			}
 
 			if f.Since != nil {
-				b = b.Where(e.Col("created_at").Gte(*f.Since))
+				b = b.Where(lCreatedAt.Gte(f.Since))
 			}
 
 			if f.Until != nil {
-				b = b.Where(e.Col("created_at").Lte(*f.Until))
+				b = b.Where(lCreatedAt.Lte(f.Until))
+			}
+		} else {
+			b = sqlite3.
+				Select(eRecordID).
+				From(e).
+				Order(eCreatedAt.Desc())
+
+			if f.Since != nil {
+				b = b.Where(eCreatedAt.Gte(f.Since))
 			}
 
-			limit := maxLimit
-			if f.Limit != nil {
-				limit = min(limit, uint(*f.Limit))
-			}
-			if limit != NoLimit {
-				b = b.Limit(uint(limit))
+			if f.Until != nil {
+				b = b.Where(eCreatedAt.Lte(f.Until))
 			}
 		}
 
-		if i == 0 {
-			builder = b
+		b = b.Where(goqu.L("not exists ?",
+			sqlite3.
+				Select(goqu.L("1")).
+				From(d).
+				Where(goqu.Or(
+					goqu.And(
+						dEventKeyOrID.Eq(eEventKey),
+						dPubkey.Eq(ePubkey),
+					),
+					goqu.And(
+						dEventKeyOrID.Eq(eID),
+						dPubkey.Eq(ePubkey),
+					),
+				)),
+		))
+
+		limit := maxLimit
+		if f.Limit != nil {
+			limit = min(limit, uint(*f.Limit))
+		}
+		if limit != NoLimit {
+			b = b.Limit(limit)
+		}
+
+		if subquery == nil {
+			subquery = b
 		} else {
-			builder = builder.Union(b)
+			subquery = subquery.UnionAll(b)
 		}
 	}
 
-	if len(fs) > 1 {
-		builder = goqu.Dialect("sqlite3").Select(
-			goqu.I("id"),
-			goqu.I("pubkey"),
-			goqu.I("created_at"),
-			goqu.I("kind"),
-			goqu.I("tags"),
-			goqu.I("content"),
-			goqu.I("sig"),
+	builder := sqlite3.
+		Select(
+			eID,
+			ePubkey,
+			eCreatedAt,
+			eKind,
+			eTags,
+			eContent,
+			eSig,
 		).
-			From(builder).
-			Distinct().
-			Order(goqu.I("created_at").
-				Desc())
+		From(e).
+		Where(eRecordID.In(subquery)).
+		Order(eCreatedAt.Desc())
 
-		if maxLimit != NoLimit {
-			builder = builder.Limit(maxLimit)
-		}
+	if maxLimit != NoLimit {
+		builder = builder.Limit(maxLimit)
 	}
 
 	return builder.ToSQL()
+}
+
+func needJoinLookup(f *mocrelay.ReqFilter) bool {
+	return f.IDs != nil || f.Authors != nil || f.Kinds != nil || f.Tags != nil
 }
 
 func fetchEventQuery(

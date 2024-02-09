@@ -10,7 +10,8 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	// table events
 	if _, err := db.ExecContext(ctx, `
 		create table if not exists events (
-			event_key  text    not null primary key,
+			record_id  integer primary key autoincrement,
+			event_key  text    not null,
 			id         text    not null,
 			pubkey     text    not null,
 			created_at integer not null,
@@ -21,6 +22,13 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		) strict;
 	`); err != nil {
 		return fmt.Errorf("failed to create events table: %w", err)
+	}
+
+	// unique index events_event_key
+	if _, err := db.ExecContext(ctx, `
+		create unique index if not exists idx_events_event_key on events (event_key);
+	`); err != nil {
+		return fmt.Errorf("failed to create index idx_events_event_key: %w", err)
 	}
 
 	// index events_created_at

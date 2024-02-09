@@ -108,7 +108,7 @@ func (h *simpleSQLiteHandler) serveClientReqMsg(
 	ctx context.Context,
 	msg *mocrelay.ClientReqMsg,
 ) (<-chan mocrelay.ServerMsg, error) {
-	events, err := queryEvent(ctx, h.db, 0, msg.ReqFilters, h.opt.MaxLimit)
+	events, err := queryEvent(ctx, h.db, msg.ReqFilters, h.opt.MaxLimit)
 	if err != nil {
 		warnLog(ctx, h.opt.Logger, "failed to query events", "err", err)
 
