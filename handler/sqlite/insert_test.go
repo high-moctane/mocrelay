@@ -12,17 +12,16 @@ import (
 
 func Test_insertEvents(t *testing.T) {
 	type try struct {
-		events       []*mocrelay.Event
-		wantAffected int64
-		wantErr      bool
+		events []*mocrelay.Event
 	}
 
 	tests := []struct {
-		name        string
-		try1        try
-		try2        try
-		total       int64
-		totalHashes int64
+		name               string
+		try1               try
+		try2               try
+		total              int64
+		totalLookups       int64
+		totalDeletedEvents int64
 	}{
 		{
 			name: "insert regular event",
@@ -38,8 +37,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -53,11 +50,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       2,
-			totalHashes: 8,
+			total:        2,
+			totalLookups: 8,
 		},
 		{
 			name: "insert regular event: duplicate id",
@@ -73,8 +68,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -88,11 +81,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 0,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 4,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert replaceable event",
@@ -108,8 +99,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -123,11 +112,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 8,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert replaceable event: duplicate id",
@@ -143,8 +130,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -158,11 +143,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 0,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 4,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert replaceable event: same",
@@ -178,8 +161,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -193,11 +174,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 8,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert replaceable event: different pubkey",
@@ -213,8 +192,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -228,11 +205,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       2,
-			totalHashes: 8,
+			total:        2,
+			totalLookups: 8,
 		},
 		{
 			name: "insert replaceable event: different kind",
@@ -248,8 +223,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -263,11 +236,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       2,
-			totalHashes: 8,
+			total:        2,
+			totalLookups: 8,
 		},
 		{
 			name: "insert replaceable event: duplicate pubkey and kind but too old",
@@ -283,8 +254,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -298,11 +267,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 0,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 4,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert ephemeral event",
@@ -318,8 +285,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 0,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -333,11 +298,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 0,
-				wantErr:      false,
 			},
-			total:       0,
-			totalHashes: 0,
+			total:        0,
+			totalLookups: 0,
 		},
 		{
 			name: "insert parametrized replaceable event",
@@ -353,8 +316,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -368,11 +329,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 8,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert parametrized replaceable event: duplicate",
@@ -388,8 +347,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -403,11 +360,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 0,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 4,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert parametrized replaceable event: same",
@@ -423,8 +378,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -438,11 +391,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 8,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert parametrized replaceable event: same but too old",
@@ -458,8 +409,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -473,11 +422,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 0,
-				wantErr:      false,
 			},
-			total:       1,
-			totalHashes: 4,
+			total:        1,
+			totalLookups: 4,
 		},
 		{
 			name: "insert parametrized replaceable event: different pubkey",
@@ -493,8 +440,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -508,11 +453,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       2,
-			totalHashes: 8,
+			total:        2,
+			totalLookups: 8,
 		},
 		{
 			name: "insert parametrized replaceable event: different kind",
@@ -528,8 +471,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -543,11 +484,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       2,
-			totalHashes: 8,
+			total:        2,
+			totalLookups: 8,
 		},
 		{
 			name: "insert parametrized replaceable event: different tag",
@@ -563,8 +502,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -578,11 +515,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 1,
-				wantErr:      false,
 			},
-			total:       2,
-			totalHashes: 8,
+			total:        2,
+			totalLookups: 8,
 		},
 		{
 			name: "all",
@@ -625,8 +560,6 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 3,
-				wantErr:      false,
 			},
 			try2: try{
 				events: []*mocrelay.Event{
@@ -703,11 +636,9 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 				},
-				wantAffected: 4,
-				wantErr:      false,
 			},
-			total:       6,
-			totalHashes: 32,
+			total:        6,
+			totalLookups: 24,
 		},
 	}
 
@@ -720,39 +651,34 @@ func Test_insertEvents(t *testing.T) {
 			}
 			defer db.Close()
 
+			if _, err := db.ExecContext(ctx, `pragma foreign_keys = on`); err != nil {
+				t.Fatalf("failed to enable foreign keys: %v", err)
+			}
+
 			if err := Migrate(ctx, db); err != nil {
 				t.Fatalf("failed to migrate: %v", err)
 			}
 
 			if tt.try1.events != nil {
-				affected, err := insertEvents(ctx, db, 0, tt.try1.events)
-				if (err != nil) != tt.try1.wantErr {
-					t.Errorf("try1: insertEvent() error = %v, wantErr %v", err, tt.try1.wantErr)
-					return
-				}
-				assert.Equal(t, tt.try1.wantAffected, affected)
+				err := insertEvents(ctx, db, tt.try1.events)
+				assert.NoError(t, err, "failed to insert events try1: %v", err)
 			}
 
 			if tt.try2.events != nil {
-				affected, err := insertEvents(ctx, db, 0, tt.try2.events)
-				if (err != nil) != tt.try2.wantErr {
-					t.Errorf("try2: insertEvent() error = %v, wantErr %v", err, tt.try2.wantErr)
-					return
-				}
-				assert.Equal(t, tt.try2.wantAffected, affected)
+				err := insertEvents(ctx, db, tt.try2.events)
+				assert.NoError(t, err, "failed to insert events try2: %v", err)
 			}
 
 			var total int64
-			if err := db.QueryRowContext(ctx, "select count(*) from events").Scan(&total); err != nil {
-				t.Fatalf("failed to get total: %v", err)
-			}
+			err = db.QueryRowContext(ctx, "select count(*) from events").Scan(&total)
+			assert.NoError(t, err, "failed to get total: %v", err)
 			assert.Equal(t, tt.total, total)
 
-			var totalHashes int64
-			if err := db.QueryRowContext(ctx, "select count(*) from hashes").Scan(&totalHashes); err != nil {
+			var totalLookups int64
+			if err := db.QueryRowContext(ctx, "select count(*) from lookups").Scan(&totalLookups); err != nil {
 				t.Fatalf("failed to get total: %v", err)
 			}
-			assert.Equal(t, tt.totalHashes, totalHashes)
+			assert.Equal(t, tt.totalLookups, totalLookups)
 		})
 	}
 }
@@ -873,11 +799,15 @@ func Test_insertDeletedKeys(t *testing.T) {
 			}
 			defer db.Close()
 
+			if _, err := db.ExecContext(ctx, `pragma foreign_keys = on`); err != nil {
+				t.Fatalf("failed to enable foreign keys: %v", err)
+			}
+
 			if err := Migrate(ctx, db); err != nil {
 				t.Fatalf("failed to migrate: %v", err)
 			}
 
-			if _, err := insertEvents(ctx, db, 0, tt.inputs); err != nil {
+			if err := insertEvents(ctx, db, tt.inputs); err != nil {
 				t.Fatalf("failed to insert events: %v", err)
 			}
 

@@ -10,15 +10,14 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	// table events
 	if _, err := db.ExecContext(ctx, `
 		create table if not exists events (
-			key        text not null primary key,
-			id         text not null,
-			pubkey     text not null,
+			event_key  text    not null primary key,
+			id         text    not null,
+			pubkey     text    not null,
 			created_at integer not null,
 			kind       integer not null,
-			tags       blob not null,
-			content    text not null,
-			sig        text not null,
-			hashed_id  integer not null
+			tags       blob    not null,
+			content    text    not null,
+			sig        text    not null
 		) strict;
 	`); err != nil {
 		return fmt.Errorf("failed to create events table: %w", err)
@@ -31,46 +30,43 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("failed to create index idx_events_created_at: %w", err)
 	}
 
-	// index events_hashed_id
+	// table deleted_events
 	if _, err := db.ExecContext(ctx, `
-		create index if not exists idx_events_hashed_id on events (hashed_id);
-	`); err != nil {
-		return fmt.Errorf("failed to create index idx_events_hashed_id: %w", err)
-	}
-
-	// table deleted_keys
-	if _, err := db.ExecContext(ctx, `
-		create table if not exists deleted_keys (
-			value  text not null,
-			tag	   text not null,
-			pubkey text not null,
-
-			primary key (value, tag, pubkey)
+		create table if not exists deleted_events (
+			event_key_or_id text not null primary key,
+			pubkey		    text not null
 		) strict, without rowid;
 	`); err != nil {
-		return fmt.Errorf("failed to create deleted_keys table: %w", err)
+		return fmt.Errorf("failed to create deleted_events table: %w", err)
 	}
 
-	// table hash_seed
+	// table lookups
 	if _, err := db.ExecContext(ctx, `
-		create table if not exists hash_seed (
-			seed integer not null primary key
-		) strict, without rowid;
+		create table if not exists lookups (
+			id         integer primary key autoincrement,
+			value      text    not null,
+			what       text    not null,
+			created_at integer not null,
+			event_key  text    not null,
+
+			foreign key (event_key) references events (event_key) on delete cascade
+		) strict;
 	`); err != nil {
-		return fmt.Errorf("failed to create hash_seed table: %w", err)
+		return fmt.Errorf("failed to create lookups table: %w", err)
 	}
 
-	// table hashes
+	// index lookups_value_what_created_at
 	if _, err := db.ExecContext(ctx, `
-		create table if not exists hashes (
-			hashed_value integer not null,
-			created_at   integer not null,
-			hashed_id    integer not null,
-
-			primary key (hashed_value, created_at, hashed_id)
-		) strict, without rowid;
+		create index if not exists idx_lookups_value_what_created_at on lookups (value, what, created_at desc);
 	`); err != nil {
-		return fmt.Errorf("failed to create hashes table: %w", err)
+		return fmt.Errorf("failed to create index idx_lookups_value_what_created_at: %w", err)
+	}
+
+	// index lookups_event_key
+	if _, err := db.ExecContext(ctx, `
+		create index if not exists idx_lookups_event_key on lookups (event_key);
+	`); err != nil {
+		return fmt.Errorf("failed to create index idx_lookups_event_key: %w", err)
 	}
 
 	return nil
