@@ -818,7 +818,7 @@ func Test_insertDeletedKeys(t *testing.T) {
 			assert.Equal(t, tt.eventsTotal, eventsTotal)
 
 			var deletedKeysTotal int64
-			if err := db.QueryRowContext(ctx, "select count(*) from deleted_keys").Scan(&deletedKeysTotal); err != nil {
+			if err := db.QueryRowContext(ctx, "select count(*) from deleted_events").Scan(&deletedKeysTotal); err != nil {
 				t.Fatalf("failed to get total: %v", err)
 			}
 			assert.Equal(t, tt.deletedKeysTotal, deletedKeysTotal)

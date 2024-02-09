@@ -207,7 +207,7 @@ func buildInsertEventsParamsLookups(event *mocrelay.Event, eventKey string) [][]
 	return ret
 }
 
-const insertDeletedEventsQuery = `insert into deleted_events (event_key_or_id) values (?) on conflict do nothing`
+const insertDeletedEventsQuery = `insert into deleted_events (event_key_or_id, pubkey) values (?, ?) on conflict do nothing`
 
 func buildInsertEventsParamsDeletedEvents(event *mocrelay.Event) [][]any {
 	if event.Kind != 5 {

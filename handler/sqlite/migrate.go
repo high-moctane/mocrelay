@@ -33,8 +33,10 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	// table deleted_events
 	if _, err := db.ExecContext(ctx, `
 		create table if not exists deleted_events (
-			event_key_or_id text not null primary key,
-			pubkey		    text not null
+			event_key_or_id text not null,
+			pubkey		    text not null,
+
+			constraint deleted_events_primary_key primary key (event_key_or_id, pubkey)
 		) strict, without rowid;
 	`); err != nil {
 		return fmt.Errorf("failed to create deleted_events table: %w", err)
