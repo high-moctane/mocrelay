@@ -62,7 +62,7 @@ func buildEventQuery(
 	dEventKeyOrID := d.Col("event_key_or_id")
 	dPubkey := d.Col("pubkey")
 
-	filterQueries := make([]*goqu.SelectDataset, len(fs))
+	var subquery *goqu.SelectDataset
 
 	x := xxHash32.New(XXHashSeed)
 
@@ -71,6 +71,7 @@ func buildEventQuery(
 
 		if needJoinLookup(f) {
 			b = sqlite3.
+				Select(eRecordID).
 				From(l).
 				Distinct().
 				Join(e, goqu.On(
@@ -178,6 +179,7 @@ func buildEventQuery(
 			}
 		} else {
 			b = sqlite3.
+				Select(eRecordID).
 				From(e).
 				Order(eCreatedAt.Desc())
 
@@ -216,50 +218,31 @@ func buildEventQuery(
 			b = b.Limit(limit)
 		}
 
-		filterQueries[i] = b
+		if subquery == nil {
+			subquery = b
+		} else {
+			subquery = subquery.UnionAll(b)
+		}
 	}
 
 	var builder *goqu.SelectDataset
 
-	if len(filterQueries) == 1 {
-		builder = filterQueries[0].
-			Select(
-				eID,
-				ePubkey,
-				eCreatedAt,
-				eKind,
-				eTags,
-				eContent,
-				eSig,
-			)
-	} else {
-		var subquery *goqu.SelectDataset
-		for i := range filterQueries {
-			q := filterQueries[i].Select(eRecordID)
-			if i == 0 {
-				subquery = q
-			} else {
-				subquery = subquery.UnionAll(q)
-			}
-		}
+	builder = sqlite3.
+		Select(
+			eID,
+			ePubkey,
+			eCreatedAt,
+			eKind,
+			eTags,
+			eContent,
+			eSig,
+		).
+		From(e).
+		Where(eRecordID.In(subquery)).
+		Order(eCreatedAt.Desc())
 
-		builder = sqlite3.
-			Select(
-				eID,
-				ePubkey,
-				eCreatedAt,
-				eKind,
-				eTags,
-				eContent,
-				eSig,
-			).
-			From(e).
-			Where(eRecordID.In(subquery)).
-			Order(eCreatedAt.Desc())
-
-		if maxLimit != NoLimit {
-			builder = builder.Limit(maxLimit)
-		}
+	if maxLimit != NoLimit {
+		builder = builder.Limit(maxLimit)
 	}
 
 	return builder.ToSQL()
