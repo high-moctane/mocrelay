@@ -52,6 +52,13 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("failed to create deleted_events table: %w", err)
 	}
 
+	// index deleted_events_event_key_or_id_hash
+	if _, err := db.ExecContext(ctx, `
+		create index if not exists idx_deleted_events_event_key_or_id_hash on deleted_events (event_key_or_id_hash);
+	`); err != nil {
+		return fmt.Errorf("failed to create index idx_deleted_events_event_key_or_id_hash: %w", err)
+	}
+
 	// table lookups
 	if _, err := db.ExecContext(ctx, `
 		create table if not exists lookups (
