@@ -13,6 +13,8 @@ import (
 
 const NoLimit = math.MaxUint
 
+const XXHashSeed = 0
+
 type SQLiteHandlerOption struct {
 	EventBulkInsertNum int
 	EventBulkInsertDur time.Duration

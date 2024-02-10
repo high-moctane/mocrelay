@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strconv"
 
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
+	"github.com/pierrec/xxHash/xxHash32"
 )
 
 func insertEvents(
@@ -118,9 +120,18 @@ func buildInsertEventsParams(events []*mocrelay.Event) []insertEventsParams {
 
 const insertEventsQuery = `
 insert into events (
-	event_key, id, pubkey, created_at, kind, tags, content, sig
+	event_key_hash,
+	event_key,
+	id_hash,
+	id,
+	pubkey,
+	created_at,
+	kind,
+	tags,
+	content,
+	sig
 ) values
-	(?, ?, ?, ?, ?, ?, ?, ?)
+	(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 on conflict do nothing
 `
 
@@ -136,8 +147,18 @@ func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) ([]any
 		}
 	}
 
+	x := xxHash32.New(XXHashSeed)
+	io.WriteString(x, eventKey)
+	eventKeyHash := x.Sum32()
+
+	x.Reset()
+	io.WriteString(x, event.ID)
+	idHash := x.Sum32()
+
 	return []any{
+		eventKeyHash,
 		eventKey,
+		idHash,
 		event.ID,
 		event.Pubkey,
 		event.CreatedAt,
@@ -154,29 +175,69 @@ const (
 	lookupWhatKind   = "#"
 )
 
-const insertLookupsQuery = `insert into lookups (value, what, created_at, event_key) values (?, ?, ?, ?) on conflict do nothing`
+const insertLookupsQuery = `
+insert into lookups (
+	what_value_hash,
+	what,
+	value,
+	created_at,
+	event_key_hash,
+	event_key
+) values
+	(?, ?, ?, ?, ?, ?)
+on conflict do nothing`
 
 func buildInsertEventsParamsLookups(event *mocrelay.Event, eventKey string) [][]any {
 	var ret [][]any
 
+	x := xxHash32.New(XXHashSeed)
+
+	io.WriteString(x, eventKey)
+	eventKeyHash := x.Sum32()
+
+	// ID
+	x.Reset()
+	io.WriteString(x, lookupWhatID)
+	io.WriteString(x, event.ID)
+	whatValueHash := x.Sum32()
+
 	ret = append(ret, []any{
-		event.ID,
+		whatValueHash,
 		lookupWhatID,
+		event.ID,
 		event.CreatedAt,
+		eventKeyHash,
 		eventKey,
 	})
 
+	// Pubkey
+	x.Reset()
+	io.WriteString(x, lookupWhatPubkey)
+	io.WriteString(x, event.Pubkey)
+	whatValueHash = x.Sum32()
+
 	ret = append(ret, []any{
-		event.Pubkey,
+		whatValueHash,
 		lookupWhatPubkey,
+		event.Pubkey,
 		event.CreatedAt,
+		eventKeyHash,
 		eventKey,
 	})
 
+	// Kind
+	kindStr := strconv.FormatInt(event.Kind, 10)
+	x.Reset()
+	io.WriteString(x, lookupWhatKind)
+	io.WriteString(x, kindStr)
+	whatValueHash = x.Sum32()
+
 	ret = append(ret, []any{
-		strconv.FormatInt(event.Kind, 10),
+		whatValueHash,
 		lookupWhatKind,
+		kindStr,
 		event.CreatedAt,
+		eventKeyHash,
 		eventKey,
 	})
 
@@ -196,10 +257,17 @@ func buildInsertEventsParamsLookups(event *mocrelay.Event, eventKey string) [][]
 			value = tag[1]
 		}
 
+		x.Reset()
+		io.WriteString(x, tag[0])
+		io.WriteString(x, value)
+		whatValueHash = x.Sum32()
+
 		ret = append(ret, []any{
-			value,
+			whatValueHash,
 			tag[0],
+			value,
 			event.CreatedAt,
+			eventKeyHash,
 			eventKey,
 		})
 	}
@@ -207,7 +275,22 @@ func buildInsertEventsParamsLookups(event *mocrelay.Event, eventKey string) [][]
 	return ret
 }
 
-const insertDeletedEventsQuery = `insert into deleted_events (event_key_or_id, pubkey) values (?, ?) on conflict do nothing`
+const insertDeletedEventsQuery = `
+insert into deleted_events (
+	event_key_or_id_hash,
+	event_key_or_id,
+	pubkey
+)
+select ?, ?, ?
+where not exists (
+	select 1 from deleted_events
+	where
+		event_key_or_id_hash = ?
+		and
+		event_key_or_id = ?
+		and
+		pubkey = ?
+)`
 
 func buildInsertEventsParamsDeletedEvents(event *mocrelay.Event) [][]any {
 	if event.Kind != 5 {
@@ -224,7 +307,18 @@ func buildInsertEventsParamsDeletedEvents(event *mocrelay.Event) [][]any {
 			continue
 		}
 
-		ret = append(ret, []any{tag[1], event.Pubkey})
+		x := xxHash32.New(XXHashSeed)
+		io.WriteString(x, tag[1])
+		eventKeyOrIDHash := x.Sum32()
+
+		ret = append(ret, []any{
+			eventKeyOrIDHash,
+			tag[1],
+			event.Pubkey,
+			eventKeyOrIDHash,
+			tag[1],
+			event.Pubkey,
+		})
 	}
 
 	return ret
