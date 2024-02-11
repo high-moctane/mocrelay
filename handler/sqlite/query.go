@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
@@ -40,161 +39,48 @@ func buildEventQuery(
 	sqlite3 := goqu.Dialect("sqlite3")
 
 	e := goqu.T("events")
-	eRecordID := e.Col("record_id")
 	eEventKeyHash := e.Col("event_key_hash")
 	eEventKey := e.Col("event_key")
 	eIDHash := e.Col("id_hash")
 	eID := e.Col("id")
 	ePubkey := e.Col("pubkey")
+	ePubkeyHash := e.Col("pubkey_hash")
 	eCreatedAt := e.Col("created_at")
 	eKind := e.Col("kind")
 	eTags := e.Col("tags")
 	eContent := e.Col("content")
 	eSig := e.Col("sig")
 
-	l := goqu.T("lookups")
-	lCreatedAt := l.Col("created_at")
-	lEventKeyHash := l.Col("event_key_hash")
-	lEventKey := l.Col("event_key")
+	t := goqu.T("tags")
+	tKeyValueHash := t.Col("key_value_hash")
+	tKey := t.Col("key")
+	tValue := t.Col("value")
+	tCreatedAt := t.Col("created_at")
+	tEventKeyHash := t.Col("event_key_hash")
+	tEventKey := t.Col("event_key")
 
 	d := goqu.T("deleted_events")
 	dEventKeyOrIDHash := d.Col("event_key_or_id_hash")
 	dEventKeyOrID := d.Col("event_key_or_id")
 	dPubkey := d.Col("pubkey")
 
-	var subquery *goqu.SelectDataset
+	var builder *goqu.SelectDataset
 
-	x := xxHash32.New(XXHashSeed)
+	x := xxHash32.New(0)
 
-	lookupWhatID := "id"
-	lookupWhatPubkey := "pubkey"
-	lookupWhatKind := "kind"
-
-	for i, f := range fs {
-		var b *goqu.SelectDataset
-
-		if needJoinLookup(f) {
-			b = sqlite3.
-				Select(eRecordID).
-				From(l).
-				Distinct().
-				Join(e, goqu.On(
-					lEventKeyHash.Eq(eEventKeyHash),
-					lEventKey.Eq(eEventKey),
-				)).
-				Order(lCreatedAt.Desc())
-
-			if f.IDs != nil {
-				idHashes := make([]int64, len(f.IDs))
-				for i, id := range f.IDs {
-					x.Reset()
-					io.WriteString(x, lookupWhatID)
-					io.WriteString(x, id)
-					idHashes[i] = int64(x.Sum32())
-				}
-
-				t := goqu.T(fmt.Sprintf("lookups_ids_%d", i))
-				b = b.Join(l.As(t), goqu.On(
-					lEventKeyHash.Eq(t.Col("event_key_hash")),
-					lEventKey.Eq(t.Col("event_key")),
-					lCreatedAt.Eq(t.Col("created_at")),
-					t.Col("what_value_hash").In(idHashes),
-					t.Col("value").In(f.IDs),
-					t.Col("what").Eq(lookupWhatID),
-				))
-			}
-
-			if f.Authors != nil {
-				authHashes := make([]int64, len(f.Authors))
-				for i, auth := range f.Authors {
-					x.Reset()
-					io.WriteString(x, lookupWhatPubkey)
-					io.WriteString(x, auth)
-					authHashes[i] = int64(x.Sum32())
-				}
-
-				t := goqu.T(fmt.Sprintf("lookups_authors_%d", i))
-				b = b.Join(l.As(t), goqu.On(
-					lEventKeyHash.Eq(t.Col("event_key_hash")),
-					lEventKey.Eq(t.Col("event_key")),
-					lCreatedAt.Eq(t.Col("created_at")),
-					t.Col("what_value_hash").In(authHashes),
-					t.Col("value").In(f.Authors),
-					t.Col("what").Eq(lookupWhatPubkey),
-				))
-			}
-
-			if f.Kinds != nil {
-				t := goqu.T(fmt.Sprintf("lookups_kinds_%d", i))
-
-				kindsStr := make([]string, len(f.Kinds))
-				for i, kind := range f.Kinds {
-					kindsStr[i] = strconv.FormatInt(kind, 10)
-				}
-
-				kindHashes := make([]int64, len(f.Kinds))
-				for i, kind := range kindsStr {
-					x.Reset()
-					io.WriteString(x, lookupWhatKind)
-					io.WriteString(x, kind)
-					kindHashes[i] = int64(x.Sum32())
-				}
-
-				b = b.Join(l.As(t), goqu.On(
-					lEventKeyHash.Eq(t.Col("event_key_hash")),
-					lEventKey.Eq(t.Col("event_key")),
-					lCreatedAt.Eq(t.Col("created_at")),
-					t.Col("what_value_hash").In(kindHashes),
-					t.Col("value").In(f.Kinds),
-					t.Col("what").Eq(lookupWhatKind),
-				))
-			}
-
-			if f.Tags != nil {
-				for k, vs := range f.Tags {
-					tagName := k[1:2]
-					t := goqu.T(fmt.Sprintf("lookups_tags_%d_%s", i, tagName))
-
-					tagHashes := make([]int64, len(vs))
-					for i, v := range vs {
-						x.Reset()
-						io.WriteString(x, tagName)
-						io.WriteString(x, v)
-						tagHashes[i] = int64(x.Sum32())
-					}
-
-					b = b.Join(l.As(t), goqu.On(
-						lEventKeyHash.Eq(t.Col("event_key_hash")),
-						lEventKey.Eq(t.Col("event_key")),
-						lCreatedAt.Eq(t.Col("created_at")),
-						t.Col("what_value_hash").In(tagHashes),
-						t.Col("value").In(vs),
-						t.Col("what").Eq(tagName),
-					))
-				}
-			}
-
-			if f.Since != nil {
-				b = b.Where(lCreatedAt.Gte(f.Since))
-			}
-
-			if f.Until != nil {
-				b = b.Where(lCreatedAt.Lte(f.Until))
-			}
-		} else {
-			b = sqlite3.
-				Select(eRecordID).
-				From(e).
-				Order(eCreatedAt.Desc())
-
-			if f.Since != nil {
-				b = b.Where(eCreatedAt.Gte(f.Since))
-			}
-
-			if f.Until != nil {
-				b = b.Where(eCreatedAt.Lte(f.Until))
-			}
-		}
+	for _, f := range fs {
+		b := sqlite3.
+			Select(
+				eID,
+				ePubkey,
+				eCreatedAt,
+				eKind,
+				eTags,
+				eContent,
+				eSig,
+			).
+			From(e).
+			Order(eCreatedAt.Desc())
 
 		b = b.Where(goqu.L("not exists ?",
 			sqlite3.
@@ -204,15 +90,75 @@ func buildEventQuery(
 					goqu.And(
 						dEventKeyOrIDHash.Eq(eEventKeyHash),
 						dEventKeyOrID.Eq(eEventKey),
-						dPubkey.Eq(ePubkey),
 					),
 					goqu.And(
 						dEventKeyOrIDHash.Eq(eIDHash),
 						dEventKeyOrID.Eq(eID),
-						dPubkey.Eq(ePubkey),
 					),
-				)),
+				)).
+				Where(dPubkey.Eq(ePubkey)),
 		))
+
+		if f.IDs != nil {
+			idHashes := make([]string, len(f.IDs))
+			for i, id := range f.IDs {
+				x.Reset()
+				io.WriteString(x, id)
+				idHashes[i] = fmt.Sprint(x.Sum32())
+			}
+
+			b = b.Where(eIDHash.In(idHashes))
+			b = b.Where(eID.In(f.IDs))
+		}
+
+		if f.Authors != nil {
+			authorHashes := make([]string, len(f.Authors))
+			for i, pubkey := range f.Authors {
+				x.Reset()
+				io.WriteString(x, pubkey)
+				authorHashes[i] = fmt.Sprint(x.Sum32())
+			}
+
+			b = b.Where(ePubkeyHash.In(authorHashes))
+			b = b.Where(ePubkey.In(f.Authors))
+		}
+
+		if f.Kinds != nil {
+			b = b.Where(eKind.In(f.Kinds))
+		}
+
+		if f.Tags != nil {
+			for key, values := range f.Tags {
+				k := key[1:]
+				keyValueHashes := make([]string, len(values))
+				for i, value := range values {
+					x.Reset()
+					io.WriteString(x, k)
+					io.WriteString(x, value)
+					keyValueHashes[i] = fmt.Sprint(x.Sum32())
+				}
+
+				b = b.Where(goqu.L("exists ?",
+					sqlite3.
+						Select(goqu.L("1")).
+						From("tags").
+						Where(tKeyValueHash.In(keyValueHashes)).
+						Where(tKey.Eq(k)).
+						Where(tValue.In(values)).
+						Where(tCreatedAt.Eq(eCreatedAt)).
+						Where(tEventKeyHash.Eq(eEventKeyHash)).
+						Where(tEventKey.Eq(eEventKey)),
+				))
+			}
+		}
+
+		if f.Since != nil {
+			b = b.Where(eCreatedAt.Gte(f.Since))
+		}
+
+		if f.Until != nil {
+			b = b.Where(eCreatedAt.Lte(f.Until))
+		}
 
 		limit := maxLimit
 		if f.Limit != nil {
@@ -222,38 +168,21 @@ func buildEventQuery(
 			b = b.Limit(limit)
 		}
 
-		if subquery == nil {
-			subquery = b
+		if builder == nil {
+			builder = b
 		} else {
-			subquery = subquery.UnionAll(b)
+			builder = builder.Union(b)
 		}
 	}
 
-	var builder *goqu.SelectDataset
-
-	builder = sqlite3.
-		Select(
-			eID,
-			ePubkey,
-			eCreatedAt,
-			eKind,
-			eTags,
-			eContent,
-			eSig,
-		).
-		From(e).
-		Where(eRecordID.In(subquery)).
-		Order(eCreatedAt.Desc())
+	builder = builder.
+		Order(goqu.C("created_at").Desc())
 
 	if maxLimit != NoLimit {
 		builder = builder.Limit(maxLimit)
 	}
 
 	return builder.ToSQL()
-}
-
-func needJoinLookup(f *mocrelay.ReqFilter) bool {
-	return f.IDs != nil || f.Authors != nil || f.Kinds != nil || f.Tags != nil
 }
 
 func fetchEventQuery(
