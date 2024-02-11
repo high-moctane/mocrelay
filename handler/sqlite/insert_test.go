@@ -20,7 +20,7 @@ func Test_insertEvents(t *testing.T) {
 		try1               try
 		try2               try
 		total              int64
-		totalLookups       int64
+		totalTags          int64
 		totalDeletedEvents int64
 	}{
 		{
@@ -51,8 +51,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        2,
-			totalLookups: 8,
+			total:     2,
+			totalTags: 2,
 		},
 		{
 			name: "insert regular event: duplicate id",
@@ -82,8 +82,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert replaceable event",
@@ -113,8 +113,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert replaceable event: duplicate id",
@@ -144,8 +144,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert replaceable event: same",
@@ -175,8 +175,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert replaceable event: different pubkey",
@@ -206,8 +206,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        2,
-			totalLookups: 8,
+			total:     2,
+			totalTags: 2,
 		},
 		{
 			name: "insert replaceable event: different kind",
@@ -237,8 +237,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        2,
-			totalLookups: 8,
+			total:     2,
+			totalTags: 2,
 		},
 		{
 			name: "insert replaceable event: duplicate pubkey and kind but too old",
@@ -268,8 +268,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert ephemeral event",
@@ -299,8 +299,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        0,
-			totalLookups: 0,
+			total:     0,
+			totalTags: 0,
 		},
 		{
 			name: "insert parametrized replaceable event",
@@ -330,8 +330,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert parametrized replaceable event: duplicate",
@@ -361,8 +361,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert parametrized replaceable event: same",
@@ -392,8 +392,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert parametrized replaceable event: same but too old",
@@ -423,8 +423,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        1,
-			totalLookups: 4,
+			total:     1,
+			totalTags: 1,
 		},
 		{
 			name: "insert parametrized replaceable event: different pubkey",
@@ -454,8 +454,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        2,
-			totalLookups: 8,
+			total:     2,
+			totalTags: 2,
 		},
 		{
 			name: "insert parametrized replaceable event: different kind",
@@ -485,8 +485,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        2,
-			totalLookups: 8,
+			total:     2,
+			totalTags: 2,
 		},
 		{
 			name: "insert parametrized replaceable event: different tag",
@@ -516,8 +516,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        2,
-			totalLookups: 8,
+			total:     2,
+			totalTags: 2,
 		},
 		{
 			name: "all",
@@ -637,8 +637,8 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:        6,
-			totalLookups: 24,
+			total:     6,
+			totalTags: 6,
 		},
 	}
 
@@ -674,11 +674,11 @@ func Test_insertEvents(t *testing.T) {
 			assert.NoError(t, err, "failed to get total: %v", err)
 			assert.Equal(t, tt.total, total)
 
-			var totalLookups int64
-			if err := db.QueryRowContext(ctx, "select count(*) from lookups").Scan(&totalLookups); err != nil {
+			var totalTags int64
+			if err := db.QueryRowContext(ctx, "select count(*) from tags").Scan(&totalTags); err != nil {
 				t.Fatalf("failed to get total: %v", err)
 			}
-			assert.Equal(t, tt.totalLookups, totalLookups)
+			assert.Equal(t, tt.totalTags, totalTags)
 		})
 	}
 }

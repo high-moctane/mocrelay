@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strconv"
 
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
@@ -44,11 +43,11 @@ func insertEvents(
 	}
 	defer eventsStmt.Close()
 
-	lookupsStmt, err := tx.PrepareContext(ctx, insertLookupsQuery)
+	tagsStmt, err := tx.PrepareContext(ctx, insertTagsQuery)
 	if err != nil {
-		return fmt.Errorf("failed to prepare lookups statement: %w", err)
+		return fmt.Errorf("failed to prepare tags statement: %w", err)
 	}
-	defer lookupsStmt.Close()
+	defer tagsStmt.Close()
 
 	deletedEventsStmt, err := tx.PrepareContext(ctx, insertDeletedEventsQuery)
 	if err != nil {
@@ -70,9 +69,9 @@ func insertEvents(
 			continue
 		}
 
-		for _, lookup := range p.Lookups {
-			if _, err := lookupsStmt.ExecContext(ctx, lookup...); err != nil {
-				return fmt.Errorf("failed to insert lookups: %w", err)
+		for _, tag := range p.Tags {
+			if _, err := tagsStmt.ExecContext(ctx, tag...); err != nil {
+				return fmt.Errorf("failed to insert tags: %w", err)
 			}
 		}
 
@@ -88,7 +87,7 @@ func insertEvents(
 
 type insertEventsParams struct {
 	Events        []any
-	Lookups       [][]any
+	Tags          [][]any
 	DeletedEvents [][]any
 }
 
@@ -110,7 +109,7 @@ func buildInsertEventsParams(events []*mocrelay.Event) []insertEventsParams {
 
 		ret = append(ret, insertEventsParams{
 			Events:        events,
-			Lookups:       buildInsertEventsParamsLookups(event, eventKey),
+			Tags:          buildInsertEventsParamsTags(event, eventKey),
 			DeletedEvents: buildInsertEventsParamsDeletedEvents(event),
 		})
 	}
@@ -124,6 +123,7 @@ insert into events (
 	event_key,
 	id_hash,
 	id,
+	pubkey_hash,
 	pubkey,
 	created_at,
 	kind,
@@ -131,7 +131,7 @@ insert into events (
 	content,
 	sig
 ) values
-	(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 on conflict do nothing
 `
 
@@ -155,11 +155,16 @@ func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) ([]any
 	io.WriteString(x, event.ID)
 	idHash := x.Sum32()
 
+	x.Reset()
+	io.WriteString(x, event.Pubkey)
+	pubkeyHash := x.Sum32()
+
 	return []any{
 		eventKeyHash,
 		eventKey,
 		idHash,
 		event.ID,
+		pubkeyHash,
 		event.Pubkey,
 		event.CreatedAt,
 		event.Kind,
@@ -169,16 +174,10 @@ func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) ([]any
 	}, nil
 }
 
-const (
-	lookupWhatID     = "!"
-	lookupWhatPubkey = "@"
-	lookupWhatKind   = "#"
-)
-
-const insertLookupsQuery = `
-insert into lookups (
-	what_value_hash,
-	what,
+const insertTagsQuery = `
+insert into tags (
+	key_value_hash,
+	key,
 	value,
 	created_at,
 	event_key_hash,
@@ -187,59 +186,13 @@ insert into lookups (
 	(?, ?, ?, ?, ?, ?)
 on conflict do nothing`
 
-func buildInsertEventsParamsLookups(event *mocrelay.Event, eventKey string) [][]any {
+func buildInsertEventsParamsTags(event *mocrelay.Event, eventKey string) [][]any {
 	var ret [][]any
 
 	x := xxHash32.New(XXHashSeed)
 
 	io.WriteString(x, eventKey)
 	eventKeyHash := x.Sum32()
-
-	// ID
-	x.Reset()
-	io.WriteString(x, lookupWhatID)
-	io.WriteString(x, event.ID)
-	whatValueHash := x.Sum32()
-
-	ret = append(ret, []any{
-		whatValueHash,
-		lookupWhatID,
-		event.ID,
-		event.CreatedAt,
-		eventKeyHash,
-		eventKey,
-	})
-
-	// Pubkey
-	x.Reset()
-	io.WriteString(x, lookupWhatPubkey)
-	io.WriteString(x, event.Pubkey)
-	whatValueHash = x.Sum32()
-
-	ret = append(ret, []any{
-		whatValueHash,
-		lookupWhatPubkey,
-		event.Pubkey,
-		event.CreatedAt,
-		eventKeyHash,
-		eventKey,
-	})
-
-	// Kind
-	kindStr := strconv.FormatInt(event.Kind, 10)
-	x.Reset()
-	io.WriteString(x, lookupWhatKind)
-	io.WriteString(x, kindStr)
-	whatValueHash = x.Sum32()
-
-	ret = append(ret, []any{
-		whatValueHash,
-		lookupWhatKind,
-		kindStr,
-		event.CreatedAt,
-		eventKeyHash,
-		eventKey,
-	})
 
 	for _, tag := range event.Tags {
 		if len(tag) == 0 {
@@ -260,10 +213,10 @@ func buildInsertEventsParamsLookups(event *mocrelay.Event, eventKey string) [][]
 		x.Reset()
 		io.WriteString(x, tag[0])
 		io.WriteString(x, value)
-		whatValueHash = x.Sum32()
+		keyValueHash := x.Sum32()
 
 		ret = append(ret, []any{
-			whatValueHash,
+			keyValueHash,
 			tag[0],
 			value,
 			event.CreatedAt,

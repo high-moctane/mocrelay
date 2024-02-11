@@ -66,6 +66,10 @@ func buildEventQuery(
 
 	x := xxHash32.New(XXHashSeed)
 
+	lookupWhatID := "id"
+	lookupWhatPubkey := "pubkey"
+	lookupWhatKind := "kind"
+
 	for i, f := range fs {
 		var b *goqu.SelectDataset
 
