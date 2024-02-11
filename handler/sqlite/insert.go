@@ -132,7 +132,30 @@ insert into events (
 	sig
 ) values
 	(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-on conflict do nothing
+on conflict(event_key) do update set
+	id_hash     = excluded.id_hash,
+	id          = excluded.id,
+	pubkey_hash = excluded.pubkey_hash,
+	pubkey      = excluded.pubkey,
+	created_at  = excluded.created_at,
+	kind        = excluded.kind,
+	tags        = excluded.tags,
+	content     = excluded.content,
+	sig         = excluded.sig
+where
+	events.id <> excluded.id
+	and
+	(
+		events.kind = 0
+		or
+		events.kind = 3
+		or
+		(10000 <= events.kind and events.kind < 20000)
+		or
+		(30000 <= events.kind and events.kind < 40000)
+	)
+	and
+	events.created_at < excluded.created_at
 `
 
 func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) ([]any, error) {

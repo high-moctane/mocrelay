@@ -101,7 +101,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	// trigger tags_delete_on_casecade_event_key
 	if _, err := db.ExecContext(ctx, `
 		create trigger if not exists tr_tags_delete_on_casecade_event_key
-		after delete on events
+		before delete on events
 		begin
 			delete from tags
 			where
@@ -111,6 +111,19 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		end;
 	`); err != nil {
 		return fmt.Errorf("failed to create trigger tr_tags_delete_on_casecade_event_key: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		create trigger if not exists tr_tags_update_on_casecade_event_key
+		before update on events
+		begin
+			delete from tags
+			where
+				event_key_hash = old.event_key_hash
+				and
+				event_key = old.event_key;
+		end;
+	`); err != nil {
+		return fmt.Errorf("failed to create trigger tr_tags_update_on_casecade_event_key: %w", err)
 	}
 
 	// table deleted_events
