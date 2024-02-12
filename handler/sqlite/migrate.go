@@ -4,9 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/rand"
 )
 
 func Migrate(ctx context.Context, db *sql.DB) error {
+	// table xxhash_seed
+	if _, err := db.ExecContext(ctx, `
+		create table if not exists xxhash_seed (
+			seed      integer not null primary key
+		) without rowid, strict;
+	`); err != nil {
+		return fmt.Errorf("failed to create xxhash_seed table: %w", err)
+	}
+
 	// table events
 	if _, err := db.ExecContext(ctx, `
 		create table if not exists events (
@@ -207,4 +217,19 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func setOrLoadXXHashSeed(ctx context.Context, db *sql.DB) (uint32, error) {
+	var seed uint32
+	if err := db.QueryRowContext(ctx, "select seed from xxhash_seed").Scan(&seed); err != nil {
+		if err == sql.ErrNoRows {
+			seed = rand.Uint32()
+			if _, err := db.ExecContext(ctx, "insert into xxhash_seed (seed) values (?)", seed); err != nil {
+				return 0, fmt.Errorf("failed to insert xxhash_seed: %w", err)
+			}
+		} else {
+			return 0, fmt.Errorf("failed to scan xxhash_seed: %w", err)
+		}
+	}
+	return seed, nil
 }

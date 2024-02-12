@@ -16,10 +16,11 @@ import (
 func queryEvent(
 	ctx context.Context,
 	db *sql.DB,
+	seed uint32,
 	fs []*mocrelay.ReqFilter,
 	maxLimit uint,
 ) (events []*mocrelay.Event, err error) {
-	q, param, err := buildEventQuery(fs, maxLimit)
+	q, param, err := buildEventQuery(fs, seed, maxLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -34,6 +35,7 @@ func queryEvent(
 
 func buildEventQuery(
 	fs []*mocrelay.ReqFilter,
+	seed uint32,
 	maxLimit uint,
 ) (query string, param []any, err error) {
 	sqlite3 := goqu.Dialect("sqlite3")
@@ -70,7 +72,7 @@ func buildEventQuery(
 
 	var builder *goqu.SelectDataset
 
-	x := xxHash32.New(0)
+	x := xxHash32.New(seed)
 
 	for _, f := range fs {
 		b := sqlite3.

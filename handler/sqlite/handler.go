@@ -13,8 +13,6 @@ import (
 
 const NoLimit = math.MaxUint
 
-const XXHashSeed = 0
-
 type SQLiteHandlerOption struct {
 	EventBulkInsertNum int
 	EventBulkInsertDur time.Duration
@@ -49,6 +47,7 @@ func NewSQLiteHandler(
 type simpleSQLiteHandler struct {
 	db      *sql.DB
 	eventCh chan *mocrelay.Event
+	seed    uint32
 
 	opt SQLiteHandlerOption
 }
@@ -62,6 +61,11 @@ func newSimpleSQLiteHandler(
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
 
+	seed, err := setOrLoadXXHashSeed(ctx, db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set or load xxhash seed: %w", err)
+	}
+
 	var option SQLiteHandlerOption
 	if opt != nil {
 		option = *opt
@@ -69,13 +73,10 @@ func newSimpleSQLiteHandler(
 		option = *NewDefaultSQLiteHandlerOption()
 	}
 
-	if _, err := db.ExecContext(ctx, "pragma foreign_keys = on"); err != nil {
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
-
 	h := &simpleSQLiteHandler{
 		db:      db,
-		eventCh: make(chan *mocrelay.Event, option.EventBulkInsertNum),
+		eventCh: make(chan *mocrelay.Event, 2*option.EventBulkInsertNum),
+		seed:    seed,
 		opt:     option,
 	}
 
@@ -114,7 +115,7 @@ func (h *simpleSQLiteHandler) serveClientReqMsg(
 	ctx context.Context,
 	msg *mocrelay.ClientReqMsg,
 ) (<-chan mocrelay.ServerMsg, error) {
-	events, err := queryEvent(ctx, h.db, msg.ReqFilters, h.opt.MaxLimit)
+	events, err := queryEvent(ctx, h.db, h.seed, msg.ReqFilters, h.opt.MaxLimit)
 	if err != nil {
 		warnLog(ctx, h.opt.Logger, "failed to query events", "err", err)
 
@@ -173,7 +174,7 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 			if len(events) > 0 {
 				c, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
-				if err := insertEvents(c, h.db, events); err != nil {
+				if err := insertEvents(c, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
@@ -187,7 +188,7 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 			seen[event.ID] = true
 			events = append(events, event)
 			if len(events) >= h.opt.EventBulkInsertNum {
-				if err := insertEvents(ctx, h.db, events); err != nil {
+				if err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
@@ -197,7 +198,7 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 
 		case <-tickCh:
 			if len(events) > 0 {
-				if err := insertEvents(ctx, h.db, events); err != nil {
+				if err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))

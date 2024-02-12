@@ -1046,18 +1046,18 @@ func Test_queryEvent(t *testing.T) {
 				t.Fatalf("failed to migrate: %v", err)
 			}
 
-			if err := insertEvents(ctx, db, tt.input); err != nil {
+			if err := insertEvents(ctx, db, 0, tt.input); err != nil {
 				t.Fatalf("failed to insert event: %v", err)
 			}
 
-			got, err := queryEvent(ctx, db, tt.fs, NoLimit)
+			got, err := queryEvent(ctx, db, 0, tt.fs, NoLimit)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("queryEvent() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			assert.Equal(t, tt.want, got)
 
-			q, p, _ := buildEventQuery(tt.fs, NoLimit)
+			q, p, _ := buildEventQuery(tt.fs, 0, NoLimit)
 			t.Logf("query: %s, param: %v", q, p)
 		})
 	}

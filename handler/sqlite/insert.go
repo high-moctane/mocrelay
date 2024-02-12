@@ -17,9 +17,10 @@ import (
 func insertEvents(
 	ctx context.Context,
 	db *sql.DB,
+	seed uint32,
 	events []*mocrelay.Event,
 ) (err error) {
-	params := buildInsertEventsParams(events)
+	params := buildInsertEventsParams(seed, events)
 	if len(params) == 0 {
 		return
 	}
@@ -104,7 +105,7 @@ type insertEventsParams struct {
 
 var emptyTagsBytes = []byte("[]")
 
-func buildInsertEventsParams(events []*mocrelay.Event) []insertEventsParams {
+func buildInsertEventsParams(seed uint32, events []*mocrelay.Event) []insertEventsParams {
 	ret := make([]insertEventsParams, 0, len(events))
 
 	for _, event := range events {
@@ -113,16 +114,16 @@ func buildInsertEventsParams(events []*mocrelay.Event) []insertEventsParams {
 			continue
 		}
 
-		eventPayloads, err := buildInsertEventsParamsEventPayloads(event, eventKey)
+		eventPayloads, err := buildInsertEventsParamsEventPayloads(seed, event, eventKey)
 		if err != nil {
 			continue
 		}
 
 		ret = append(ret, insertEventsParams{
-			Events:        buildInsertEventsParamsEvent(event, eventKey),
+			Events:        buildInsertEventsParamsEvent(seed, event, eventKey),
 			EventPayloads: eventPayloads,
-			Tags:          buildInsertEventsParamsTags(event, eventKey),
-			DeletedEvents: buildInsertEventsParamsDeletedEvents(event),
+			Tags:          buildInsertEventsParamsTags(seed, event, eventKey),
+			DeletedEvents: buildInsertEventsParamsDeletedEvents(seed, event),
 		})
 	}
 
@@ -164,8 +165,8 @@ where
 	events.created_at < excluded.created_at
 `
 
-func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) []any {
-	x := xxHash32.New(XXHashSeed)
+func buildInsertEventsParamsEvent(seed uint32, event *mocrelay.Event, eventKey string) []any {
+	x := xxHash32.New(seed)
 	io.WriteString(x, eventKey)
 	eventKeyHash := x.Sum32()
 
@@ -200,7 +201,11 @@ insert into event_payloads (
 	(?, ?, ?, ?, ?)
 `
 
-func buildInsertEventsParamsEventPayloads(event *mocrelay.Event, eventKey string) ([]any, error) {
+func buildInsertEventsParamsEventPayloads(
+	seed uint32,
+	event *mocrelay.Event,
+	eventKey string,
+) ([]any, error) {
 	var tagsBytes []byte
 	if event.Tags == nil {
 		tagsBytes = emptyTagsBytes
@@ -212,7 +217,7 @@ func buildInsertEventsParamsEventPayloads(event *mocrelay.Event, eventKey string
 		}
 	}
 
-	x := xxHash32.New(XXHashSeed)
+	x := xxHash32.New(seed)
 	io.WriteString(x, eventKey)
 	eventKeyHash := x.Sum32()
 
@@ -237,10 +242,10 @@ insert into event_tags (
 	(?, ?, ?, ?, ?, ?)
 on conflict do nothing`
 
-func buildInsertEventsParamsTags(event *mocrelay.Event, eventKey string) [][]any {
+func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey string) [][]any {
 	var ret [][]any
 
-	x := xxHash32.New(XXHashSeed)
+	x := xxHash32.New(seed)
 
 	io.WriteString(x, eventKey)
 	eventKeyHash := x.Sum32()
@@ -296,7 +301,7 @@ where not exists (
 		pubkey = ?
 )`
 
-func buildInsertEventsParamsDeletedEvents(event *mocrelay.Event) [][]any {
+func buildInsertEventsParamsDeletedEvents(seed uint32, event *mocrelay.Event) [][]any {
 	if event.Kind != 5 {
 		return nil
 	}
@@ -311,7 +316,7 @@ func buildInsertEventsParamsDeletedEvents(event *mocrelay.Event) [][]any {
 			continue
 		}
 
-		x := xxHash32.New(XXHashSeed)
+		x := xxHash32.New(seed)
 		io.WriteString(x, tag[1])
 		eventKeyOrIDHash := x.Sum32()
 
