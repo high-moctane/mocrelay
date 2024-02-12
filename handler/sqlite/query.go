@@ -47,9 +47,13 @@ func buildEventQuery(
 	ePubkeyHash := e.Col("pubkey_hash")
 	eCreatedAt := e.Col("created_at")
 	eKind := e.Col("kind")
-	eTags := e.Col("tags")
-	eContent := e.Col("content")
-	eSig := e.Col("sig")
+
+	p := goqu.T("event_payloads")
+	pEventKeyHash := p.Col("event_key_hash")
+	pEventKey := p.Col("event_key")
+	pTags := p.Col("tags")
+	pContent := p.Col("content")
+	pSig := p.Col("sig")
 
 	t := goqu.T("tags")
 	tKeyValueHash := t.Col("key_value_hash")
@@ -75,11 +79,15 @@ func buildEventQuery(
 				ePubkey,
 				eCreatedAt,
 				eKind,
-				eTags,
-				eContent,
-				eSig,
+				pTags,
+				pContent,
+				pSig,
 			).
 			From(e).
+			Join(p, goqu.On(
+				eEventKeyHash.Eq(pEventKeyHash),
+				eEventKey.Eq(pEventKey),
+			)).
 			Order(eCreatedAt.Desc())
 
 		b = b.Where(goqu.L("not exists ?",

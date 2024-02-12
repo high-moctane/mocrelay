@@ -43,6 +43,12 @@ func insertEvents(
 	}
 	defer eventsStmt.Close()
 
+	eventPayloadsStmt, err := tx.PrepareContext(ctx, insertEventPayloadsQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare event payloads statement: %w", err)
+	}
+	defer eventPayloadsStmt.Close()
+
 	tagsStmt, err := tx.PrepareContext(ctx, insertTagsQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare tags statement: %w", err)
@@ -69,6 +75,10 @@ func insertEvents(
 			continue
 		}
 
+		if _, err := eventPayloadsStmt.ExecContext(ctx, p.EventPayloads...); err != nil {
+			return fmt.Errorf("failed to insert event payloads: %w", err)
+		}
+
 		for _, tag := range p.Tags {
 			if _, err := tagsStmt.ExecContext(ctx, tag...); err != nil {
 				return fmt.Errorf("failed to insert tags: %w", err)
@@ -87,6 +97,7 @@ func insertEvents(
 
 type insertEventsParams struct {
 	Events        []any
+	EventPayloads []any
 	Tags          [][]any
 	DeletedEvents [][]any
 }
@@ -102,13 +113,14 @@ func buildInsertEventsParams(events []*mocrelay.Event) []insertEventsParams {
 			continue
 		}
 
-		events, err := buildInsertEventsParamsEvent(event, eventKey)
+		eventPayloads, err := buildInsertEventsParamsEventPayloads(event, eventKey)
 		if err != nil {
 			continue
 		}
 
 		ret = append(ret, insertEventsParams{
-			Events:        events,
+			Events:        buildInsertEventsParamsEvent(event, eventKey),
+			EventPayloads: eventPayloads,
 			Tags:          buildInsertEventsParamsTags(event, eventKey),
 			DeletedEvents: buildInsertEventsParamsDeletedEvents(event),
 		})
@@ -126,22 +138,16 @@ insert into events (
 	pubkey_hash,
 	pubkey,
 	created_at,
-	kind,
-	tags,
-	content,
-	sig
+	kind
 ) values
-	(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	(?, ?, ?, ?, ?, ?, ?, ?)
 on conflict(event_key) do update set
 	id_hash     = excluded.id_hash,
 	id          = excluded.id,
 	pubkey_hash = excluded.pubkey_hash,
 	pubkey      = excluded.pubkey,
 	created_at  = excluded.created_at,
-	kind        = excluded.kind,
-	tags        = excluded.tags,
-	content     = excluded.content,
-	sig         = excluded.sig
+	kind        = excluded.kind
 where
 	events.id <> excluded.id
 	and
@@ -158,18 +164,7 @@ where
 	events.created_at < excluded.created_at
 `
 
-func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) ([]any, error) {
-	var tagsBytes []byte
-	if event.Tags == nil {
-		tagsBytes = emptyTagsBytes
-	} else {
-		var err error
-		tagsBytes, err = json.Marshal(event.Tags)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal tags: %w", err)
-		}
-	}
-
+func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) []any {
 	x := xxHash32.New(XXHashSeed)
 	io.WriteString(x, eventKey)
 	eventKeyHash := x.Sum32()
@@ -191,6 +186,39 @@ func buildInsertEventsParamsEvent(event *mocrelay.Event, eventKey string) ([]any
 		event.Pubkey,
 		event.CreatedAt,
 		event.Kind,
+	}
+}
+
+const insertEventPayloadsQuery = `
+insert into event_payloads (
+	event_key_hash,
+	event_key,
+	tags,
+	content,
+	sig
+) values
+	(?, ?, ?, ?, ?)
+`
+
+func buildInsertEventsParamsEventPayloads(event *mocrelay.Event, eventKey string) ([]any, error) {
+	var tagsBytes []byte
+	if event.Tags == nil {
+		tagsBytes = emptyTagsBytes
+	} else {
+		var err error
+		tagsBytes, err = json.Marshal(event.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal tags: %w", err)
+		}
+	}
+
+	x := xxHash32.New(XXHashSeed)
+	io.WriteString(x, eventKey)
+	eventKeyHash := x.Sum32()
+
+	return []any{
+		eventKeyHash,
+		eventKey,
 		tagsBytes,
 		event.Content,
 		event.Sig,
