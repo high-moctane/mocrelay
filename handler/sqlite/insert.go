@@ -226,7 +226,7 @@ func buildInsertEventsParamsEventPayloads(event *mocrelay.Event, eventKey string
 }
 
 const insertTagsQuery = `
-insert into tags (
+insert into event_tags (
 	key_value_hash,
 	key,
 	value,

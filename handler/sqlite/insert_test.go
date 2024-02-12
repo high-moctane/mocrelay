@@ -681,7 +681,7 @@ func Test_insertEvents(t *testing.T) {
 			assert.Equal(t, tt.total, totalPayloads)
 
 			var totalTags int64
-			if err := db.QueryRowContext(ctx, "select count(*) from tags").Scan(&totalTags); err != nil {
+			if err := db.QueryRowContext(ctx, "select count(*) from event_tags").Scan(&totalTags); err != nil {
 				t.Fatalf("failed to get total: %v", err)
 			}
 			assert.Equal(t, tt.totalTags, totalTags)

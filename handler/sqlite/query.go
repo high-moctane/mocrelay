@@ -55,7 +55,7 @@ func buildEventQuery(
 	pContent := p.Col("content")
 	pSig := p.Col("sig")
 
-	t := goqu.T("tags")
+	t := goqu.T("event_tags")
 	tKeyValueHash := t.Col("key_value_hash")
 	tKey := t.Col("key")
 	tValue := t.Col("value")
@@ -149,7 +149,7 @@ func buildEventQuery(
 				b = b.Where(goqu.L("exists ?",
 					sqlite3.
 						Select(goqu.L("1")).
-						From("tags").
+						From("event_tags").
 						Where(tKeyValueHash.In(keyValueHashes)).
 						Where(tKey.Eq(k)).
 						Where(tValue.In(values)).
