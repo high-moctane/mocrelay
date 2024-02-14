@@ -3,14 +3,13 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
-	"github.com/pierrec/xxHash/xxHash32"
 )
 
 func queryEvent(
@@ -41,38 +40,33 @@ func buildEventQuery(
 	sqlite3 := goqu.Dialect("sqlite3")
 
 	e := goqu.T("events")
-	eEventKeyHash := e.Col("event_key_hash")
 	eEventKey := e.Col("event_key")
-	eIDHash := e.Col("id_hash")
 	eID := e.Col("id")
 	ePubkey := e.Col("pubkey")
-	ePubkeyHash := e.Col("pubkey_hash")
 	eCreatedAt := e.Col("created_at")
 	eKind := e.Col("kind")
 
 	p := goqu.T("event_payloads")
-	pEventKeyHash := p.Col("event_key_hash")
 	pEventKey := p.Col("event_key")
 	pTags := p.Col("tags")
 	pContent := p.Col("content")
 	pSig := p.Col("sig")
 
 	t := goqu.T("event_tags")
-	tKeyValueHash := t.Col("key_value_hash")
+	tEventKey := t.Col("event_key")
 	tKey := t.Col("key")
 	tValue := t.Col("value")
 	tCreatedAt := t.Col("created_at")
-	tEventKeyHash := t.Col("event_key_hash")
-	tEventKey := t.Col("event_key")
 
-	d := goqu.T("deleted_events")
-	dEventKeyOrIDHash := d.Col("event_key_or_id_hash")
-	dEventKeyOrID := d.Col("event_key_or_id")
-	dPubkey := d.Col("pubkey")
+	dKey := goqu.T("deleted_event_keys")
+	dKeyEventKey := dKey.Col("event_key")
+	dKeyPubkey := dKey.Col("pubkey")
+
+	dID := goqu.T("deleted_event_ids")
+	dIDID := dID.Col("id")
+	dIDPubkey := dID.Col("pubkey")
 
 	var builder *goqu.SelectDataset
-
-	x := xxHash32.New(seed)
 
 	for _, f := range fs {
 		b := sqlite3.
@@ -86,51 +80,49 @@ func buildEventQuery(
 				pSig,
 			).
 			From(e).
-			Join(p, goqu.On(
-				eEventKeyHash.Eq(pEventKeyHash),
-				eEventKey.Eq(pEventKey),
-			)).
+			Join(p, goqu.On(eEventKey.Eq(pEventKey))).
 			Order(eCreatedAt.Desc())
 
 		b = b.Where(goqu.L("not exists ?",
 			sqlite3.
 				Select(goqu.L("1")).
-				From(d).
-				Where(goqu.Or(
-					goqu.And(
-						dEventKeyOrIDHash.Eq(eEventKeyHash),
-						dEventKeyOrID.Eq(eEventKey),
-					),
-					goqu.And(
-						dEventKeyOrIDHash.Eq(eIDHash),
-						dEventKeyOrID.Eq(eID),
-					),
-				)).
-				Where(dPubkey.Eq(ePubkey)),
+				From(dKey).
+				Where(dKeyEventKey.Eq(eEventKey)).
+				Where(dKeyPubkey.Eq(ePubkey)),
+		))
+
+		b = b.Where(goqu.L("not exists ?",
+			sqlite3.
+				Select(goqu.L("1")).
+				From(dID).
+				Where(dIDID.Eq(eID)).
+				Where(dIDPubkey.Eq(ePubkey)),
 		))
 
 		if f.IDs != nil {
-			idHashes := make([]string, len(f.IDs))
+			idBins := make([][]byte, len(f.IDs))
 			for i, id := range f.IDs {
-				x.Reset()
-				io.WriteString(x, id)
-				idHashes[i] = fmt.Sprint(x.Sum32())
+				var err error
+				idBins[i], err = hex.DecodeString(id)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to decode id: %w", err)
+				}
 			}
 
-			b = b.Where(eIDHash.In(idHashes))
-			b = b.Where(eID.In(f.IDs))
+			b = b.Where(eID.In(idBins))
 		}
 
 		if f.Authors != nil {
-			authorHashes := make([]string, len(f.Authors))
+			authorBins := make([][]byte, len(f.Authors))
 			for i, pubkey := range f.Authors {
-				x.Reset()
-				io.WriteString(x, pubkey)
-				authorHashes[i] = fmt.Sprint(x.Sum32())
+				var err error
+				authorBins[i], err = hex.DecodeString(pubkey)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to decode pubkey: %w", err)
+				}
 			}
 
-			b = b.Where(ePubkeyHash.In(authorHashes))
-			b = b.Where(ePubkey.In(f.Authors))
+			b = b.Where(ePubkey.In(authorBins))
 		}
 
 		if f.Kinds != nil {
@@ -140,24 +132,20 @@ func buildEventQuery(
 		if f.Tags != nil {
 			for key, values := range f.Tags {
 				k := key[1:]
-				keyValueHashes := make([]string, len(values))
+
+				valueBins := make([][]byte, len(values))
 				for i, value := range values {
-					x.Reset()
-					io.WriteString(x, k)
-					io.WriteString(x, value)
-					keyValueHashes[i] = fmt.Sprint(x.Sum32())
+					valueBins[i] = []byte(value)
 				}
 
 				b = b.Where(goqu.L("exists ?",
 					sqlite3.
 						Select(goqu.L("1")).
 						From("event_tags").
-						Where(tKeyValueHash.In(keyValueHashes)).
-						Where(tKey.Eq(k)).
-						Where(tValue.In(values)).
-						Where(tCreatedAt.Eq(eCreatedAt)).
-						Where(tEventKeyHash.Eq(eEventKeyHash)).
-						Where(tEventKey.Eq(eEventKey)),
+						Where(tEventKey.Eq(eEventKey)).
+						Where(tKey.Eq([]byte(k))).
+						Where(tValue.In(valueBins)).
+						Where(tCreatedAt.Eq(eCreatedAt)),
 				))
 			}
 		}
@@ -192,7 +180,7 @@ func buildEventQuery(
 		builder = builder.Limit(maxLimit)
 	}
 
-	return builder.ToSQL()
+	return builder.Prepared(true).ToSQL()
 }
 
 func fetchEventQuery(
@@ -255,13 +243,13 @@ func fetchRawEvent(
 }
 
 type rawEvent struct {
-	ID        string
-	Pubkey    string
+	ID        []byte
+	Pubkey    []byte
 	CreatedAt int64
 	Kind      int64
 	Tags      []byte
 	Content   string
-	Sig       string
+	Sig       []byte
 }
 
 func (r *rawEvent) toEvent() (*mocrelay.Event, error) {
@@ -271,12 +259,12 @@ func (r *rawEvent) toEvent() (*mocrelay.Event, error) {
 	}
 
 	return &mocrelay.Event{
-		ID:        r.ID,
-		Pubkey:    r.Pubkey,
+		ID:        hex.EncodeToString(r.ID),
+		Pubkey:    hex.EncodeToString(r.Pubkey),
 		CreatedAt: r.CreatedAt,
 		Kind:      r.Kind,
 		Tags:      tags,
 		Content:   r.Content,
-		Sig:       r.Sig,
+		Sig:       hex.EncodeToString(r.Sig),
 	}, nil
 }

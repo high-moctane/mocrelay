@@ -7,6 +7,7 @@ require (
 	github.com/doug-martin/goqu/v9 v9.19.0
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.1
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/igrmk/treemap/v2 v2.0.1
 	github.com/mattn/go-sqlite3 v1.14.19
 	github.com/pierrec/xxHash v0.1.5
@@ -25,7 +26,6 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/gobwas/ws v1.3.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/klauspost/compress v1.10.3 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect

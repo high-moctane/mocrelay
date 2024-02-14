@@ -3,11 +3,13 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
@@ -56,11 +58,17 @@ func insertEvents(
 	}
 	defer tagsStmt.Close()
 
-	deletedEventsStmt, err := tx.PrepareContext(ctx, insertDeletedEventsQuery)
+	deletedEventKeysStmt, err := tx.PrepareContext(ctx, insertDeletedEventKeysQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare deleted events statement: %w", err)
 	}
-	defer deletedEventsStmt.Close()
+	defer deletedEventKeysStmt.Close()
+
+	deletedEventIDsStmt, err := tx.PrepareContext(ctx, insertDeletedEventIDsQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare deleted event ids statement: %w", err)
+	}
+	defer deletedEventIDsStmt.Close()
 
 	// Insert
 	for _, p := range params {
@@ -86,9 +94,15 @@ func insertEvents(
 			}
 		}
 
-		for _, deletedEvent := range p.DeletedEvents {
-			if _, err := deletedEventsStmt.ExecContext(ctx, deletedEvent...); err != nil {
+		for _, deletedEvent := range p.DeletedEventKeys {
+			if _, err := deletedEventKeysStmt.ExecContext(ctx, deletedEvent...); err != nil {
 				return fmt.Errorf("failed to insert deleted events: %w", err)
+			}
+		}
+
+		for _, deletedEvent := range p.DeletedEventIDs {
+			if _, err := deletedEventIDsStmt.ExecContext(ctx, deletedEvent...); err != nil {
+				return fmt.Errorf("failed to insert deleted event ids: %w", err)
 			}
 		}
 	}
@@ -97,10 +111,11 @@ func insertEvents(
 }
 
 type insertEventsParams struct {
-	Events        []any
-	EventPayloads []any
-	Tags          [][]any
-	DeletedEvents [][]any
+	Events           []any
+	EventPayloads    []any
+	Tags             [][]any
+	DeletedEventKeys [][]any
+	DeletedEventIDs  [][]any
 }
 
 var emptyTagsBytes = []byte("[]")
@@ -109,8 +124,13 @@ func buildInsertEventsParams(seed uint32, events []*mocrelay.Event) []insertEven
 	ret := make([]insertEventsParams, 0, len(events))
 
 	for _, event := range events {
-		eventKey := getEventKey(event)
-		if eventKey == "" {
+		eventKey, ok := getEventKey(seed, event)
+		if !ok {
+			continue
+		}
+
+		events, err := buildInsertEventsParamsEvent(seed, event, eventKey)
+		if err != nil {
 			continue
 		}
 
@@ -119,11 +139,22 @@ func buildInsertEventsParams(seed uint32, events []*mocrelay.Event) []insertEven
 			continue
 		}
 
+		deletedEventKeys, err := buildInsertEventsParamsDeletedEventKeys(seed, event)
+		if err != nil {
+			continue
+		}
+
+		deleteEventIDs, err := buildInsertEventsParamsDeletedEventIDs(seed, event)
+		if err != nil {
+			continue
+		}
+
 		ret = append(ret, insertEventsParams{
-			Events:        buildInsertEventsParamsEvent(seed, event, eventKey),
-			EventPayloads: eventPayloads,
-			Tags:          buildInsertEventsParamsTags(seed, event, eventKey),
-			DeletedEvents: buildInsertEventsParamsDeletedEvents(seed, event),
+			Events:           events,
+			EventPayloads:    eventPayloads,
+			Tags:             buildInsertEventsParamsTags(seed, event, eventKey),
+			DeletedEventKeys: deletedEventKeys,
+			DeletedEventIDs:  deleteEventIDs,
 		})
 	}
 
@@ -132,79 +163,72 @@ func buildInsertEventsParams(seed uint32, events []*mocrelay.Event) []insertEven
 
 const insertEventsQuery = `
 insert into events (
-	event_key_hash,
 	event_key,
-	id_hash,
 	id,
-	pubkey_hash,
 	pubkey,
 	created_at,
 	kind
 ) values
-	(?, ?, ?, ?, ?, ?, ?, ?)
+	(?, ?, ?, ?, ?)
 on conflict(event_key) do update set
-	id_hash     = excluded.id_hash,
-	id          = excluded.id,
-	pubkey_hash = excluded.pubkey_hash,
-	pubkey      = excluded.pubkey,
-	created_at  = excluded.created_at,
-	kind        = excluded.kind
-where
-	events.id <> excluded.id
-	and
-	(
-		events.kind = 0
-		or
-		events.kind = 3
-		or
-		(10000 <= events.kind and events.kind < 20000)
-		or
-		(30000 <= events.kind and events.kind < 40000)
-	)
-	and
-	events.created_at < excluded.created_at
+ 	id              = excluded.id,
+ 	pubkey          = excluded.pubkey,
+ 	created_at      = excluded.created_at,
+ 	kind            = excluded.kind
+ where
+ 	events.id <> excluded.id
+ 	and
+ 	(
+ 		events.kind = 0
+ 		or
+ 		events.kind = 3
+ 		or
+ 		(10000 <= events.kind and events.kind < 20000)
+ 		or
+ 		(30000 <= events.kind and events.kind < 40000)
+ 	)
+ 	and
+ 	events.created_at < excluded.created_at
 `
 
-func buildInsertEventsParamsEvent(seed uint32, event *mocrelay.Event, eventKey string) []any {
-	x := xxHash32.New(seed)
-	io.WriteString(x, eventKey)
-	eventKeyHash := x.Sum32()
+func buildInsertEventsParamsEvent(
+	seed uint32,
+	event *mocrelay.Event,
+	eventKey int64,
+) ([]any, error) {
+	idBin, err := hex.DecodeString(event.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode id: %w", err)
+	}
 
-	x.Reset()
-	io.WriteString(x, event.ID)
-	idHash := x.Sum32()
-
-	x.Reset()
-	io.WriteString(x, event.Pubkey)
-	pubkeyHash := x.Sum32()
+	pubkeyBin, err := hex.DecodeString(event.Pubkey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode pubkey: %w", err)
+	}
 
 	return []any{
-		eventKeyHash,
 		eventKey,
-		idHash,
-		event.ID,
-		pubkeyHash,
-		event.Pubkey,
+		idBin,
+		pubkeyBin,
 		event.CreatedAt,
 		event.Kind,
-	}
+	}, nil
 }
 
 const insertEventPayloadsQuery = `
 insert into event_payloads (
-	event_key_hash,
 	event_key,
 	tags,
 	content,
 	sig
 ) values
-	(?, ?, ?, ?, ?)
+	(?, ?, ?, ?)
 `
 
 func buildInsertEventsParamsEventPayloads(
 	seed uint32,
 	event *mocrelay.Event,
-	eventKey string,
+	eventKey int64,
 ) ([]any, error) {
 	var tagsBytes []byte
 	if event.Tags == nil {
@@ -217,38 +241,31 @@ func buildInsertEventsParamsEventPayloads(
 		}
 	}
 
-	x := xxHash32.New(seed)
-	io.WriteString(x, eventKey)
-	eventKeyHash := x.Sum32()
+	sigBin, err := hex.DecodeString(event.Sig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode sig: %w", err)
+	}
 
 	return []any{
-		eventKeyHash,
 		eventKey,
 		tagsBytes,
 		event.Content,
-		event.Sig,
+		sigBin,
 	}, nil
 }
 
 const insertTagsQuery = `
 insert into event_tags (
-	key_value_hash,
+	event_key,
 	key,
 	value,
-	created_at,
-	event_key_hash,
-	event_key
+	created_at
 ) values
-	(?, ?, ?, ?, ?, ?)
-on conflict do nothing`
+	(?, ?, ?, ?)
+`
 
-func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey string) [][]any {
+func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey int64) [][]any {
 	var ret [][]any
-
-	x := xxHash32.New(seed)
-
-	io.WriteString(x, eventKey)
-	eventKeyHash := x.Sum32()
 
 	for _, tag := range event.Tags {
 		if len(tag) == 0 {
@@ -266,87 +283,140 @@ func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey st
 			value = tag[1]
 		}
 
-		x.Reset()
-		io.WriteString(x, tag[0])
-		io.WriteString(x, value)
-		keyValueHash := x.Sum32()
-
 		ret = append(ret, []any{
-			keyValueHash,
-			tag[0],
-			value,
-			event.CreatedAt,
-			eventKeyHash,
 			eventKey,
+			[]byte(tag[0]),
+			[]byte(value),
+			event.CreatedAt,
 		})
 	}
 
 	return ret
 }
 
-const insertDeletedEventsQuery = `
-insert into deleted_events (
-	event_key_or_id_hash,
-	event_key_or_id,
+const insertDeletedEventKeysQuery = `
+insert into deleted_event_keys (
+	event_key,
 	pubkey
 )
-select ?, ?, ?
-where not exists (
-	select 1 from deleted_events
-	where
-		event_key_or_id_hash = ?
-		and
-		event_key_or_id = ?
-		and
-		pubkey = ?
-)`
+values
+	(?, ?)
+on conflict(event_key, pubkey) do nothing
+`
 
-func buildInsertEventsParamsDeletedEvents(seed uint32, event *mocrelay.Event) [][]any {
+func buildInsertEventsParamsDeletedEventKeys(seed uint32, event *mocrelay.Event) ([][]any, error) {
 	if event.Kind != 5 {
-		return nil
+		return nil, nil
 	}
 
 	var ret [][]any
+
+	pubkeyBin, err := hex.DecodeString(event.Pubkey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode pubkey: %w", err)
+	}
 
 	for _, tag := range event.Tags {
 		if len(tag) != 2 {
 			continue
 		}
-		if tag[0] != "a" && tag[0] != "e" {
+		if tag[0] != "a" {
+			continue
+		}
+
+		elems := strings.Split(tag[1], ":")
+		if len(elems) < 2 {
 			continue
 		}
 
 		x := xxHash32.New(seed)
+		io.WriteString(x, elems[1])
+		pubkeyHash := x.Sum32()
+
+		x.Reset()
 		io.WriteString(x, tag[1])
-		eventKeyOrIDHash := x.Sum32()
+		aHash := x.Sum32()
+
+		eventKey := int64(pubkeyHash)<<32 | int64(aHash)
 
 		ret = append(ret, []any{
-			eventKeyOrIDHash,
-			tag[1],
-			event.Pubkey,
-			eventKeyOrIDHash,
-			tag[1],
-			event.Pubkey,
+			eventKey,
+			pubkeyBin,
 		})
 	}
 
-	return ret
+	return ret, nil
 }
 
-func getEventKey(event *mocrelay.Event) string {
+const insertDeletedEventIDsQuery = `
+insert into deleted_event_ids (
+	id,
+	pubkey
+)
+values
+	(?, ?)
+on conflict(id, pubkey) do nothing
+`
+
+func buildInsertEventsParamsDeletedEventIDs(seed uint32, event *mocrelay.Event) ([][]any, error) {
+	if event.Kind != 5 {
+		return nil, nil
+	}
+
+	var ret [][]any
+
+	pubkeyBin, err := hex.DecodeString(event.Pubkey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode pubkey: %w", err)
+	}
+
+	for _, tag := range event.Tags {
+		if len(tag) != 2 {
+			continue
+		}
+		if tag[0] != "e" {
+			continue
+		}
+
+		idBin, err := hex.DecodeString(tag[1])
+		if err != nil {
+			continue
+		}
+
+		ret = append(ret, []any{
+			idBin,
+			pubkeyBin,
+		})
+	}
+
+	return ret, nil
+}
+
+func getEventKey(seed uint32, event *mocrelay.Event) (int64, bool) {
 	switch event.EventType() {
 	case mocrelay.EventTypeRegular:
-		return event.ID
+		ts := uint64(uint32(event.CreatedAt))
+		x := xxHash32.New(seed)
+		io.WriteString(x, event.ID)
+		idHash := x.Sum32()
+		return int64(ts<<32 | uint64(idHash)), true
 
 	case mocrelay.EventTypeReplaceable:
-		return fmt.Sprintf("%d:%s", event.Kind, event.Pubkey)
+		x := xxHash32.New(seed)
+		io.WriteString(x, event.Pubkey)
+		pubkeyHash := x.Sum32()
+		a := fmt.Sprintf("%d:%s", event.Kind, event.Pubkey)
+		x.Reset()
+		io.WriteString(x, a)
+		aHash := x.Sum32()
+		return int64(pubkeyHash)<<32 | int64(aHash), true
 
 	case mocrelay.EventTypeParamReplaceable:
 		idx := slices.IndexFunc(event.Tags, func(t mocrelay.Tag) bool {
 			return len(t) >= 1 && t[0] == "d"
 		})
 		if idx < 0 {
-			return ""
+			return 0, false
 		}
 
 		d := ""
@@ -354,9 +424,16 @@ func getEventKey(event *mocrelay.Event) string {
 			d = event.Tags[idx][1]
 		}
 
-		return fmt.Sprintf("%d:%s:%s", event.Kind, event.Pubkey, d)
+		x := xxHash32.New(seed)
+		io.WriteString(x, event.Pubkey)
+		pubkeyHash := x.Sum32()
+		a := fmt.Sprintf("%d:%s:%s", event.Kind, event.Pubkey, d)
+		x.Reset()
+		io.WriteString(x, a)
+		aHash := x.Sum32()
+		return int64(pubkeyHash)<<32 | int64(aHash), true
 
 	default:
-		return ""
+		return 0, false
 	}
 }

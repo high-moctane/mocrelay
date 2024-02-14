@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"testing"
 
@@ -23,8 +24,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query event",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id",
-					Pubkey:    "pubkey",
+					ID:        "aa",
+					Pubkey:    "bb",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -35,8 +36,8 @@ func Test_queryEvent(t *testing.T) {
 			fs: []*mocrelay.ReqFilter{{}},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id",
-					Pubkey:    "pubkey",
+					ID:        "aa",
+					Pubkey:    "bb",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -50,8 +51,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query event with two filters",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id",
-					Pubkey:    "pubkey",
+					ID:        "aa",
+					Pubkey:    "bb",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -62,8 +63,8 @@ func Test_queryEvent(t *testing.T) {
 			fs: []*mocrelay.ReqFilter{{}, {}},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id",
-					Pubkey:    "pubkey",
+					ID:        "aa",
+					Pubkey:    "bb",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -77,8 +78,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query ids",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -86,8 +87,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -95,8 +96,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -106,13 +107,13 @@ func Test_queryEvent(t *testing.T) {
 			},
 			fs: []*mocrelay.ReqFilter{
 				{
-					IDs: []string{"id2", "id3"},
+					IDs: []string{"aa22", "aa33"},
 				},
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -120,8 +121,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -135,8 +136,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query authors",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -144,8 +145,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -153,8 +154,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -162,8 +163,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey3",
+					ID:        "aa44",
+					Pubkey:    "bb33",
 					CreatedAt: 1237,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -173,13 +174,13 @@ func Test_queryEvent(t *testing.T) {
 			},
 			fs: []*mocrelay.ReqFilter{
 				{
-					Authors: []string{"pubkey1", "pubkey2"},
+					Authors: []string{"bb11", "bb22"},
 				},
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -187,8 +188,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -196,8 +197,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -211,8 +212,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query kinds",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -220,8 +221,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1000,
 					Tags: []mocrelay.Tag{
@@ -229,8 +230,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -238,8 +239,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey1",
+					ID:        "aa44",
+					Pubkey:    "bb11",
 					CreatedAt: 1237,
 					Kind:      1001,
 					Tags: []mocrelay.Tag{
@@ -254,8 +255,8 @@ func Test_queryEvent(t *testing.T) {
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -263,8 +264,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1000,
 					Tags: []mocrelay.Tag{
@@ -272,8 +273,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -287,8 +288,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query kinds",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -296,8 +297,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1000,
 					Tags: []mocrelay.Tag{
@@ -305,8 +306,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -314,8 +315,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey1",
+					ID:        "aa44",
+					Pubkey:    "bb11",
 					CreatedAt: 1237,
 					Kind:      1001,
 					Tags: []mocrelay.Tag{
@@ -330,8 +331,8 @@ func Test_queryEvent(t *testing.T) {
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -339,8 +340,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1000,
 					Tags: []mocrelay.Tag{
@@ -348,8 +349,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -363,8 +364,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query tags",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -373,8 +374,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 2,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -383,8 +384,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 3,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -393,8 +394,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey1",
+					ID:        "aa44",
+					Pubkey:    "bb11",
 					CreatedAt: 4,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -403,8 +404,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id5",
-					Pubkey:    "pubkey1",
+					ID:        "aa55",
+					Pubkey:    "bb11",
 					CreatedAt: 5,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -413,8 +414,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey1",
+					ID:        "aa66",
+					Pubkey:    "bb11",
 					CreatedAt: 6,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -433,8 +434,8 @@ func Test_queryEvent(t *testing.T) {
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey1",
+					ID:        "aa66",
+					Pubkey:    "bb11",
 					CreatedAt: 6,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -443,8 +444,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id5",
-					Pubkey:    "pubkey1",
+					ID:        "aa55",
+					Pubkey:    "bb11",
 					CreatedAt: 5,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -453,8 +454,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -469,8 +470,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query since",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -478,8 +479,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -487,8 +488,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -503,8 +504,8 @@ func Test_queryEvent(t *testing.T) {
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -512,8 +513,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -527,8 +528,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query until",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -536,8 +537,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -545,8 +546,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -561,8 +562,8 @@ func Test_queryEvent(t *testing.T) {
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -570,8 +571,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -585,8 +586,8 @@ func Test_queryEvent(t *testing.T) {
 			name: "query limit",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1234,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -594,8 +595,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -603,8 +604,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -619,8 +620,8 @@ func Test_queryEvent(t *testing.T) {
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 1236,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -628,8 +629,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 1235,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -645,18 +646,20 @@ func Test_queryEvent(t *testing.T) {
 				var events []*mocrelay.Event
 
 				var createdAt int64 = 1
-				for _, pubkey := range []string{"pubkey1", "pubkey2", "pubkey3"} {
+				for _, pubkey := range []string{"bb11", "bb22", "bb33"} {
 					for _, kind := range []int64{1, 1000, 1001} {
 						for _, evalue := range []string{"", "value1", "value2"} {
 							for _, pvalue := range []string{"", "value1", "value2"} {
+								id := fmt.Sprintf(
+									"%s-%d-%s-%s",
+									pubkey,
+									kind,
+									evalue,
+									pvalue,
+								)
+
 								events = append(events, &mocrelay.Event{
-									ID: fmt.Sprintf(
-										"%s-%d-%s-%s",
-										pubkey,
-										kind,
-										evalue,
-										pvalue,
-									),
+									ID:        hex.EncodeToString([]byte(id)),
 									Pubkey:    pubkey,
 									CreatedAt: createdAt,
 									Kind:      kind,
@@ -675,7 +678,7 @@ func Test_queryEvent(t *testing.T) {
 			}(),
 			fs: []*mocrelay.ReqFilter{
 				{
-					Authors: []string{"pubkey1", "pubkey3"},
+					Authors: []string{"bb11", "bb33"},
 					Kinds:   []int64{1, 1000},
 					Tags: map[string][]string{
 						"#e": {"value1", "value2"},
@@ -688,8 +691,8 @@ func Test_queryEvent(t *testing.T) {
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "pubkey3-1000-value1-",
-					Pubkey:    "pubkey3",
+					ID:        "626233332d313030302d76616c7565312d",
+					Pubkey:    "bb33",
 					CreatedAt: 67,
 					Kind:      1000,
 					Tags: []mocrelay.Tag{
@@ -698,8 +701,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "pubkey3-1-value2-",
-					Pubkey:    "pubkey3",
+					ID:        "626233332d312d76616c7565322d",
+					Pubkey:    "bb33",
 					CreatedAt: 61,
 					Kind:      1,
 					Tags: []mocrelay.Tag{
@@ -714,43 +717,43 @@ func Test_queryEvent(t *testing.T) {
 			name: "multiple filters",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 2,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 3,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey1",
+					ID:        "aa44",
+					Pubkey:    "bb11",
 					CreatedAt: 4,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id5",
-					Pubkey:    "pubkey2",
+					ID:        "aa55",
+					Pubkey:    "bb22",
 					CreatedAt: 5,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey2",
+					ID:        "aa66",
+					Pubkey:    "bb22",
 					CreatedAt: 6,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
@@ -758,40 +761,40 @@ func Test_queryEvent(t *testing.T) {
 			},
 			fs: []*mocrelay.ReqFilter{
 				{
-					Authors: []string{"pubkey2"},
+					Authors: []string{"bb22"},
 				},
 				{
-					IDs: []string{"id1", "id5"},
+					IDs: []string{"aa11", "aa55"},
 				},
 				{
-					IDs: []string{"id2", "id5"},
+					IDs: []string{"aa22", "aa55"},
 				},
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey2",
+					ID:        "aa66",
+					Pubkey:    "bb22",
 					CreatedAt: 6,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id5",
-					Pubkey:    "pubkey2",
+					ID:        "aa55",
+					Pubkey:    "bb22",
 					CreatedAt: 5,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey1",
+					ID:        "aa22",
+					Pubkey:    "bb11",
 					CreatedAt: 2,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
@@ -803,22 +806,22 @@ func Test_queryEvent(t *testing.T) {
 			name: "kind5",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 2,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 3,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -826,8 +829,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey2",
+					ID:        "aa44",
+					Pubkey:    "bb22",
 					CreatedAt: 4,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -835,22 +838,22 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id5",
-					Pubkey:    "pubkey1",
+					ID:        "aa55",
+					Pubkey:    "bb11",
 					CreatedAt: 5,
 					Kind:      10000,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey2",
+					ID:        "aa66",
+					Pubkey:    "bb22",
 					CreatedAt: 6,
 					Kind:      10000,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id7",
-					Pubkey:    "pubkey1",
+					ID:        "aa77",
+					Pubkey:    "bb11",
 					CreatedAt: 7,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -858,44 +861,44 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "kind5",
-					Pubkey:    "pubkey1",
+					ID:        "cc55",
+					Pubkey:    "bb11",
 					CreatedAt: 100,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id1"},
-						{"e", "id2"},
-						{"e", "id7"},
-						{"a", "10000:pubkey1"},
-						{"a", "30000:pubkey1:value"},
+						{"e", "aa11"},
+						{"e", "aa22"},
+						{"e", "aa77"},
+						{"a", "10000:bb11"},
+						{"a", "30000:bb11:value"},
 					},
 				},
 			},
 			fs: []*mocrelay.ReqFilter{{}},
 			want: []*mocrelay.Event{
 				{
-					ID:        "kind5",
-					Pubkey:    "pubkey1",
+					ID:        "cc55",
+					Pubkey:    "bb11",
 					CreatedAt: 100,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id1"},
-						{"e", "id2"},
-						{"e", "id7"},
-						{"a", "10000:pubkey1"},
-						{"a", "30000:pubkey1:value"},
+						{"e", "aa11"},
+						{"e", "aa22"},
+						{"e", "aa77"},
+						{"a", "10000:bb11"},
+						{"a", "30000:bb11:value"},
 					},
 				},
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey2",
+					ID:        "aa66",
+					Pubkey:    "bb22",
 					CreatedAt: 6,
 					Kind:      10000,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey2",
+					ID:        "aa44",
+					Pubkey:    "bb22",
 					CreatedAt: 4,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -903,8 +906,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 2,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
@@ -915,22 +918,22 @@ func Test_queryEvent(t *testing.T) {
 			name: "kind5 with ids",
 			input: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 2,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id3",
-					Pubkey:    "pubkey1",
+					ID:        "aa33",
+					Pubkey:    "bb11",
 					CreatedAt: 3,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -938,8 +941,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey2",
+					ID:        "aa44",
+					Pubkey:    "bb22",
 					CreatedAt: 4,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -947,22 +950,22 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id5",
-					Pubkey:    "pubkey1",
+					ID:        "aa55",
+					Pubkey:    "bb11",
 					CreatedAt: 5,
 					Kind:      10000,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey2",
+					ID:        "aa66",
+					Pubkey:    "bb22",
 					CreatedAt: 6,
 					Kind:      10000,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id7",
-					Pubkey:    "pubkey1",
+					ID:        "aa77",
+					Pubkey:    "bb11",
 					CreatedAt: 7,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -970,48 +973,48 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "kind5",
-					Pubkey:    "pubkey1",
+					ID:        "cc55",
+					Pubkey:    "bb11",
 					CreatedAt: 100,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id1"},
-						{"e", "id2"},
-						{"e", "id7"},
-						{"a", "10000:pubkey1"},
-						{"a", "30000:pubkey1:value"},
+						{"e", "aa11"},
+						{"e", "aa22"},
+						{"e", "aa77"},
+						{"a", "10000:bb11"},
+						{"a", "30000:bb11:value"},
 					},
 				},
 			},
 			fs: []*mocrelay.ReqFilter{
 				{
-					IDs: []string{"id1", "id2", "id3", "id4", "id5", "id6", "id7", "kind5"},
+					IDs: []string{"aa11", "aa22", "aa33", "aa44", "aa55", "aa66", "aa77", "cc55"},
 				},
 			},
 			want: []*mocrelay.Event{
 				{
-					ID:        "kind5",
-					Pubkey:    "pubkey1",
+					ID:        "cc55",
+					Pubkey:    "bb11",
 					CreatedAt: 100,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id1"},
-						{"e", "id2"},
-						{"e", "id7"},
-						{"a", "10000:pubkey1"},
-						{"a", "30000:pubkey1:value"},
+						{"e", "aa11"},
+						{"e", "aa22"},
+						{"e", "aa77"},
+						{"a", "10000:bb11"},
+						{"a", "30000:bb11:value"},
 					},
 				},
 				{
-					ID:        "id6",
-					Pubkey:    "pubkey2",
+					ID:        "aa66",
+					Pubkey:    "bb22",
 					CreatedAt: 6,
 					Kind:      10000,
 					Tags:      []mocrelay.Tag{},
 				},
 				{
-					ID:        "id4",
-					Pubkey:    "pubkey2",
+					ID:        "aa44",
+					Pubkey:    "bb22",
 					CreatedAt: 4,
 					Kind:      30000,
 					Tags: []mocrelay.Tag{
@@ -1019,8 +1022,8 @@ func Test_queryEvent(t *testing.T) {
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 2,
 					Kind:      1,
 					Tags:      []mocrelay.Tag{},

@@ -28,8 +28,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      1,
 						Tags: []mocrelay.Tag{
@@ -41,8 +41,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      1,
 						Tags: []mocrelay.Tag{
@@ -59,8 +59,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      1,
 						Tags: []mocrelay.Tag{
@@ -72,8 +72,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      1,
 						Tags: []mocrelay.Tag{
@@ -90,8 +90,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -103,8 +103,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -121,8 +121,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -134,8 +134,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -152,8 +152,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -165,8 +165,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -183,8 +183,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey1",
+						ID:        "aa11",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -196,8 +196,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey2",
+						ID:        "aa22",
+						Pubkey:    "bb22",
 						CreatedAt: 2,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -214,8 +214,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -227,8 +227,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      10001,
 						Tags: []mocrelay.Tag{
@@ -245,8 +245,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 100,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -258,8 +258,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -276,8 +276,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      20000,
 						Tags: []mocrelay.Tag{
@@ -289,8 +289,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      20000,
 						Tags: []mocrelay.Tag{
@@ -307,8 +307,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -320,8 +320,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -338,8 +338,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -351,8 +351,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -369,8 +369,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -382,8 +382,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -400,8 +400,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 100,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -413,8 +413,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -431,8 +431,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey1",
+						ID:        "aa11",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -444,8 +444,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey2",
+						ID:        "aa22",
+						Pubkey:    "bb22",
 						CreatedAt: 2,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -462,8 +462,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -475,8 +475,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      30001,
 						Tags: []mocrelay.Tag{
@@ -493,8 +493,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey",
+						ID:        "aa11",
+						Pubkey:    "bb",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -506,8 +506,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey",
+						ID:        "aa22",
+						Pubkey:    "bb",
 						CreatedAt: 2,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -524,8 +524,8 @@ func Test_insertEvents(t *testing.T) {
 			try1: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey1",
+						ID:        "aa11",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      1,
 						Tags: []mocrelay.Tag{
@@ -533,8 +533,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey1",
+						ID:        "aa22",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -542,8 +542,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id3",
-						Pubkey:    "pubkey1",
+						ID:        "aa33",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      20000,
 						Tags: []mocrelay.Tag{
@@ -551,8 +551,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id4",
-						Pubkey:    "pubkey1",
+						ID:        "aa44",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -564,8 +564,8 @@ func Test_insertEvents(t *testing.T) {
 			try2: try{
 				events: []*mocrelay.Event{
 					{
-						ID:        "id1",
-						Pubkey:    "pubkey1",
+						ID:        "aa11",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      1,
 						Tags: []mocrelay.Tag{
@@ -573,8 +573,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id11",
-						Pubkey:    "pubkey1",
+						ID:        "aa1111",
+						Pubkey:    "bb11",
 						CreatedAt: 2,
 						Kind:      1,
 						Tags: []mocrelay.Tag{
@@ -582,8 +582,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id2",
-						Pubkey:    "pubkey1",
+						ID:        "aa22",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -591,8 +591,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id21",
-						Pubkey:    "pubkey1",
+						ID:        "aa2211",
+						Pubkey:    "bb11",
 						CreatedAt: 2,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -600,8 +600,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id22",
-						Pubkey:    "pubkey2",
+						ID:        "aa2222",
+						Pubkey:    "bb22",
 						CreatedAt: 2,
 						Kind:      10000,
 						Tags: []mocrelay.Tag{
@@ -609,8 +609,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id3",
-						Pubkey:    "pubkey1",
+						ID:        "aa33",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      20000,
 						Tags: []mocrelay.Tag{
@@ -618,8 +618,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id4",
-						Pubkey:    "pubkey1",
+						ID:        "aa44",
+						Pubkey:    "bb11",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -627,8 +627,8 @@ func Test_insertEvents(t *testing.T) {
 						},
 					},
 					{
-						ID:        "id41",
-						Pubkey:    "pubkey2",
+						ID:        "aa4411",
+						Pubkey:    "bb22",
 						CreatedAt: 1,
 						Kind:      30000,
 						Tags: []mocrelay.Tag{
@@ -645,15 +645,11 @@ func Test_insertEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			db, err := sql.Open("sqlite3", ":memory:?cache=shared")
+			db, err := sql.Open("sqlite3", ":memory:?cache=shared&foreign_keys=on")
 			if err != nil {
 				t.Fatalf("failed to open db: %v", err)
 			}
 			defer db.Close()
-
-			if _, err := db.ExecContext(ctx, `pragma foreign_keys = on`); err != nil {
-				t.Fatalf("failed to enable foreign keys: %v", err)
-			}
 
 			if err := Migrate(ctx, db); err != nil {
 				t.Fatalf("failed to migrate: %v", err)
@@ -672,127 +668,132 @@ func Test_insertEvents(t *testing.T) {
 			var total int64
 			err = db.QueryRowContext(ctx, "select count(*) from events").Scan(&total)
 			assert.NoError(t, err, "failed to get total: %v", err)
-			assert.Equal(t, tt.total, total)
+			assert.Equal(t, tt.total, total, "total")
 
 			var totalPayloads int64
 			err = db.QueryRowContext(ctx, "select count(*) from event_payloads").
 				Scan(&totalPayloads)
 			assert.NoError(t, err, "failed to get total: %v", err)
-			assert.Equal(t, tt.total, totalPayloads)
+			assert.Equal(t, tt.total, totalPayloads, "total payloads")
 
 			var totalTags int64
 			if err := db.QueryRowContext(ctx, "select count(*) from event_tags").Scan(&totalTags); err != nil {
 				t.Fatalf("failed to get total: %v", err)
 			}
-			assert.Equal(t, tt.totalTags, totalTags)
+			assert.Equal(t, tt.totalTags, totalTags, "total tags")
 		})
 	}
 }
 
-func Test_insertDeletedKeys(t *testing.T) {
+func Test_insertDeletedKeysIds(t *testing.T) {
 	tests := []struct {
 		name             string
 		inputs           []*mocrelay.Event
 		eventsTotal      int64
 		deletedKeysTotal int64
+		deletedIDsTotal  int64
 	}{
 		{
 			name: "one kind5",
 			inputs: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey",
+					ID:        "aa11",
+					Pubkey:    "bb",
 					CreatedAt: 1,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id2"},
-						{"e", "id3"},
+						{"e", "aa22"},
+						{"e", "aa33"},
 					},
 				},
 			},
 			eventsTotal:      1,
-			deletedKeysTotal: 2,
+			deletedKeysTotal: 0,
+			deletedIDsTotal:  2,
 		},
 		{
 			name: "two kind5",
 			inputs: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id2"},
-						{"a", "30000:pubkey:value"},
+						{"e", "aa22"},
+						{"a", "30000:bb11:value"},
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 2,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id4"},
-						{"a", "30000:pubkey2:value"},
+						{"e", "aa44"},
+						{"a", "30000:bb22:value"},
 					},
 				},
 			},
 			eventsTotal:      2,
-			deletedKeysTotal: 4,
+			deletedKeysTotal: 2,
+			deletedIDsTotal:  2,
 		},
 		{
 			name: "two kind5 with duplicate tag",
 			inputs: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey",
+					ID:        "aa11",
+					Pubkey:    "bb",
 					CreatedAt: 1,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id2"},
-						{"e", "id3"},
+						{"e", "aa22"},
+						{"e", "aa33"},
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey",
+					ID:        "aa22",
+					Pubkey:    "bb",
 					CreatedAt: 2,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id3"},
-						{"e", "id4"},
+						{"e", "aa33"},
+						{"e", "aa44"},
 					},
 				},
 			},
 			eventsTotal:      2,
-			deletedKeysTotal: 3,
+			deletedKeysTotal: 0,
+			deletedIDsTotal:  3,
 		},
 		{
 			name: "two kind5 with duplicate tag different pubkey",
 			inputs: []*mocrelay.Event{
 				{
-					ID:        "id1",
-					Pubkey:    "pubkey1",
+					ID:        "aa11",
+					Pubkey:    "bb11",
 					CreatedAt: 1,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id2"},
-						{"e", "id3"},
+						{"e", "aa22"},
+						{"e", "aa33"},
 					},
 				},
 				{
-					ID:        "id2",
-					Pubkey:    "pubkey2",
+					ID:        "aa22",
+					Pubkey:    "bb22",
 					CreatedAt: 2,
 					Kind:      5,
 					Tags: []mocrelay.Tag{
-						{"e", "id3"},
-						{"e", "id4"},
+						{"e", "aa33"},
+						{"e", "aa44"},
 					},
 				},
 			},
 			eventsTotal:      2,
-			deletedKeysTotal: 4,
+			deletedKeysTotal: 0,
+			deletedIDsTotal:  4,
 		},
 	}
 
@@ -804,10 +805,6 @@ func Test_insertDeletedKeys(t *testing.T) {
 				t.Fatalf("failed to open db: %v", err)
 			}
 			defer db.Close()
-
-			if _, err := db.ExecContext(ctx, `pragma foreign_keys = on`); err != nil {
-				t.Fatalf("failed to enable foreign keys: %v", err)
-			}
 
 			if err := Migrate(ctx, db); err != nil {
 				t.Fatalf("failed to migrate: %v", err)
@@ -824,10 +821,16 @@ func Test_insertDeletedKeys(t *testing.T) {
 			assert.Equal(t, tt.eventsTotal, eventsTotal)
 
 			var deletedKeysTotal int64
-			if err := db.QueryRowContext(ctx, "select count(*) from deleted_events").Scan(&deletedKeysTotal); err != nil {
+			if err := db.QueryRowContext(ctx, "select count(*) from deleted_event_keys").Scan(&deletedKeysTotal); err != nil {
 				t.Fatalf("failed to get total: %v", err)
 			}
-			assert.Equal(t, tt.deletedKeysTotal, deletedKeysTotal)
+			assert.Equal(t, tt.deletedKeysTotal, deletedKeysTotal, "deleted keys total")
+
+			var deletedIDsTotal int64
+			if err := db.QueryRowContext(ctx, "select count(*) from deleted_event_ids").Scan(&deletedIDsTotal); err != nil {
+				t.Fatalf("failed to get total: %v", err)
+			}
+			assert.Equal(t, tt.deletedIDsTotal, deletedIDsTotal, "deleted ids total")
 		})
 	}
 }
