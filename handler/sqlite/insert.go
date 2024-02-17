@@ -557,8 +557,21 @@ func buildInsertLookupHashesParams(seed uint32, event *mocrelay.Event, eventKey 
 		return nil
 	}
 
+	type triplet struct {
+		hash      int64
+		createdAt int64
+		eventKey  int64
+	}
+
+	seen := make(map[triplet]bool)
+
 	var ret [][]any
 	for _, hash := range hashes {
+		if seen[triplet{hash, event.CreatedAt, eventKey}] {
+			continue
+		}
+		seen[triplet{hash, event.CreatedAt, eventKey}] = true
+
 		ret = append(ret, []any{
 			hash,
 			event.CreatedAt,
