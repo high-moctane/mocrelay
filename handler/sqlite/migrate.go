@@ -29,11 +29,6 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			content   text    not null,
 			sig       blob    not null
 		) strict;`,
-		`create trigger if not exists tr_event_payloads_update
-			after update on events
-			begin
-				delete from event_payloads where event_key = old.event_key;
-			end;`,
 
 		`create table if not exists event_tags (
 			record_id		   integer not null primary key,
@@ -43,11 +38,6 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		) strict;`,
 		`create index if not exists idx_event_tags_event_key
 			on event_tags (event_key);`,
-		`create trigger if not exists tr_event_tags_update
-			after update on events
-			begin
-				delete from event_tags where event_key = old.event_key;
-			end;`,
 
 		`create table if not exists deleted_event_keys (
 			event_key integer not null,
@@ -73,11 +63,6 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		) without rowid, strict;`,
 		`create index if not exists idx_lookup_hashes_event_key
 			on lookup_hashes (event_key);`,
-		`create trigger if not exists tr_lookup_hashes_update
-			after update on events
-			begin
-				delete from lookup_hashes where event_key = old.event_key;
-			end;`,
 	}
 
 	for _, ddl := range ddls {
