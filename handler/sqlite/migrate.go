@@ -22,12 +22,6 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		) strict;`,
 		`create index if not exists idx_events_created_at
 			on events (created_at desc);`,
-		`create index if not exists idx_events_id_created_at
-			on events (id, created_at desc);`,
-		`create index if not exists idx_events_pubkey_created_at
-			on events (pubkey, created_at desc);`,
-		`create index if not exists idx_events_kind_created_at
-			on events (kind, created_at desc);`,
 
 		`create table if not exists event_payloads (
 			event_key integer not null primary key,
@@ -45,13 +39,10 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			record_id		   integer not null primary key,
 			event_key          integer not null,
 			key                blob    not null,
-			value              blob    not null,
-			created_at         integer not null
+			value              blob    not null
 		) strict;`,
 		`create index if not exists idx_event_tags_event_key
 			on event_tags (event_key);`,
-		`create index if not exists idx_event_tags_value_key_created_at
-			on event_tags (value, key, created_at desc);`,
 		`create trigger if not exists tr_event_tags_update
 			after update on events
 			begin
@@ -71,6 +62,22 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			constraint pk_deleted_event_ids
 				primary key (id, pubkey)
 		) without rowid, strict;`,
+
+		`create table if not exists lookup_hashes (
+			hash       integer not null,
+			created_at integer not null,
+			event_key  integer not null,
+
+			constraint pk_lookups
+				primary key (hash, created_at desc, event_key)
+		) without rowid, strict;`,
+		`create index if not exists idx_lookup_hashes_event_key
+			on lookup_hashes (event_key);`,
+		`create trigger if not exists tr_lookup_hashes_update
+			after update on events
+			begin
+				delete from lookup_hashes where event_key = old.event_key;
+			end;`,
 	}
 
 	for _, ddl := range ddls {

@@ -22,6 +22,7 @@ func Test_insertEvents(t *testing.T) {
 		total              int64
 		totalTags          int64
 		totalDeletedEvents int64
+		totalLookupHashes  int64
 	}{
 		{
 			name: "insert regular event",
@@ -51,8 +52,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     2,
-			totalTags: 2,
+			total:             2,
+			totalTags:         2,
+			totalLookupHashes: 30,
 		},
 		{
 			name: "insert regular event: duplicate id",
@@ -82,8 +84,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert replaceable event",
@@ -113,8 +116,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert replaceable event: duplicate id",
@@ -144,8 +148,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert replaceable event: same",
@@ -175,8 +180,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert replaceable event: different pubkey",
@@ -206,8 +212,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     2,
-			totalTags: 2,
+			total:             2,
+			totalTags:         2,
+			totalLookupHashes: 30,
 		},
 		{
 			name: "insert replaceable event: different kind",
@@ -237,8 +244,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     2,
-			totalTags: 2,
+			total:             2,
+			totalTags:         2,
+			totalLookupHashes: 30,
 		},
 		{
 			name: "insert replaceable event: duplicate pubkey and kind but too old",
@@ -268,8 +276,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert ephemeral event",
@@ -299,8 +308,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     0,
-			totalTags: 0,
+			total:             0,
+			totalTags:         0,
+			totalLookupHashes: 0,
 		},
 		{
 			name: "insert parametrized replaceable event",
@@ -330,8 +340,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert parametrized replaceable event: duplicate",
@@ -361,8 +372,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert parametrized replaceable event: same",
@@ -392,8 +404,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert parametrized replaceable event: same but too old",
@@ -423,8 +436,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     1,
-			totalTags: 1,
+			total:             1,
+			totalTags:         1,
+			totalLookupHashes: 15,
 		},
 		{
 			name: "insert parametrized replaceable event: different pubkey",
@@ -454,8 +468,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     2,
-			totalTags: 2,
+			total:             2,
+			totalTags:         2,
+			totalLookupHashes: 30,
 		},
 		{
 			name: "insert parametrized replaceable event: different kind",
@@ -485,8 +500,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     2,
-			totalTags: 2,
+			total:             2,
+			totalTags:         2,
+			totalLookupHashes: 30,
 		},
 		{
 			name: "insert parametrized replaceable event: different tag",
@@ -516,8 +532,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     2,
-			totalTags: 2,
+			total:             2,
+			totalTags:         2,
+			totalLookupHashes: 30,
 		},
 		{
 			name: "all",
@@ -637,8 +654,9 @@ func Test_insertEvents(t *testing.T) {
 					},
 				},
 			},
-			total:     6,
-			totalTags: 6,
+			total:             6,
+			totalTags:         6,
+			totalLookupHashes: 90,
 		},
 	}
 
@@ -681,6 +699,12 @@ func Test_insertEvents(t *testing.T) {
 				t.Fatalf("failed to get total: %v", err)
 			}
 			assert.Equal(t, tt.totalTags, totalTags, "total tags")
+
+			var totalLookupHashes int64
+			if err := db.QueryRowContext(ctx, "select count(*) from lookup_hashes").Scan(&totalLookupHashes); err != nil {
+				t.Fatalf("failed to get total: %v", err)
+			}
+			assert.Equal(t, tt.totalLookupHashes, totalLookupHashes, "total lookup hashes")
 		})
 	}
 }

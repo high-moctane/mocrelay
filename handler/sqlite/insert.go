@@ -70,6 +70,12 @@ func insertEvents(
 	}
 	defer deletedEventIDsStmt.Close()
 
+	lookupHashesStmt, err := tx.PrepareContext(ctx, insertLookupHashesQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare lookup hashes statement: %w", err)
+	}
+	defer lookupHashesStmt.Close()
+
 	// Insert
 	for _, p := range params {
 		res, err := eventsStmt.ExecContext(ctx, p.Events...)
@@ -105,6 +111,12 @@ func insertEvents(
 				return fmt.Errorf("failed to insert deleted event ids: %w", err)
 			}
 		}
+
+		for _, lookup := range p.LookupHashes {
+			if _, err := lookupHashesStmt.ExecContext(ctx, lookup...); err != nil {
+				return fmt.Errorf("failed to insert lookup hashes: %w", err)
+			}
+		}
 	}
 
 	return
@@ -116,6 +128,7 @@ type insertEventsParams struct {
 	Tags             [][]any
 	DeletedEventKeys [][]any
 	DeletedEventIDs  [][]any
+	LookupHashes     [][]any
 }
 
 var emptyTagsBytes = []byte("[]")
@@ -155,6 +168,7 @@ func buildInsertEventsParams(seed uint32, events []*mocrelay.Event) []insertEven
 			Tags:             buildInsertEventsParamsTags(seed, event, eventKey),
 			DeletedEventKeys: deletedEventKeys,
 			DeletedEventIDs:  deleteEventIDs,
+			LookupHashes:     buildInsertLookupHashesParams(seed, event, eventKey),
 		})
 	}
 
@@ -258,10 +272,9 @@ const insertTagsQuery = `
 insert into event_tags (
 	event_key,
 	key,
-	value,
-	created_at
+	value
 ) values
-	(?, ?, ?, ?)
+	(?, ?, ?)
 `
 
 func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey int64) [][]any {
@@ -287,7 +300,6 @@ func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey in
 			eventKey,
 			[]byte(tag[0]),
 			[]byte(value),
-			event.CreatedAt,
 		})
 	}
 
@@ -390,6 +402,34 @@ func buildInsertEventsParamsDeletedEventIDs(seed uint32, event *mocrelay.Event) 
 	}
 
 	return ret, nil
+}
+
+const insertLookupHashesQuery = `
+insert into lookup_hashes (
+	hash,
+	created_at,
+	event_key
+)
+values
+	(?, ?, ?)
+on conflict(hash, created_at, event_key) do nothing`
+
+func buildInsertLookupHashesParams(seed uint32, event *mocrelay.Event, eventKey int64) [][]any {
+	hashes := createLookupHashesFromEvent(seed, event)
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	var ret [][]any
+	for _, hash := range hashes {
+		ret = append(ret, []any{
+			hash,
+			event.CreatedAt,
+			eventKey,
+		})
+	}
+
+	return ret
 }
 
 func getEventKey(seed uint32, event *mocrelay.Event) (int64, bool) {
