@@ -134,41 +134,36 @@ func buildLookupsQuery(seed uint32, f *mocrelay.ReqFilter) *goqu.SelectDataset {
 
 		exps = append(exps, lHash.Eq(cond.hash))
 
+		idPubkeyKindExps := make([]exp.Expression, 0, 3)
+
 		if cond.ID != nil {
 			idBin, err := hex.DecodeString(*cond.ID)
 			if err != nil {
 				return nil
 			}
-			exps = append(exps, goqu.L("exists ?",
-				goqu.
-					Select(goqu.L("1")).
-					From(e).
-					Where(eEventKey.Eq(lEventKey)).
-					Where(eID.Eq(idBin)),
-			))
+			idPubkeyKindExps = append(idPubkeyKindExps, eID.Eq(idBin))
 		}
 		if cond.Pubkey != nil {
 			pubkeyBin, err := hex.DecodeString(*cond.Pubkey)
 			if err != nil {
 				return nil
 			}
-			exps = append(exps, goqu.L("exists ?",
-				goqu.
-					Select(goqu.L("1")).
-					From(e).
-					Where(eEventKey.Eq(lEventKey)).
-					Where(ePubkey.Eq(pubkeyBin)),
-			))
+			idPubkeyKindExps = append(idPubkeyKindExps, ePubkey.Eq(pubkeyBin))
 		}
 		if cond.Kind != nil {
+			idPubkeyKindExps = append(idPubkeyKindExps, eKind.Eq(*cond.Kind))
+		}
+
+		if len(idPubkeyKindExps) > 0 {
 			exps = append(exps, goqu.L("exists ?",
 				goqu.
 					Select(goqu.L("1")).
 					From(e).
 					Where(eEventKey.Eq(lEventKey)).
-					Where(eKind.Eq(cond.Kind)),
+					Where(goqu.And(idPubkeyKindExps...)),
 			))
 		}
+
 		for _, tag := range cond.Tags {
 			exps = append(exps, goqu.L("exists ?",
 				goqu.
