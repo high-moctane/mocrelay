@@ -207,6 +207,9 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
 				events = events[:0]
 			}
+			if _, err := h.db.ExecContext(ctx, "pragma wal_checkpoint(TRUNCATE)"); err != nil {
+				errorLog(ctx, h.opt.Logger, "failed to vacuum", "err", err)
+			}
 		}
 	}
 }
