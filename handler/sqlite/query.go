@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"crypto/md5"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -53,10 +54,9 @@ func buildEventQuery(
 	pSig := p.Col("sig")
 
 	t := goqu.T("event_tags")
-	tEventKey := t.Col("event_key")
-	tKey := t.Col("key")
-	tValue := t.Col("value")
+	tTagHash := t.Col("tag_hash")
 	tCreatedAt := t.Col("created_at")
+	tEventKey := t.Col("event_key")
 
 	dKey := goqu.T("deleted_event_keys")
 	dKeyEventKey := dKey.Col("event_key")
@@ -133,19 +133,19 @@ func buildEventQuery(
 			for key, values := range f.Tags {
 				k := key[1:]
 
-				valueBins := make([][]byte, len(values))
+				tagHashes := make([][]byte, len(values))
 				for i, value := range values {
-					valueBins[i] = []byte(value)
+					b := md5.Sum([]byte(k + value))
+					tagHashes[i] = b[:]
 				}
 
 				b = b.Where(goqu.L("exists ?",
 					sqlite3.
 						Select(goqu.L("1")).
 						From("event_tags").
-						Where(tEventKey.Eq(eEventKey)).
-						Where(tKey.Eq([]byte(k))).
-						Where(tValue.In(valueBins)).
-						Where(tCreatedAt.Eq(eCreatedAt)),
+						Where(tTagHash.In(tagHashes)).
+						Where(tCreatedAt.Eq(eCreatedAt)).
+						Where(tEventKey.Eq(eEventKey)),
 				))
 			}
 		}

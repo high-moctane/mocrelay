@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"crypto/md5"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -256,12 +257,11 @@ func buildInsertEventsParamsEventPayloads(
 
 const insertTagsQuery = `
 insert into event_tags (
-	event_key,
-	key,
-	value,
-	created_at
+	tag_hash,
+	created_at,
+	event_key
 ) values
-	(?, ?, ?, ?)
+	(?, ?, ?)
 `
 
 func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey int64) [][]any {
@@ -283,11 +283,12 @@ func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey in
 			value = tag[1]
 		}
 
+		tagHash := md5.Sum([]byte(tag[0] + value))
+
 		ret = append(ret, []any{
-			eventKey,
-			[]byte(tag[0]),
-			[]byte(value),
+			tagHash[:],
 			event.CreatedAt,
+			eventKey,
 		})
 	}
 
