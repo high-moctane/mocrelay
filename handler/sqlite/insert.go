@@ -265,6 +265,13 @@ insert into event_tags (
 `
 
 func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey int64) [][]any {
+	type entry struct {
+		tagHash   [16]byte
+		createdAt int64
+		eventKey  int64
+	}
+	seen := make(map[entry]bool)
+
 	var ret [][]any
 
 	for _, tag := range event.Tags {
@@ -284,6 +291,16 @@ func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey in
 		}
 
 		tagHash := md5.Sum([]byte(tag[0] + value))
+
+		entry := entry{
+			tagHash:   tagHash,
+			createdAt: event.CreatedAt,
+			eventKey:  eventKey,
+		}
+		if seen[entry] {
+			continue
+		}
+		seen[entry] = true
 
 		ret = append(ret, []any{
 			tagHash[:],
