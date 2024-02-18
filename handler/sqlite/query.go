@@ -9,7 +9,6 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
-	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/high-moctane/mocrelay"
 )
 
@@ -33,237 +32,155 @@ func queryEvent(
 	return
 }
 
-var (
-	e          = goqu.T("events")
-	eEventKey  = e.Col("event_key")
-	eID        = e.Col("id")
-	ePubkey    = e.Col("pubkey")
-	eCreatedAt = e.Col("created_at")
-	eKind      = e.Col("kind")
-
-	p         = goqu.T("event_payloads")
-	pEventKey = p.Col("event_key")
-	pTags     = p.Col("tags")
-	pContent  = p.Col("content")
-	pSig      = p.Col("sig")
-
-	t         = goqu.T("event_tags")
-	tEventKey = t.Col("event_key")
-	tKey      = t.Col("key")
-	tValue    = t.Col("value")
-
-	dKey         = goqu.T("deleted_event_keys")
-	dKeyEventKey = dKey.Col("event_key")
-	dKeyPubkey   = dKey.Col("pubkey")
-
-	dID       = goqu.T("deleted_event_ids")
-	dIDID     = dID.Col("id")
-	dIDPubkey = dID.Col("pubkey")
-
-	l          = goqu.T("lookup_hashes")
-	lEventKey  = l.Col("event_key")
-	lHash      = l.Col("hash")
-	lCreatedAt = l.Col("created_at")
-)
-
 func buildEventQuery(
 	fs []*mocrelay.ReqFilter,
 	seed uint32,
 	maxLimit uint,
 ) (query string, param []any, err error) {
+	sqlite3 := goqu.Dialect("sqlite3")
+
+	e := goqu.T("events")
+	eEventKey := e.Col("event_key")
+	eID := e.Col("id")
+	ePubkey := e.Col("pubkey")
+	eCreatedAt := e.Col("created_at")
+	eKind := e.Col("kind")
+
+	p := goqu.T("event_payloads")
+	pEventKey := p.Col("event_key")
+	pTags := p.Col("tags")
+	pContent := p.Col("content")
+	pSig := p.Col("sig")
+
+	t := goqu.T("event_tags")
+	tEventKey := t.Col("event_key")
+	tKey := t.Col("key")
+	tValue := t.Col("value")
+	tCreatedAt := t.Col("created_at")
+
+	dKey := goqu.T("deleted_event_keys")
+	dKeyEventKey := dKey.Col("event_key")
+	dKeyPubkey := dKey.Col("pubkey")
+
+	dID := goqu.T("deleted_event_ids")
+	dIDID := dID.Col("id")
+	dIDPubkey := dID.Col("pubkey")
+
 	var builder *goqu.SelectDataset
 
-	for i, f := range fs {
-		var b *goqu.SelectDataset
-		if needLookupTable(f) {
-			b = buildLookupsQuery(seed, f)
-			b = appendSelectLookupsEventKey(b)
+	for _, f := range fs {
+		b := sqlite3.
+			Select(
+				eID,
+				ePubkey,
+				eCreatedAt,
+				eKind,
+				pTags,
+				pContent,
+				pSig,
+			).
+			From(e).
+			Join(p, goqu.On(eEventKey.Eq(pEventKey))).
+			Order(eCreatedAt.Desc())
 
-		} else {
-			b = buildEventsQuery(f)
-			if len(fs) == 1 {
-				b = appendSelectEvent(b)
-			} else {
-				b = appendSelectEventsEventKey(b)
+		b = b.Where(goqu.L("not exists ?",
+			sqlite3.
+				Select(goqu.L("1")).
+				From(dKey).
+				Where(dKeyEventKey.Eq(eEventKey)).
+				Where(dKeyPubkey.Eq(ePubkey)),
+		))
+
+		b = b.Where(goqu.L("not exists ?",
+			sqlite3.
+				Select(goqu.L("1")).
+				From(dID).
+				Where(dIDID.Eq(eID)).
+				Where(dIDPubkey.Eq(ePubkey)),
+		))
+
+		if f.IDs != nil {
+			idBins := make([][]byte, len(f.IDs))
+			for i, id := range f.IDs {
+				var err error
+				idBins[i], err = hex.DecodeString(id)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to decode id: %w", err)
+				}
+			}
+
+			b = b.Where(eID.In(idBins))
+		}
+
+		if f.Authors != nil {
+			authorBins := make([][]byte, len(f.Authors))
+			for i, pubkey := range f.Authors {
+				var err error
+				authorBins[i], err = hex.DecodeString(pubkey)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to decode pubkey: %w", err)
+				}
+			}
+
+			b = b.Where(ePubkey.In(authorBins))
+		}
+
+		if f.Kinds != nil {
+			b = b.Where(eKind.In(f.Kinds))
+		}
+
+		if f.Tags != nil {
+			for key, values := range f.Tags {
+				k := key[1:]
+
+				valueBins := make([][]byte, len(values))
+				for i, value := range values {
+					valueBins[i] = []byte(value)
+				}
+
+				b = b.Where(goqu.L("exists ?",
+					sqlite3.
+						Select(goqu.L("1")).
+						From("event_tags").
+						Where(tEventKey.Eq(eEventKey)).
+						Where(tKey.Eq([]byte(k))).
+						Where(tValue.In(valueBins)).
+						Where(tCreatedAt.Eq(eCreatedAt)),
+				))
 			}
 		}
 
-		if i == 0 {
+		if f.Since != nil {
+			b = b.Where(eCreatedAt.Gte(f.Since))
+		}
+
+		if f.Until != nil {
+			b = b.Where(eCreatedAt.Lte(f.Until))
+		}
+
+		limit := maxLimit
+		if f.Limit != nil {
+			limit = min(limit, uint(*f.Limit))
+		}
+		if limit != NoLimit {
+			b = b.Limit(limit)
+		}
+
+		if builder == nil {
 			builder = b
 		} else {
 			builder = builder.Union(b)
 		}
 	}
 
-	if len(fs) > 1 || needLookupTable(fs[0]) {
-		builder = goqu.
-			Dialect("sqlite3").
-			From(e).
-			Where(eEventKey.In(builder)).
-			Order(eCreatedAt.Desc())
+	builder = builder.
+		Order(goqu.C("created_at").Desc())
 
-		builder = appendSelectEvent(builder)
+	if maxLimit != NoLimit {
+		builder = builder.Limit(maxLimit)
 	}
-
-	builder = appendPayloads(builder)
-	builder = appendLimit(builder, &mocrelay.ReqFilter{}, maxLimit)
 
 	return builder.Prepared(true).ToSQL()
-}
-
-func buildEventsQuery(f *mocrelay.ReqFilter) *goqu.SelectDataset {
-	b := goqu.
-		Dialect("sqlite3").
-		From(e).
-		Order(eCreatedAt.Desc())
-
-	b = appendIsDeleted(b)
-	b = appendSince(b, eCreatedAt, f)
-	b = appendUntil(b, eCreatedAt, f)
-	b = appendLimit(b, f, NoLimit)
-
-	return b
-}
-
-func buildLookupsQuery(seed uint32, f *mocrelay.ReqFilter) *goqu.SelectDataset {
-	conds := createLookupCondsFromReqFilter(seed, f)
-
-	ands := make([]exp.Expression, 0, len(conds))
-	for _, cond := range conds {
-		var exps []exp.Expression
-
-		exps = append(exps, lHash.Eq(cond.hash))
-
-		idPubkeyKindExps := make([]exp.Expression, 0, 3)
-
-		if cond.ID != nil {
-			idBin, err := hex.DecodeString(*cond.ID)
-			if err != nil {
-				return nil
-			}
-			idPubkeyKindExps = append(idPubkeyKindExps, eID.Eq(idBin))
-		}
-		if cond.Pubkey != nil {
-			pubkeyBin, err := hex.DecodeString(*cond.Pubkey)
-			if err != nil {
-				return nil
-			}
-			idPubkeyKindExps = append(idPubkeyKindExps, ePubkey.Eq(pubkeyBin))
-		}
-		if cond.Kind != nil {
-			idPubkeyKindExps = append(idPubkeyKindExps, eKind.Eq(*cond.Kind))
-		}
-
-		if len(idPubkeyKindExps) > 0 {
-			exps = append(exps, goqu.L("exists ?",
-				goqu.
-					Select(goqu.L("1")).
-					From(e).
-					Where(eEventKey.Eq(lEventKey)).
-					Where(goqu.And(idPubkeyKindExps...)),
-			))
-		}
-
-		for _, tag := range cond.Tags {
-			exps = append(exps, goqu.L("exists ?",
-				goqu.
-					Select(goqu.L("1")).
-					From(t).
-					Where(tEventKey.Eq(lEventKey)).
-					Where(tKey.Eq([]byte(tag.Key))).
-					Where(tValue.Eq([]byte(tag.Value))),
-			))
-		}
-
-		ands = append(ands, goqu.And(exps...))
-	}
-
-	b := goqu.
-		Dialect("sqlite3").
-		From(l).
-		Where(goqu.Or(ands...)).
-		Order(lCreatedAt.Desc())
-
-	b = appendIsDeleted(b)
-	b = appendSince(b, lCreatedAt, f)
-	b = appendUntil(b, lCreatedAt, f)
-	b = appendLimit(b, f, NoLimit)
-
-	return b
-}
-
-func appendSelectEvent(b *goqu.SelectDataset) *goqu.SelectDataset {
-	return b.Select(
-		eID,
-		ePubkey,
-		eCreatedAt,
-		eKind,
-		pTags,
-		pContent,
-		pSig,
-	)
-}
-
-func appendSelectEventsEventKey(b *goqu.SelectDataset) *goqu.SelectDataset {
-	return b.Select(eEventKey)
-}
-
-func appendSelectLookupsEventKey(b *goqu.SelectDataset) *goqu.SelectDataset {
-	return b.Select(lEventKey)
-}
-
-func appendIsDeleted(b *goqu.SelectDataset) *goqu.SelectDataset {
-	return b.Where(goqu.L("not exists ?",
-		goqu.
-			Select(goqu.L("1")).
-			From(dKey).
-			Where(dKeyEventKey.Eq(eEventKey)).
-			Where(dKeyPubkey.Eq(ePubkey)),
-	)).
-		Where(goqu.L("not exists ?",
-			goqu.
-				Select(goqu.L("1")).
-				From(dID).
-				Where(dIDID.Eq(eID)).
-				Where(dIDPubkey.Eq(ePubkey)),
-		))
-}
-
-func appendSince(
-	b *goqu.SelectDataset,
-	createdAtCol exp.IdentifierExpression,
-	f *mocrelay.ReqFilter,
-) *goqu.SelectDataset {
-	if f.Since != nil {
-		b = b.Where(createdAtCol.Gte(f.Since))
-	}
-	return b
-}
-
-func appendUntil(
-	b *goqu.SelectDataset,
-	createdAtCol exp.IdentifierExpression,
-	f *mocrelay.ReqFilter,
-) *goqu.SelectDataset {
-	if f.Until != nil {
-		b = b.Where(createdAtCol.Lte(f.Until))
-	}
-	return b
-}
-
-func appendLimit(b *goqu.SelectDataset, f *mocrelay.ReqFilter, maxLimit uint) *goqu.SelectDataset {
-	limit := maxLimit
-	if f.Limit != nil {
-		limit = min(limit, uint(*f.Limit))
-	}
-	if limit != NoLimit {
-		b = b.Limit(limit)
-	}
-	return b
-}
-
-func appendPayloads(b *goqu.SelectDataset) *goqu.SelectDataset {
-	return b.Join(p, goqu.On(eEventKey.Eq(pEventKey)))
 }
 
 func fetchEventQuery(

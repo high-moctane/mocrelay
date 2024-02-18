@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/high-moctane/mocrelay"
 	"github.com/pierrec/xxHash/xxHash32"
@@ -23,14 +22,6 @@ func insertEvents(
 	seed uint32,
 	events []*mocrelay.Event,
 ) (err error) {
-	// Delete
-	eventKeysCreatedAt, err := getMayDeleteEventKeysCreatedAt(seed, events)
-
-	needDeleteEventKeysQuery, err := buildNeedDeleteEventKeysQuery(seed, eventKeysCreatedAt)
-	if err != nil {
-		return fmt.Errorf("failed to build need delete event keys query: %w", err)
-	}
-
 	params := buildInsertEventsParams(seed, events)
 	if len(params) == 0 {
 		return
@@ -49,16 +40,6 @@ func insertEvents(
 		err = tx.Commit()
 	}()
 
-	// Delete
-	var needDeleteEventKeysStmt *sql.Stmt
-	if needDeleteEventKeysQuery != "" {
-		needDeleteEventKeysStmt, err = tx.PrepareContext(ctx, needDeleteEventKeysQuery)
-		if err != nil {
-			return fmt.Errorf("failed to prepare need delete event keys statement: %w", err)
-		}
-	}
-
-	// Insert
 	eventsStmt, err := tx.PrepareContext(ctx, insertEventsQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare events statement: %w", err)
@@ -88,53 +69,6 @@ func insertEvents(
 		return fmt.Errorf("failed to prepare deleted event ids statement: %w", err)
 	}
 	defer deletedEventIDsStmt.Close()
-
-	lookupHashesStmt, err := tx.PrepareContext(ctx, insertLookupHashesQuery)
-	if err != nil {
-		return fmt.Errorf("failed to prepare lookup hashes statement: %w", err)
-	}
-	defer lookupHashesStmt.Close()
-
-	// Delete
-	if needDeleteEventKeysStmt != nil {
-		rows, err := needDeleteEventKeysStmt.QueryContext(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to query need delete event keys: %w", err)
-		}
-		var eventKeys []int64
-		err = func() error {
-			defer rows.Close()
-
-			for rows.Next() {
-				var eventKey int64
-				if err := rows.Scan(&eventKey); err != nil {
-					return fmt.Errorf("failed to scan event key: %w", err)
-				}
-				eventKeys = append(eventKeys, eventKey)
-			}
-			if err := rows.Err(); err != nil {
-				return fmt.Errorf("failed to iterate need delete event keys: %w", err)
-			}
-
-			return nil
-		}()
-		if err != nil {
-			return err
-		}
-
-		if len(eventKeys) > 0 {
-			deleteEvents, err := buildDeleteEvents(seed, eventKeys)
-			if err != nil {
-				return fmt.Errorf("failed to build delete events: %w", err)
-			}
-
-			for _, q := range deleteEvents {
-				if _, err := tx.ExecContext(ctx, q); err != nil {
-					return fmt.Errorf("failed to delete events: %w", err)
-				}
-			}
-		}
-	}
 
 	// Insert
 	for _, p := range params {
@@ -171,110 +105,9 @@ func insertEvents(
 				return fmt.Errorf("failed to insert deleted event ids: %w", err)
 			}
 		}
-
-		for _, lookup := range p.LookupHashes {
-			if _, err := lookupHashesStmt.ExecContext(ctx, lookup...); err != nil {
-				return fmt.Errorf("failed to insert lookup hashes: %w", err)
-			}
-		}
 	}
 
 	return
-}
-
-func getMayDeleteEventKeysCreatedAt(
-	seed uint32,
-	events []*mocrelay.Event,
-) (map[int64]int64, error) {
-	ret := make(map[int64]int64)
-
-	for _, event := range events {
-		switch event.EventType() {
-		case mocrelay.EventTypeReplaceable, mocrelay.EventTypeParamReplaceable:
-			eventKey, ok := getEventKey(seed, event)
-			if !ok {
-				continue
-			}
-
-			if createdAt, ok := ret[eventKey]; !ok || event.CreatedAt < createdAt {
-				ret[eventKey] = event.CreatedAt
-			}
-		}
-	}
-
-	return ret, nil
-}
-
-func buildNeedDeleteEventKeysQuery(seed uint32, eventKeys map[int64]int64) (string, error) {
-	if len(eventKeys) == 0 {
-		return "", nil
-	}
-
-	var ands []goqu.Expression
-	for eventKey, createdAt := range eventKeys {
-		ands = append(ands, goqu.And(
-			goqu.C("event_key").Eq(eventKey),
-			goqu.C("created_at").Lt(createdAt),
-		))
-	}
-
-	q, _, err := goqu.
-		Dialect("sqlite3").
-		Select("event_key").
-		From("events").
-		Where(goqu.Or(ands...)).
-		ToSQL()
-	if err != nil {
-		return "", fmt.Errorf("failed to build need delete event keys query: %w", err)
-	}
-
-	return q, nil
-}
-
-func buildDeleteEvents(seed uint32, eventKeys []int64) ([]string, error) {
-	var ret []string
-
-	q, _, err := goqu.
-		Dialect("sqlite3").
-		Delete("event_payloads").
-		Where(goqu.C("event_key").In(eventKeys)).
-		ToSQL()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build delete event payloads query: %w", err)
-	}
-	ret = append(ret, q)
-
-	q, _, err = goqu.
-		Dialect("sqlite3").
-		Delete("event_tags").
-		Where(goqu.C("event_key").In(eventKeys)).
-		ToSQL()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build delete event tags query: %w", err)
-	}
-	ret = append(ret, q)
-
-	q, _, err = goqu.
-		Dialect("sqlite3").
-		Delete("lookup_hashes").
-		Where(goqu.C("event_key").In(eventKeys)).
-		ToSQL()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build delete lookup hashes query: %w", err)
-	}
-	ret = append(ret, q)
-
-	q, _, err = goqu.
-		Dialect("sqlite3").
-		Delete("events").
-		Where(goqu.C("event_key").In(eventKeys)).
-		ToSQL()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build delete events query: %w", err)
-	}
-	ret = append(ret, q)
-
-	return ret, nil
 }
 
 type insertEventsParams struct {
@@ -283,7 +116,6 @@ type insertEventsParams struct {
 	Tags             [][]any
 	DeletedEventKeys [][]any
 	DeletedEventIDs  [][]any
-	LookupHashes     [][]any
 }
 
 var emptyTagsBytes = []byte("[]")
@@ -323,7 +155,6 @@ func buildInsertEventsParams(seed uint32, events []*mocrelay.Event) []insertEven
 			Tags:             buildInsertEventsParamsTags(seed, event, eventKey),
 			DeletedEventKeys: deletedEventKeys,
 			DeletedEventIDs:  deleteEventIDs,
-			LookupHashes:     buildInsertLookupHashesParams(seed, event, eventKey),
 		})
 	}
 
@@ -339,7 +170,25 @@ insert into events (
 	kind
 ) values
 	(?, ?, ?, ?, ?)
-on conflict(event_key) do nothing
+on conflict(event_key) do update set
+ 	id              = excluded.id,
+ 	pubkey          = excluded.pubkey,
+ 	created_at      = excluded.created_at,
+ 	kind            = excluded.kind
+ where
+ 	events.id <> excluded.id
+ 	and
+ 	(
+ 		events.kind = 0
+ 		or
+ 		events.kind = 3
+ 		or
+ 		(10000 <= events.kind and events.kind < 20000)
+ 		or
+ 		(30000 <= events.kind and events.kind < 40000)
+ 	)
+ 	and
+ 	events.created_at < excluded.created_at
 `
 
 func buildInsertEventsParamsEvent(
@@ -409,9 +258,10 @@ const insertTagsQuery = `
 insert into event_tags (
 	event_key,
 	key,
-	value
+	value,
+	created_at
 ) values
-	(?, ?, ?)
+	(?, ?, ?, ?)
 `
 
 func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey int64) [][]any {
@@ -437,6 +287,7 @@ func buildInsertEventsParamsTags(seed uint32, event *mocrelay.Event, eventKey in
 			eventKey,
 			[]byte(tag[0]),
 			[]byte(value),
+			event.CreatedAt,
 		})
 	}
 
@@ -539,47 +390,6 @@ func buildInsertEventsParamsDeletedEventIDs(seed uint32, event *mocrelay.Event) 
 	}
 
 	return ret, nil
-}
-
-const insertLookupHashesQuery = `
-insert into lookup_hashes (
-	hash,
-	created_at,
-	event_key
-)
-values
-	(?, ?, ?)
-`
-
-func buildInsertLookupHashesParams(seed uint32, event *mocrelay.Event, eventKey int64) [][]any {
-	hashes := createLookupHashesFromEvent(seed, event)
-	if len(hashes) == 0 {
-		return nil
-	}
-
-	type triplet struct {
-		hash      int64
-		createdAt int64
-		eventKey  int64
-	}
-
-	seen := make(map[triplet]bool)
-
-	var ret [][]any
-	for _, hash := range hashes {
-		if seen[triplet{hash, event.CreatedAt, eventKey}] {
-			continue
-		}
-		seen[triplet{hash, event.CreatedAt, eventKey}] = true
-
-		ret = append(ret, []any{
-			hash,
-			event.CreatedAt,
-			eventKey,
-		})
-	}
-
-	return ret
 }
 
 func getEventKey(seed uint32, event *mocrelay.Event) (int64, bool) {

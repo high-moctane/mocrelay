@@ -8,7 +8,6 @@ import (
 	"math"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/high-moctane/mocrelay"
 )
 
@@ -160,10 +159,7 @@ func (h *simpleSQLiteHandler) serveClientEventMsg(
 
 func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 	events := make([]*mocrelay.Event, 0, h.opt.EventBulkInsertNum)
-	seen, err := lru.New[string, struct{}](2 * h.opt.EventBulkInsertNum)
-	if err != nil {
-		panic(fmt.Errorf("failed to create LRU: %w", err))
-	}
+	seen := make(map[string]bool, h.opt.EventBulkInsertNum)
 
 	var tickCh <-chan time.Time
 	if h.opt.EventBulkInsertDur > 0 {
@@ -186,10 +182,10 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 			return
 
 		case event := <-h.eventCh:
-			if _, ok := seen.Get(event.ID); ok {
+			if seen[event.ID] {
 				continue
 			}
-			seen.Add(event.ID, struct{}{})
+			seen[event.ID] = true
 			events = append(events, event)
 			if len(events) >= h.opt.EventBulkInsertNum {
 				if err := insertEvents(ctx, h.db, h.seed, events); err != nil {
@@ -197,6 +193,7 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
 				events = events[:0]
+				seen = make(map[string]bool, h.opt.EventBulkInsertNum)
 			}
 
 		case <-tickCh:
@@ -206,9 +203,7 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
 				events = events[:0]
-			}
-			if _, err := h.db.ExecContext(ctx, "pragma wal_checkpoint(TRUNCATE)"); err != nil {
-				errorLog(ctx, h.opt.Logger, "failed to vacuum", "err", err)
+				seen = make(map[string]bool, h.opt.EventBulkInsertNum)
 			}
 		}
 	}
