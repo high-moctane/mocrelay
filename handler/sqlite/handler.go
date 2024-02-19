@@ -178,7 +178,7 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 			if len(events) > 0 {
 				c, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
-				if err := insertEvents(c, h.db, h.seed, events); err != nil {
+				if err := h.bulkInsertWithRetry(c, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
@@ -192,7 +192,7 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 			seen.Add(event.ID, struct{}{})
 			events = append(events, event)
 			if len(events) >= h.opt.EventBulkInsertNum {
-				if err := insertEvents(ctx, h.db, h.seed, events); err != nil {
+				if err := h.bulkInsertWithRetry(ctx, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
@@ -201,15 +201,34 @@ func (h *simpleSQLiteHandler) serveBulkInsert(ctx context.Context) {
 
 		case <-tickCh:
 			if len(events) > 0 {
-				if err := insertEvents(ctx, h.db, h.seed, events); err != nil {
+				if err := h.bulkInsertWithRetry(ctx, events); err != nil {
 					errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err)
 				}
 				infoLog(ctx, h.opt.Logger, "inserted events", "num", len(events))
 				events = events[:0]
 			}
 			if _, err := h.db.ExecContext(ctx, "pragma wal_checkpoint(TRUNCATE)"); err != nil {
-				errorLog(ctx, h.opt.Logger, "failed to vacuum", "err", err)
+				errorLog(ctx, h.opt.Logger, "failed to checkpoint", "err", err)
 			}
 		}
 	}
+}
+
+func (h *simpleSQLiteHandler) bulkInsertWithRetry(
+	ctx context.Context,
+	events []*mocrelay.Event,
+) error {
+	for i := 0; i < 3; i++ {
+		if err := insertEvents(ctx, h.db, h.seed, events); err != nil {
+			errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err, "retry", i+1)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Second << uint(i)):
+			}
+		} else {
+			return nil
+		}
+	}
+	return fmt.Errorf("failed to insert events")
 }
