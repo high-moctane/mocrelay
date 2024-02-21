@@ -55,28 +55,43 @@ func buildEventQuery(
 	pSig := p.Col("sig")
 
 	t := goqu.T("event_tags")
-	tTagHash := t.Col("tag_hash")
-	tCreatedAt := t.Col("created_at")
-	tEventKey := t.Col("event_key")
 
-	var builder *goqu.SelectDataset
+	builder := sqlite3.
+		Select(
+			eID,
+			ePubkey,
+			eCreatedAt,
+			eKind,
+			pTags,
+			pContent,
+			pSig,
+		).
+		From(e).
+		Join(p, goqu.On(eEventKey.Eq(pEventKey))).
+		Order(eCreatedAt.Desc())
+	builder = appendLimitQuery(builder, toPtr(int64(maxLimit)), maxLimit)
 
-	for _, f := range fs {
-		b := sqlite3.
+	var subs []exp.Expression
+
+	for i, f := range fs {
+		esub := e.As(fmt.Sprintf("esub%d", i))
+
+		sub := sqlite3.
 			Select(
-				eID,
-				ePubkey,
-				eCreatedAt,
-				eKind,
-				pTags,
-				pContent,
-				pSig,
+				esub.Col("event_key"),
 			).
-			From(e).
-			Join(p, goqu.On(eEventKey.Eq(pEventKey))).
-			Order(eCreatedAt.Desc())
+			From(esub).
+			Order(esub.Col("created_at").Desc())
 
-		b = appendDeletedEventsQuery(b, eEventKey, eID, ePubkey)
+		sub = appendDeletedEventsQuery(
+			sub,
+			esub.Col("event_key"),
+			esub.Col("id"),
+			esub.Col("pubkey"),
+		)
+		sub = appendSinceQuery(sub, esub.Col("created_at"), f.Since)
+		sub = appendUntilQuery(sub, esub.Col("created_at"), f.Until)
+		sub = appendLimitQuery(sub, f.Limit, maxLimit)
 
 		if f.IDs != nil {
 			idBins := make([][]byte, len(f.IDs))
@@ -88,7 +103,14 @@ func buildEventQuery(
 				}
 			}
 
-			b = b.Where(eID.In(idBins))
+			eid := goqu.T("events").As("eid")
+
+			sub = sub.
+				Join(eid, goqu.On(
+					esub.Col("event_key").Eq(eid.Col("event_key")),
+					esub.Col("created_at").Eq(eid.Col("created_at")),
+				)).
+				Where(eid.Col("id").In(idBins))
 		}
 
 		if f.Authors != nil {
@@ -101,14 +123,30 @@ func buildEventQuery(
 				}
 			}
 
-			b = b.Where(ePubkey.In(authorBins))
+			epubkey := goqu.T("events").As("epubkey")
+
+			sub = sub.
+				Join(epubkey, goqu.On(
+					esub.Col("event_key").Eq(epubkey.Col("event_key")),
+					esub.Col("created_at").Eq(epubkey.Col("created_at")),
+				)).
+				Where(epubkey.Col("pubkey").In(authorBins))
 		}
 
 		if f.Kinds != nil {
-			b = b.Where(eKind.In(f.Kinds))
+			ekind := goqu.T("events").As("ekind")
+
+			sub = sub.
+				Join(ekind, goqu.On(
+					esub.Col("event_key").Eq(ekind.Col("event_key")),
+					esub.Col("created_at").Eq(ekind.Col("created_at")),
+				)).
+				Where(ekind.Col("kind").In(f.Kinds))
 		}
 
 		if f.Tags != nil {
+			sub = sub.Distinct()
+
 			for key, values := range f.Tags {
 				k := key[1:]
 
@@ -118,34 +156,27 @@ func buildEventQuery(
 					tagHashes[i] = b[:]
 				}
 
-				b = b.Where(goqu.L("exists ?",
-					sqlite3.
-						Select(goqu.L("1")).
-						From("event_tags").
-						Where(tTagHash.In(tagHashes)).
-						Where(tCreatedAt.Eq(eCreatedAt)).
-						Where(tEventKey.Eq(eEventKey)),
-				))
+				etag := t.As("etag" + k)
+
+				sub = sub.
+					Join(etag, goqu.On(
+						esub.Col("event_key").Eq(etag.Col("event_key")),
+						esub.Col("created_at").Eq(etag.Col("created_at")),
+					)).
+					Where(etag.Col("tag_hash").In(tagHashes))
 			}
 		}
 
-		b = appendSinceQuery(b, eCreatedAt, f.Since)
-		b = appendUntilQuery(b, eCreatedAt, f.Until)
-		b = appendLimitQuery(b, f.Limit, maxLimit)
-
-		if builder == nil {
-			builder = b
-		} else {
-			builder = builder.Union(b)
-		}
+		subs = append(subs, sub)
 	}
 
-	builder = builder.
-		Order(goqu.C("created_at").Desc())
-
-	if maxLimit != NoLimit {
-		builder = builder.Limit(maxLimit)
+	var ors []exp.Expression
+	for _, sub := range subs {
+		or := eEventKey.In(sub)
+		ors = append(ors, or)
 	}
+
+	builder = builder.Where(goqu.Or(ors...))
 
 	return builder.Prepared(true).ToSQL()
 }
