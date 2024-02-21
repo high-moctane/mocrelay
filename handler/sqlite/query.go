@@ -10,6 +10,7 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
+	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/high-moctane/mocrelay"
 )
 
@@ -58,14 +59,6 @@ func buildEventQuery(
 	tCreatedAt := t.Col("created_at")
 	tEventKey := t.Col("event_key")
 
-	dKey := goqu.T("deleted_event_keys")
-	dKeyEventKey := dKey.Col("event_key")
-	dKeyPubkey := dKey.Col("pubkey")
-
-	dID := goqu.T("deleted_event_ids")
-	dIDID := dID.Col("id")
-	dIDPubkey := dID.Col("pubkey")
-
 	var builder *goqu.SelectDataset
 
 	for _, f := range fs {
@@ -83,21 +76,7 @@ func buildEventQuery(
 			Join(p, goqu.On(eEventKey.Eq(pEventKey))).
 			Order(eCreatedAt.Desc())
 
-		b = b.Where(goqu.L("not exists ?",
-			sqlite3.
-				Select(goqu.L("1")).
-				From(dKey).
-				Where(dKeyEventKey.Eq(eEventKey)).
-				Where(dKeyPubkey.Eq(ePubkey)),
-		))
-
-		b = b.Where(goqu.L("not exists ?",
-			sqlite3.
-				Select(goqu.L("1")).
-				From(dID).
-				Where(dIDID.Eq(eID)).
-				Where(dIDPubkey.Eq(ePubkey)),
-		))
+		b = appendDeletedEventsQuery(b, eEventKey, eID, ePubkey)
 
 		if f.IDs != nil {
 			idBins := make([][]byte, len(f.IDs))
@@ -150,21 +129,9 @@ func buildEventQuery(
 			}
 		}
 
-		if f.Since != nil {
-			b = b.Where(eCreatedAt.Gte(f.Since))
-		}
-
-		if f.Until != nil {
-			b = b.Where(eCreatedAt.Lte(f.Until))
-		}
-
-		limit := maxLimit
-		if f.Limit != nil {
-			limit = min(limit, uint(*f.Limit))
-		}
-		if limit != NoLimit {
-			b = b.Limit(limit)
-		}
+		b = appendSinceQuery(b, eCreatedAt, f.Since)
+		b = appendUntilQuery(b, eCreatedAt, f.Until)
+		b = appendLimitQuery(b, f.Limit, maxLimit)
 
 		if builder == nil {
 			builder = b
@@ -181,6 +148,68 @@ func buildEventQuery(
 	}
 
 	return builder.Prepared(true).ToSQL()
+}
+
+func appendDeletedEventsQuery(
+	b *goqu.SelectDataset,
+	eventKeyCol, eventIDCol, pubkeyCol exp.IdentifierExpression,
+) *goqu.SelectDataset {
+	dKey := goqu.T("deleted_event_keys")
+	dKeyEventKey := dKey.Col("event_key")
+	dKeyPubkey := dKey.Col("pubkey")
+
+	dID := goqu.T("deleted_event_ids")
+	dIDID := dID.Col("id")
+	dIDPubkey := dID.Col("pubkey")
+
+	return b.
+		Where(goqu.L("not exists ?",
+			goqu.
+				Select(goqu.L("1")).
+				From(dKey).
+				Where(dKeyEventKey.Eq(eventKeyCol)).
+				Where(dKeyPubkey.Eq(pubkeyCol)),
+		)).
+		Where(goqu.L("not exists ?",
+			goqu.
+				Select(goqu.L("1")).
+				From(dID).
+				Where(dIDID.Eq(eventIDCol)).
+				Where(dIDPubkey.Eq(pubkeyCol)),
+		))
+}
+
+func appendSinceQuery(
+	b *goqu.SelectDataset,
+	createdAtCol exp.IdentifierExpression,
+	since *int64,
+) *goqu.SelectDataset {
+	if since != nil {
+		b = b.Where(createdAtCol.Gte(*since))
+	}
+	return b
+}
+
+func appendUntilQuery(
+	b *goqu.SelectDataset,
+	createdAtCol exp.IdentifierExpression,
+	until *int64,
+) *goqu.SelectDataset {
+	if until != nil {
+		b = b.Where(createdAtCol.Lte(*until))
+	}
+	return b
+}
+
+func appendLimitQuery(b *goqu.SelectDataset, limit *int64, maxLimit uint) *goqu.SelectDataset {
+	l := maxLimit
+	if limit != nil {
+		l = min(l, uint(*limit))
+	}
+	if l != NoLimit {
+		b = b.Limit(l)
+	}
+	return b
 }
 
 func fetchEventQuery(
