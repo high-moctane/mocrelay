@@ -112,8 +112,14 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	err = errors.Join(ErrRelayStop, err)
 
+	var wsErr websocket.CloseError
+
 	if errors.Is(err, io.EOF) {
 		relay.logInfo(ctx, relay.opt.Logger, "mocrelay session end")
+	} else if errors.As(err, &wsErr) {
+		relay.logInfo(ctx, relay.opt.Logger, "mocrelay session end with close", "code", wsErr.Code, "reason", wsErr.Reason)
+	} else if errors.Is(err, context.Canceled) {
+		relay.logInfo(ctx, relay.opt.Logger, "mocrelay session end with cancel")
 	} else {
 		relay.logWarn(ctx, relay.opt.Logger, "mocrelay session end with error", "err", err)
 	}
@@ -129,7 +135,7 @@ func (relay *Relay) serveReadLoop(
 
 	for {
 		if err := relay.serveRead(ctx, conn, recv, send, l); err != nil {
-			return err
+			return fmt.Errorf("serveRead terminated: %w", err)
 		}
 	}
 }
