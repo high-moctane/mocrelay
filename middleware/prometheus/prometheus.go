@@ -194,6 +194,9 @@ func (m *simplePrometheusMiddlewareBase) ServeNostrServerMsg(
 	case *mocrelay.ServerCountMsg:
 		m.sendMsgTotal.WithLabelValues("COUNT").Inc()
 
+	case *mocrelay.ServerClosedMsg:
+		m.sendMsgTotal.WithLabelValues("CLOSED").Inc()
+
 	default:
 		m.sendMsgTotal.WithLabelValues("UNDEFINED").Inc()
 	}
