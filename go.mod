@@ -5,7 +5,7 @@ go 1.21.0
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/doug-martin/goqu/v9 v9.19.0
-	github.com/google/go-cmp v0.5.9
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/igrmk/treemap/v2 v2.0.1
