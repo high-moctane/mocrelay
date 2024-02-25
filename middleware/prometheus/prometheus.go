@@ -33,95 +33,93 @@ func getRequestID(ctx context.Context) string {
 }
 
 type simplePrometheusMiddlewareBase struct {
-	connectionCount prometheus.Gauge
-	recvMsgTotal    *prometheus.CounterVec
-	recvEventTotal  *prometheus.CounterVec
-	sendMsgTotal    *prometheus.CounterVec
-	reqTotal        prometheus.GaugeFunc
-	reqResponseTime prometheus.Summary
-
-	reqCounter *reqCounter
-
-	// map[reqID + subID]startTime
-	reqStartTimeMu sync.Mutex
-	reqStartTime   map[string]map[string]time.Time
+	connectionCounter      *connectionCounter
+	recvMsgCounter         *recvMsgCounter
+	recvEventCounter       *recvEventCounter
+	sendMsgCounter         *sendMsgCounter
+	reqCounter             *reqCounter
+	reqResponseTimeCounter *reqResponseTimeCounter
 }
 
 func newSimplePrometheusMiddlewareBase(reg prometheus.Registerer) *simplePrometheusMiddlewareBase {
-	reqCounter := newReqCounter()
+	connectionCount := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "mocrelay_connection_count",
+		Help: "Current websocket connection count.",
+	})
+	recvMsgTotal := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "mocrelay_recv_msg_total",
+			Help: "Number of received client messages.",
+		},
+		[]string{"type"},
+	)
+	recvEventTotal := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "mocrelay_recv_event_total",
+			Help: "Number of received client messages.",
+		},
+		[]string{"kind"},
+	)
+	sendMsgTotal := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "mocrelay_send_msg_total",
+			Help: "Number of sent server messages.",
+		},
+		[]string{"type"},
+	)
+	reqTotal := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "mocrelay_req_count",
+			Help: "Current req count.",
+		},
+	)
+	reqResponseTime := prometheus.NewSummary(
+		prometheus.SummaryOpts{
+			Name: "mocrelay_req_response_seconds",
+			Help: "Req to EOSE transaction time",
+		},
+	)
 
-	m := &simplePrometheusMiddlewareBase{
-		connectionCount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "mocrelay_connection_count",
-			Help: "Current websocket connection count.",
-		}),
-		recvMsgTotal: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "mocrelay_recv_msg_total",
-				Help: "Number of received client messages.",
-			},
-			[]string{"type"},
-		),
-		recvEventTotal: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "mocrelay_recv_event_total",
-				Help: "Number of received client messages.",
-			},
-			[]string{"kind"},
-		),
-		sendMsgTotal: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "mocrelay_send_msg_total",
-				Help: "Number of sent server messages.",
-			},
-			[]string{"type"},
-		),
-		reqTotal: prometheus.NewGaugeFunc(
-			prometheus.GaugeOpts{
-				Name: "mocrelay_req_count",
-				Help: "Current req count.",
-			},
-			func() float64 { return float64(reqCounter.Count()) },
-		),
-		reqResponseTime: prometheus.NewSummary(
-			prometheus.SummaryOpts{
-				Name: "mocrelay_req_response_seconds",
-				Help: "Req to EOSE transaction time",
-			},
-		),
+	reg.MustRegister(connectionCount)
+	reg.MustRegister(recvMsgTotal)
+	reg.MustRegister(recvEventTotal)
+	reg.MustRegister(sendMsgTotal)
+	reg.MustRegister(reqTotal)
+	reg.MustRegister(reqResponseTime)
 
-		reqCounter:   reqCounter,
-		reqStartTime: make(map[string]map[string]time.Time),
+	return &simplePrometheusMiddlewareBase{
+		connectionCounter:      newConnectionCounter(connectionCount),
+		recvMsgCounter:         newRecvMsgCounter(recvMsgTotal),
+		recvEventCounter:       newRecvEventCounter(recvEventTotal),
+		sendMsgCounter:         newSendMsgCounter(sendMsgTotal),
+		reqCounter:             newReqCounterCounter(reqTotal),
+		reqResponseTimeCounter: newReqResponseTimeCounter(reqResponseTime),
 	}
-
-	reg.MustRegister(m.connectionCount)
-	reg.MustRegister(m.recvMsgTotal)
-	reg.MustRegister(m.recvEventTotal)
-	reg.MustRegister(m.sendMsgTotal)
-	reg.MustRegister(m.reqTotal)
-	reg.MustRegister(m.reqResponseTime)
-
-	return m
 }
 
 func (m *simplePrometheusMiddlewareBase) ServeNostrStart(
 	ctx context.Context,
 ) (context.Context, error) {
-	m.connectionCount.Inc()
-
 	reqID := uuid.NewString()
 	ctx = setRequestID(ctx, reqID)
-	m.reqCounter.AddReqID(reqID)
+
+	m.connectionCounter.ServeNostrStart(ctx)
+	m.recvMsgCounter.ServeNostrStart(ctx)
+	m.recvEventCounter.ServeNostrStart(ctx)
+	m.sendMsgCounter.ServeNostrStart(ctx)
+	m.reqCounter.ServeNostrStart(ctx)
+	m.reqResponseTimeCounter.ServeNostrStart(ctx)
 
 	return ctx, nil
 }
 
 func (m *simplePrometheusMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
-	m.connectionCount.Dec()
-
-	reqID := getRequestID(ctx)
-	m.reqCounter.DeleteReqID(reqID)
-	m.deleteReqTimer(reqID)
+	m.connectionCounter.ServeNostrEnd(ctx)
+	m.recvMsgCounter.ServeNostrEnd(ctx)
+	m.recvEventCounter.ServeNostrEnd(ctx)
+	m.sendMsgCounter.ServeNostrEnd(ctx)
+	m.reqCounter.ServeNostrEnd(ctx)
+	m.reqResponseTimeCounter.ServeNostrEnd(ctx)
 
 	return nil
 }
@@ -130,76 +128,30 @@ func (m *simplePrometheusMiddlewareBase) ServeNostrClientMsg(
 	ctx context.Context,
 	msg mocrelay.ClientMsg,
 ) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
-	reqID := getRequestID(ctx)
+	m.connectionCounter.ServeNostrClientMsg(ctx, msg)
+	m.recvMsgCounter.ServeNostrClientMsg(ctx, msg)
+	m.recvEventCounter.ServeNostrClientMsg(ctx, msg)
+	m.sendMsgCounter.ServeNostrClientMsg(ctx, msg)
+	m.reqCounter.ServeNostrClientMsg(ctx, msg)
+	m.reqResponseTimeCounter.ServeNostrClientMsg(ctx, msg)
 
-	switch msg := msg.(type) {
-	case *mocrelay.ClientUnknownMsg:
-		m.recvMsgTotal.WithLabelValues("UNKNOWN").Inc()
+	ret := make(chan mocrelay.ClientMsg, 1)
+	defer close(ret)
+	ret <- msg
 
-	case *mocrelay.ClientEventMsg:
-		m.recvMsgTotal.WithLabelValues("EVENT").Inc()
-		k := strconv.FormatInt(msg.Event.Kind, 10)
-		m.recvEventTotal.WithLabelValues(k).Inc()
-
-	case *mocrelay.ClientReqMsg:
-		m.recvMsgTotal.WithLabelValues("REQ").Inc()
-		m.reqCounter.AddSubID(reqID, msg.SubscriptionID)
-		m.startReqTimer(reqID, msg.SubscriptionID)
-
-	case *mocrelay.ClientCloseMsg:
-		m.recvMsgTotal.WithLabelValues("CLOSE").Inc()
-		m.reqCounter.DeleteSubID(reqID, msg.SubscriptionID)
-
-	case *mocrelay.ClientAuthMsg:
-		m.recvMsgTotal.WithLabelValues("AUTH").Inc()
-
-	case *mocrelay.ClientCountMsg:
-		m.recvMsgTotal.WithLabelValues("COUNT").Inc()
-
-	default:
-		m.recvMsgTotal.WithLabelValues("UNDEFINED").Inc()
-	}
-
-	res := make(chan mocrelay.ClientMsg, 1)
-	defer close(res)
-	res <- msg
-
-	return res, nil, nil
+	return ret, nil, nil
 }
 
 func (m *simplePrometheusMiddlewareBase) ServeNostrServerMsg(
 	ctx context.Context,
 	msg mocrelay.ServerMsg,
 ) (<-chan mocrelay.ServerMsg, error) {
-	switch msg := msg.(type) {
-	case *mocrelay.ServerEOSEMsg:
-		m.sendMsgTotal.WithLabelValues("EOSE").Inc()
-		reqID := getRequestID(ctx)
-		if dur := m.stopReqTimer(reqID, msg.SubscriptionID); dur != 0 {
-			m.reqResponseTime.Observe(float64(dur) / float64(time.Second))
-		}
-
-	case *mocrelay.ServerEventMsg:
-		m.sendMsgTotal.WithLabelValues("EVENT").Inc()
-
-	case *mocrelay.ServerNoticeMsg:
-		m.sendMsgTotal.WithLabelValues("NOTICE").Inc()
-
-	case *mocrelay.ServerOKMsg:
-		m.sendMsgTotal.WithLabelValues("OK").Inc()
-
-	case *mocrelay.ServerAuthMsg:
-		m.sendMsgTotal.WithLabelValues("AUTH").Inc()
-
-	case *mocrelay.ServerCountMsg:
-		m.sendMsgTotal.WithLabelValues("COUNT").Inc()
-
-	case *mocrelay.ServerClosedMsg:
-		m.sendMsgTotal.WithLabelValues("CLOSED").Inc()
-
-	default:
-		m.sendMsgTotal.WithLabelValues("UNDEFINED").Inc()
-	}
+	m.connectionCounter.ServeNostrServerMsg(ctx, msg)
+	m.recvMsgCounter.ServeNostrServerMsg(ctx, msg)
+	m.recvEventCounter.ServeNostrServerMsg(ctx, msg)
+	m.sendMsgCounter.ServeNostrServerMsg(ctx, msg)
+	m.reqCounter.ServeNostrServerMsg(ctx, msg)
+	m.reqResponseTimeCounter.ServeNostrServerMsg(ctx, msg)
 
 	res := make(chan mocrelay.ServerMsg, 1)
 	defer close(res)
@@ -208,129 +160,357 @@ func (m *simplePrometheusMiddlewareBase) ServeNostrServerMsg(
 	return res, nil
 }
 
-func (m *simplePrometheusMiddlewareBase) startReqTimer(reqID, subID string) {
-	m.reqStartTimeMu.Lock()
-	defer m.reqStartTimeMu.Unlock()
-
-	mm, ok := m.reqStartTime[reqID]
-	if !ok {
-		mm = make(map[string]time.Time)
-		m.reqStartTime[reqID] = mm
-	}
-	mm[subID] = time.Now()
+type connectionCounter struct {
+	c prometheus.Gauge
 }
 
-func (m *simplePrometheusMiddlewareBase) stopReqTimer(reqID, subID string) time.Duration {
-	m.reqStartTimeMu.Lock()
-	defer m.reqStartTimeMu.Unlock()
-
-	start, ok := m.reqStartTime[reqID][subID]
-	if !ok {
-		return 0
-	}
-	defer delete(m.reqStartTime[reqID], subID)
-
-	return time.Since(start)
+func newConnectionCounter(c prometheus.Gauge) *connectionCounter {
+	return &connectionCounter{c: c}
 }
 
-func (m *simplePrometheusMiddlewareBase) deleteReqTimer(reqID string) {
-	m.reqStartTimeMu.Lock()
-	defer m.reqStartTimeMu.Unlock()
+func (c *connectionCounter) ServeNostrStart(ctx context.Context) (context.Context, error) {
+	c.c.Inc()
+	return ctx, nil
+}
 
-	delete(m.reqStartTime, reqID)
+func (c *connectionCounter) ServeNostrEnd(ctx context.Context) error {
+	c.c.Dec()
+	return nil
+}
+
+func (c *connectionCounter) ServeNostrClientMsg(
+	ctx context.Context,
+	msg mocrelay.ClientMsg,
+) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
+	return nil, nil, nil
+}
+
+func (c *connectionCounter) ServeNostrServerMsg(
+	ctx context.Context,
+	msg mocrelay.ServerMsg,
+) (<-chan mocrelay.ServerMsg, error) {
+	return nil, nil
+}
+
+type recvMsgCounter struct {
+	c *prometheus.CounterVec
+}
+
+func newRecvMsgCounter(c *prometheus.CounterVec) *recvMsgCounter {
+	return &recvMsgCounter{c: c}
+}
+
+func (c *recvMsgCounter) ServeNostrStart(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+func (c *recvMsgCounter) ServeNostrEnd(ctx context.Context) error {
+	return nil
+}
+
+func (c *recvMsgCounter) ServeNostrClientMsg(
+	ctx context.Context,
+	msg mocrelay.ClientMsg,
+) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
+	switch msg.(type) {
+	case *mocrelay.ClientUnknownMsg:
+		c.c.WithLabelValues("UNKNOWN").Inc()
+
+	case *mocrelay.ClientEventMsg:
+		c.c.WithLabelValues("EVENT").Inc()
+
+	case *mocrelay.ClientReqMsg:
+		c.c.WithLabelValues("REQ").Inc()
+
+	case *mocrelay.ClientCloseMsg:
+		c.c.WithLabelValues("CLOSE").Inc()
+
+	case *mocrelay.ClientAuthMsg:
+		c.c.WithLabelValues("AUTH").Inc()
+
+	case *mocrelay.ClientCountMsg:
+		c.c.WithLabelValues("COUNT").Inc()
+
+	default:
+		c.c.WithLabelValues("UNDEFINED").Inc()
+	}
+
+	return nil, nil, nil
+}
+
+func (c *recvMsgCounter) ServeNostrServerMsg(
+	ctx context.Context,
+	msg mocrelay.ServerMsg,
+) (<-chan mocrelay.ServerMsg, error) {
+	return nil, nil
+}
+
+type recvEventCounter struct {
+	c *prometheus.CounterVec
+}
+
+func newRecvEventCounter(c *prometheus.CounterVec) *recvEventCounter {
+	return &recvEventCounter{c: c}
+}
+
+func (c *recvEventCounter) ServeNostrStart(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+func (c *recvEventCounter) ServeNostrEnd(ctx context.Context) error {
+	return nil
+}
+
+func (c *recvEventCounter) ServeNostrClientMsg(
+	ctx context.Context,
+	msg mocrelay.ClientMsg,
+) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
+	if msg, ok := msg.(*mocrelay.ClientEventMsg); ok {
+		k := strconv.FormatInt(msg.Event.Kind, 10)
+		c.c.WithLabelValues(k).Inc()
+	}
+
+	return nil, nil, nil
+}
+
+func (c *recvEventCounter) ServeNostrServerMsg(
+	ctx context.Context,
+	msg mocrelay.ServerMsg,
+) (<-chan mocrelay.ServerMsg, error) {
+	return nil, nil
+}
+
+type sendMsgCounter struct {
+	c *prometheus.CounterVec
+}
+
+func newSendMsgCounter(c *prometheus.CounterVec) *sendMsgCounter {
+	return &sendMsgCounter{c: c}
+}
+
+func (c *sendMsgCounter) ServeNostrStart(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+func (c *sendMsgCounter) ServeNostrEnd(ctx context.Context) error {
+	return nil
+}
+
+func (c *sendMsgCounter) ServeNostrClientMsg(
+	ctx context.Context,
+	msg mocrelay.ClientMsg,
+) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
+	return nil, nil, nil
+}
+
+func (c *sendMsgCounter) ServeNostrServerMsg(
+	ctx context.Context,
+	msg mocrelay.ServerMsg,
+) (<-chan mocrelay.ServerMsg, error) {
+	switch msg.(type) {
+	case *mocrelay.ServerEOSEMsg:
+		c.c.WithLabelValues("EOSE").Inc()
+
+	case *mocrelay.ServerEventMsg:
+		c.c.WithLabelValues("EVENT").Inc()
+
+	case *mocrelay.ServerNoticeMsg:
+		c.c.WithLabelValues("NOTICE").Inc()
+
+	case *mocrelay.ServerOKMsg:
+		c.c.WithLabelValues("OK").Inc()
+
+	case *mocrelay.ServerAuthMsg:
+		c.c.WithLabelValues("AUTH").Inc()
+
+	case *mocrelay.ServerCountMsg:
+		c.c.WithLabelValues("COUNT").Inc()
+
+	case *mocrelay.ServerClosedMsg:
+		c.c.WithLabelValues("CLOSED").Inc()
+
+	default:
+		c.c.WithLabelValues("UNDEFINED").Inc()
+	}
+
+	return nil, nil
 }
 
 type reqCounter struct {
-	// map[reqID]map[subID]exist
-	c *safeMap[string, *safeMap[string, bool]]
+	c prometheus.Gauge
+
+	mu sync.Mutex
+	// map[reqID]map[subID]bool
+	m map[string]map[string]bool
 }
 
-func newReqCounter() *reqCounter {
+func newReqCounterCounter(c prometheus.Gauge) *reqCounter {
 	return &reqCounter{
-		c: newSafeMap[string, *safeMap[string, bool]](),
+		c: c,
+		m: make(map[string]map[string]bool),
 	}
 }
 
-func (c *reqCounter) AddReqID(reqID string) {
-	c.c.Add(reqID, newSafeMap[string, bool]())
+func (c *reqCounter) ServeNostrStart(ctx context.Context) (context.Context, error) {
+	reqID := getRequestID(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.m[reqID] = make(map[string]bool)
+
+	return ctx, nil
 }
 
-func (c *reqCounter) DeleteReqID(reqID string) {
-	c.c.Delete(reqID)
+func (c *reqCounter) ServeNostrEnd(ctx context.Context) error {
+	reqID := getRequestID(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cnt := len(c.m[reqID])
+	c.c.Sub(float64(cnt))
+
+	delete(c.m, reqID)
+
+	return nil
 }
 
-func (c *reqCounter) AddSubID(reqID, subID string) {
-	m, ok := c.c.TryGet(reqID)
+func (c *reqCounter) ServeNostrClientMsg(
+	ctx context.Context,
+	msg mocrelay.ClientMsg,
+) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
+
+	switch msg := msg.(type) {
+	case *mocrelay.ClientReqMsg:
+		reqID := getRequestID(ctx)
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		if _, ok := c.m[reqID][msg.SubscriptionID]; !ok {
+			c.m[reqID][msg.SubscriptionID] = true
+			c.c.Inc()
+		}
+
+	case *mocrelay.ClientCloseMsg:
+		reqID := getRequestID(ctx)
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		if _, ok := c.m[reqID][msg.SubscriptionID]; ok {
+			delete(c.m[reqID], msg.SubscriptionID)
+			c.c.Dec()
+		}
+	}
+
+	return nil, nil, nil
+}
+
+func (c *reqCounter) ServeNostrServerMsg(
+	ctx context.Context,
+	msg mocrelay.ServerMsg,
+) (<-chan mocrelay.ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *mocrelay.ServerClosedMsg:
+		reqID := getRequestID(ctx)
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		if _, ok := c.m[reqID][msg.SubscriptionID]; ok {
+			delete(c.m[reqID], msg.SubscriptionID)
+			c.c.Dec()
+		}
+	}
+
+	return nil, nil
+}
+
+type reqResponseTimeCounter struct {
+	c prometheus.Summary
+
+	mu sync.Mutex
+	// map[reqID]map[subID]startTime
+	m map[string]map[string]time.Time
+}
+
+func newReqResponseTimeCounter(c prometheus.Summary) *reqResponseTimeCounter {
+	return &reqResponseTimeCounter{
+		c: c,
+		m: make(map[string]map[string]time.Time),
+	}
+}
+
+func (c *reqResponseTimeCounter) ServeNostrStart(ctx context.Context) (context.Context, error) {
+	reqID := getRequestID(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.m[reqID] = make(map[string]time.Time)
+
+	return ctx, nil
+}
+
+func (c *reqResponseTimeCounter) ServeNostrEnd(ctx context.Context) error {
+	reqID := getRequestID(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.m, reqID)
+
+	return nil
+}
+
+func (c *reqResponseTimeCounter) ServeNostrClientMsg(
+	ctx context.Context,
+	msg mocrelay.ClientMsg,
+) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
+	if msg, ok := msg.(*mocrelay.ClientReqMsg); ok {
+		reqID := getRequestID(ctx)
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		c.m[reqID][msg.SubscriptionID] = time.Now()
+	}
+
+	return nil, nil, nil
+}
+
+func (c *reqResponseTimeCounter) ServeNostrServerMsg(
+	ctx context.Context,
+	msg mocrelay.ServerMsg,
+) (<-chan mocrelay.ServerMsg, error) {
+	var subID string
+
+	switch msg := msg.(type) {
+	case *mocrelay.ServerEOSEMsg:
+		subID = msg.SubscriptionID
+
+	case *mocrelay.ServerClosedMsg:
+		subID = msg.SubscriptionID
+
+	default:
+		return nil, nil
+	}
+
+	reqID := getRequestID(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	start, ok := c.m[reqID][subID]
 	if !ok {
-		return
-	}
-	m.Add(subID, true)
-}
-
-func (c *reqCounter) DeleteSubID(reqID, subID string) {
-	m, ok := c.c.TryGet(reqID)
-	if !ok {
-		return
+		return nil, nil
 	}
 
-	m.Delete(subID)
-}
+	delete(c.m[reqID], subID)
 
-func (c *reqCounter) Count() int {
-	ret := 0
+	c.c.Observe(float64(time.Since(start)) / float64(time.Second))
 
-	c.c.Loop(func(_ string, m *safeMap[string, bool]) {
-		ret += m.Len()
-	})
-
-	return ret
-}
-
-type safeMap[K comparable, V any] struct {
-	mu sync.RWMutex
-	m  map[K]V
-}
-
-func newSafeMap[K comparable, V any]() *safeMap[K, V] {
-	return &safeMap[K, V]{m: make(map[K]V)}
-}
-
-func (m *safeMap[K, V]) Len() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.m)
-}
-
-func (m *safeMap[K, V]) Get(k K) V {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.m[k]
-}
-
-func (m *safeMap[K, V]) TryGet(k K) (V, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	v, ok := m.m[k]
-	return v, ok
-}
-
-func (m *safeMap[K, V]) Add(k K, v V) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.m[k] = v
-}
-
-func (m *safeMap[K, V]) Delete(k K) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.m, k)
-}
-
-func (m *safeMap[K, V]) Loop(f func(k K, v V)) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	for key, val := range m.m {
-		f(key, val)
-	}
+	return nil, nil
 }
