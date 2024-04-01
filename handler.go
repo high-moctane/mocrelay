@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -1897,4 +1898,76 @@ func (m *simpleRecvEventDenyFilterMiddlewareBase) ServeNostrServerMsg(
 	msg ServerMsg,
 ) (<-chan ServerMsg, error) {
 	return newClosedBufCh[ServerMsg](msg), nil
+}
+
+type LoggingMiddleware Middleware
+
+func NewLoggingMiddleware(logger *slog.Logger) LoggingMiddleware {
+	return LoggingMiddleware(NewSimpleMiddleware(newSimpleLoggingMiddlewareBase(logger)))
+}
+
+var _ SimpleMiddlewareBase = (*simpleLoggingMiddlewareBase)(nil)
+
+type simpleLoggingMiddlewareBase struct {
+	logger *slog.Logger
+}
+
+func newSimpleLoggingMiddlewareBase(
+	logger *slog.Logger,
+) *simpleLoggingMiddlewareBase {
+	return &simpleLoggingMiddlewareBase{logger: logger}
+}
+
+func (m *simpleLoggingMiddlewareBase) ServeNostrStart(
+	ctx context.Context,
+) (context.Context, error) {
+	return ctx, nil
+}
+
+func (m *simpleLoggingMiddlewareBase) ServeNostrEnd(ctx context.Context) error {
+	return nil
+}
+
+func (m *simpleLoggingMiddlewareBase) ServeNostrClientMsg(
+	ctx context.Context,
+	msg ClientMsg,
+) (<-chan ClientMsg, <-chan ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ClientEventMsg:
+		m.logger.InfoContext(ctx, "client msg", "type", "EVENT", "id", msg.Event.ID)
+	case *ClientReqMsg:
+		m.logger.InfoContext(ctx, "client msg", "type", "REQ", "subid", msg.SubscriptionID)
+	case *ClientCloseMsg:
+		m.logger.InfoContext(ctx, "client msg", "type", "CLOSE", "subid", msg.SubscriptionID)
+	case *ClientAuthMsg:
+		m.logger.InfoContext(ctx, "client msg", "type", "AUTH")
+	case *ClientCountMsg:
+		m.logger.InfoContext(ctx, "client msg", "type", "COUNT", "subid", msg.SubscriptionID)
+	case *ClientUnknownMsg:
+		m.logger.InfoContext(ctx, "client msg", "type", msg.Label)
+	default:
+		m.logger.InfoContext(ctx, "client msg", "msg", msg)
+	}
+
+	return newClosedBufCh(msg), nil, nil
+}
+
+func (m *simpleLoggingMiddlewareBase) ServeNostrServerMsg(
+	ctx context.Context,
+	msg ServerMsg,
+) (<-chan ServerMsg, error) {
+	switch msg := msg.(type) {
+	case *ServerEventMsg:
+		m.logger.InfoContext(ctx, "server msg", "type", "EVENT", "id", msg.Event.ID)
+	case *ServerOKMsg:
+		m.logger.InfoContext(ctx, "server msg", "type", "OK", "id", msg.EventID)
+	case *ServerClosedMsg:
+		m.logger.InfoContext(ctx, "server msg", "type", "CLOSED", "subid", msg.SubscriptionID)
+	case *ServerAuthMsg:
+		m.logger.InfoContext(ctx, "server msg", "type", "AUTH")
+	case *ServerCountMsg:
+		m.logger.InfoContext(ctx, "server msg", "type", "COUNT", "subid", msg.SubscriptionID)
+	}
+
+	return newClosedBufCh(msg), nil
 }
