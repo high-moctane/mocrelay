@@ -14,7 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.19.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/time v0.5.0
-	nhooyr.io/websocket v1.8.10
+	nhooyr.io/websocket v1.8.11
 )
 
 require (
