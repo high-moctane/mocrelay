@@ -213,9 +213,6 @@ func (c *recvMsgCounter) ServeNostrClientMsg(
 	msg mocrelay.ClientMsg,
 ) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
 	switch msg.(type) {
-	case *mocrelay.ClientUnknownMsg:
-		c.c.WithLabelValues("UNKNOWN").Inc()
-
 	case *mocrelay.ClientEventMsg:
 		c.c.WithLabelValues("EVENT").Inc()
 

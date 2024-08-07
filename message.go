@@ -85,11 +85,7 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 		return &ret, nil
 
 	default:
-		var ret ClientUnknownMsg
-		if err := ret.UnmarshalJSON(b); err != nil {
-			return nil, fmt.Errorf("failed to parse client msg: %w", err)
-		}
-		return &ret, nil
+		return nil, errors.New("unknown client msg")
 	}
 }
 
@@ -117,45 +113,6 @@ func ValidClientMsg(msg ClientMsg) bool {
 	default:
 		return false
 	}
-}
-
-var _ ClientMsg = (*ClientUnknownMsg)(nil)
-
-type ClientUnknownMsg struct {
-	Label string
-	Msg   []interface{}
-}
-
-func (*ClientUnknownMsg) ClientMsg() {}
-
-func (msg *ClientUnknownMsg) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
-		return nil
-	}
-
-	var elems []any
-	if err := json.Unmarshal(b, &elems); err != nil {
-		return fmt.Errorf("not a json array: %w", err)
-	}
-	if len(elems) == 0 {
-		return fmt.Errorf("empty json array")
-	}
-
-	label, ok := elems[0].(string)
-	if !ok {
-		return fmt.Errorf("label is not a string")
-	}
-
-	msg.Label = strings.Clone(label)
-
-	elemJSON, _ := json.Marshal(elems[1:])
-	json.Unmarshal(elemJSON, &msg.Msg)
-
-	return nil
-}
-
-func (msg *ClientUnknownMsg) Valid() bool {
-	return msg != nil && msg.Msg != nil
 }
 
 var _ ClientMsg = (*ClientEventMsg)(nil)

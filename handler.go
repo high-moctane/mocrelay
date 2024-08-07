@@ -1943,8 +1943,6 @@ func (m *simpleLoggingMiddlewareBase) ServeNostrClientMsg(
 		m.logger.InfoContext(ctx, "client msg", "type", "AUTH")
 	case *ClientCountMsg:
 		m.logger.InfoContext(ctx, "client msg", "type", "COUNT", "subid", msg.SubscriptionID)
-	case *ClientUnknownMsg:
-		m.logger.InfoContext(ctx, "client msg", "type", msg.Label)
 	default:
 		m.logger.InfoContext(ctx, "client msg", "msg", msg)
 	}

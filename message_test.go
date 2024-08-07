@@ -22,16 +22,16 @@ func TestParseClientMsg(t *testing.T) {
 			Name:  "ng: empty string",
 			Input: []byte(""),
 			Expect: Expect{
-				MsgType: new(ClientUnknownMsg),
+				MsgType: nil,
 				IsErr:   true,
 			},
 		},
 		{
-			Name:  "ok: unknown client message",
+			Name:  "ng: unknown client message",
 			Input: []byte(`["POWA","value"]`),
 			Expect: Expect{
-				MsgType: new(ClientUnknownMsg),
-				IsErr:   false,
+				MsgType: nil,
+				IsErr:   true,
 			},
 		},
 		{
@@ -234,58 +234,6 @@ func BenchmarkParseClientMsg_Count(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ParseClientMsg(countJSON)
-	}
-}
-
-func TestClientUnknownMsg_UnmarshalJSON(t *testing.T) {
-	type Expect struct {
-		Msg   ClientUnknownMsg
-		IsErr bool
-	}
-
-	tests := []struct {
-		Name   string
-		Input  []byte
-		Expect Expect
-	}{
-		{
-			Name:  "ok: json array",
-			Input: []byte(`["POWA","meu",{"moyasu":29}]`),
-			Expect: Expect{
-				Msg: ClientUnknownMsg{
-					Label: "POWA",
-					Msg: []interface{}{
-						"meu",
-						map[string]interface{}{
-							"moyasu": float64(29),
-						},
-					},
-				},
-				IsErr: false,
-			},
-		},
-		{
-			Name:  "ng: not a json array",
-			Input: []byte(`{"moyasu":29}`),
-			Expect: Expect{
-				IsErr: true,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			var msg ClientUnknownMsg
-			err := msg.UnmarshalJSON(tt.Input)
-			if (err != nil) != tt.Expect.IsErr {
-				t.Errorf("unexpected err: %v", err)
-				return
-			}
-			if err != nil {
-				return
-			}
-			assert.EqualExportedValues(t, tt.Expect.Msg, msg)
-		})
 	}
 }
 
