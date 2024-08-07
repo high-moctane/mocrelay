@@ -1122,6 +1122,20 @@ func (ev *Event) CreatedAtTime() time.Time {
 
 type Tag []string
 
+func (t Tag) Key() string {
+	if len(t) < 1 {
+		panic("empty tag")
+	}
+	return t[0]
+}
+
+func (t Tag) Value() string {
+	if len(t) < 2 {
+		return ""
+	}
+	return t[1]
+}
+
 type EventInvalidIDError struct {
 	Correct, Actual string
 }
