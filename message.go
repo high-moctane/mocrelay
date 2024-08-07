@@ -19,8 +19,21 @@ import (
 
 var ErrInvalidClientMsg = errors.New("invalid client message")
 
+const (
+	MsgLabelEvent  = "EVENT"
+	MsgLabelReq    = "REQ"
+	MsgLabelClose  = "CLOSE"
+	MsgLabelAuth   = "AUTH"
+	MsgLabelCount  = "COUNT"
+	MsgLabelEOSE   = "EOSE"
+	MsgLabelNotice = "NOTICE"
+	MsgLabelOK     = "OK"
+	MsgLabelClosed = "CLOSED"
+)
+
 type ClientMsg interface {
 	ClientMsg()
+	UnmarshalJSON([]byte) error
 }
 
 func isNilClientMsg(msg ClientMsg) bool {
