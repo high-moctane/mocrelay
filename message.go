@@ -17,6 +17,8 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
+var nullJSON = []byte("null")
+
 var ErrInvalidClientMsg = errors.New("invalid client message")
 
 const (
@@ -123,8 +125,22 @@ type ClientEventMsg struct {
 
 func (*ClientEventMsg) ClientMsg() {}
 
+func (msg *ClientEventMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nullJSON, nil
+	}
+
+	v := [2]any{MsgLabelEvent, msg.Event}
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal client event msg: %w", err)
+	}
+
+	return ret, nil
+}
+
 func (msg *ClientEventMsg) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
+	if bytes.Equal(b, nullJSON) {
 		return nil
 	}
 
@@ -167,8 +183,28 @@ type ClientReqMsg struct {
 
 func (*ClientReqMsg) ClientMsg() {}
 
+func (msg *ClientReqMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nullJSON, nil
+	}
+
+	v := make([]any, 2+len(msg.ReqFilters))
+	v[0] = MsgLabelReq
+	v[1] = msg.SubscriptionID
+	for i, f := range msg.ReqFilters {
+		v[i+2] = f
+	}
+
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal client req msg: %w", err)
+	}
+
+	return ret, nil
+}
+
 func (msg *ClientReqMsg) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
+	if bytes.Equal(b, nullJSON) {
 		return nil
 	}
 
@@ -233,8 +269,22 @@ type ClientCloseMsg struct {
 
 func (*ClientCloseMsg) ClientMsg() {}
 
+func (msg *ClientCloseMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nullJSON, nil
+	}
+
+	v := [2]string{MsgLabelClose, msg.SubscriptionID}
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal client close msg: %w", err)
+	}
+
+	return ret, nil
+}
+
 func (msg *ClientCloseMsg) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
+	if bytes.Equal(b, nullJSON) {
 		return nil
 	}
 
@@ -265,8 +315,22 @@ type ClientAuthMsg struct {
 
 func (*ClientAuthMsg) ClientMsg() {}
 
+func (msg *ClientAuthMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nullJSON, nil
+	}
+
+	v := [2]string{MsgLabelAuth, msg.Challenge}
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal client auth msg: %w", err)
+	}
+
+	return ret, nil
+}
+
 func (msg *ClientAuthMsg) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
+	if bytes.Equal(b, nullJSON) {
 		return nil
 	}
 
@@ -298,8 +362,28 @@ type ClientCountMsg struct {
 
 func (*ClientCountMsg) ClientMsg() {}
 
+func (msg *ClientCountMsg) MarshalJSON() ([]byte, error) {
+	if msg == nil {
+		return nullJSON, nil
+	}
+
+	v := make([]any, 2+len(msg.ReqFilters))
+	v[0] = MsgLabelCount
+	v[1] = msg.SubscriptionID
+	for i, f := range msg.ReqFilters {
+		v[i+2] = f
+	}
+
+	ret, err := json.Marshal(&v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal client count msg: %w", err)
+	}
+
+	return ret, nil
+}
+
 func (msg *ClientCountMsg) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
+	if bytes.Equal(b, nullJSON) {
 		return nil
 	}
 
@@ -366,8 +450,53 @@ type ReqFilter struct {
 	Limit   *int64
 }
 
+func (fil *ReqFilter) MarshalJSON() ([]byte, error) {
+	if fil == nil {
+		return nullJSON, nil
+	}
+
+	var obj = make(map[string]any)
+
+	if fil.IDs != nil {
+		obj["ids"] = fil.IDs
+	}
+
+	if fil.Authors != nil {
+		obj["authors"] = fil.Authors
+	}
+
+	if fil.Kinds != nil {
+		obj["kinds"] = fil.Kinds
+	}
+
+	if fil.Tags != nil {
+		for k, v := range fil.Tags {
+			obj[k] = v
+		}
+	}
+
+	if fil.Since != nil {
+		obj["since"] = *fil.Since
+	}
+
+	if fil.Until != nil {
+		obj["until"] = *fil.Until
+	}
+
+	if fil.Limit != nil {
+		obj["limit"] = *fil.Limit
+	}
+
+	ret, err := json.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal req filter: %w", err)
+	}
+
+	return ret, nil
+}
+
 func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
+	if bytes.Equal(b, nullJSON) {
 		return nil
 	}
 
