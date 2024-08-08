@@ -31,6 +31,22 @@ const (
 	MsgLabelClosed = "CLOSED"
 )
 
+type MarshalNostrMsgError struct {
+	errmsg string
+}
+
+func (e *MarshalNostrMsgError) Error() string {
+	return fmt.Sprintf("failed to marshal nostr msg: %s", e.errmsg)
+}
+
+type UnmarshalNostrMsgError struct {
+	errmsg string
+}
+
+func (e *UnmarshalNostrMsgError) Error() string {
+	return fmt.Sprintf("failed to unmarshal nostr msg: %s", e.errmsg)
+}
+
 type ClientMsg interface {
 	ClientMsg()
 	UnmarshalJSON([]byte) error
