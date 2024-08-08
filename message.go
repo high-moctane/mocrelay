@@ -633,7 +633,7 @@ func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerEventMsg
 	}
 
-	v := [3]interface{}{MsgLabelEvent, msg.SubscriptionID, msg.Event}
+	v := [3]any{MsgLabelEvent, msg.SubscriptionID, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		return nil, errors.Join(err, ErrMarshalServerEventMsg)
@@ -715,7 +715,7 @@ func (msg *ServerOKMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerOKMsg
 	}
 
-	v := [4]interface{}{MsgLabelOK, msg.EventID, msg.Accepted, msg.Message()}
+	v := [4]any{MsgLabelOK, msg.EventID, msg.Accepted, msg.Message()}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerOKMsg)
@@ -747,7 +747,7 @@ func (msg *ServerAuthMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerAuthMsg
 	}
 
-	v := [2]interface{}{MsgLabelAuth, msg.Event}
+	v := [2]any{MsgLabelAuth, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerAuthMsg)
@@ -784,7 +784,7 @@ func (msg *ServerCountMsg) MarshalJSON() ([]byte, error) {
 		Approximate *bool  `json:"approximate,omitempty"`
 	}
 
-	v := [3]interface{}{
+	v := [3]any{
 		MsgLabelCount,
 		msg.SubscriptionID,
 		payload{Count: msg.Count, Approximate: msg.Approximate},
@@ -875,7 +875,7 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 	dec := json.NewDecoder(bytes.NewBuffer(b))
 	dec.UseNumber()
 
-	var obj map[string]interface{}
+	var obj map[string]any
 	if err := dec.Decode(&obj); err != nil {
 		return fmt.Errorf("not a json object: %w", err)
 	}
@@ -1021,7 +1021,7 @@ func (ev *Event) Serialize() ([]byte, error) {
 		return nil, fmt.Errorf("empty event: %w", ErrEventSerialize)
 	}
 
-	v := [6]interface{}{
+	v := [6]any{
 		0,
 		ev.Pubkey,
 		ev.CreatedAt,
