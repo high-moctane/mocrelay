@@ -176,7 +176,7 @@ func (relay *Relay) serveRead(
 		return nil
 	}
 
-	if ok := ValidClientMsg(msg); !ok {
+	if !ValidClientMsg(msg) {
 		relay.logWarn(ctx, relay.opt.Logger, "invalid client msg", "error", err)
 		notice := NewServerNoticeMsgf("invalid client msg: %s", payload)
 		sendServerMsgCtx(ctx, send, notice)
