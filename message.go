@@ -49,35 +49,35 @@ func ParseClientMsg(b []byte) (msg ClientMsg, err error) {
 	}
 
 	switch string(match[1]) {
-	case "EVENT":
+	case MsgLabelEvent:
 		var ret ClientEventMsg
 		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
-	case "REQ":
+	case MsgLabelReq:
 		var ret ClientReqMsg
 		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
-	case "CLOSE":
+	case MsgLabelClose:
 		var ret ClientCloseMsg
 		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
-	case "AUTH":
+	case MsgLabelAuth:
 		var ret ClientAuthMsg
 		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
 		}
 		return &ret, nil
 
-	case "COUNT":
+	case MsgLabelCount:
 		var ret ClientCountMsg
 		if err := ret.UnmarshalJSON(b); err != nil {
 			return nil, fmt.Errorf("failed to parse client msg: %w", err)
@@ -140,8 +140,8 @@ func (msg *ClientEventMsg) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(elems[0], &label); err != nil {
 		return fmt.Errorf("label must be string: %w", err)
 	}
-	if label != "EVENT" {
-		return fmt.Errorf(`client event msg label is must be "EVENT" but got %q`, label)
+	if label != MsgLabelEvent {
+		return fmt.Errorf(`client event msg label is must be %q but got %q`, MsgLabelEvent, label)
 	}
 
 	var event Event
@@ -184,8 +184,8 @@ func (msg *ClientReqMsg) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(elems[0], &label); err != nil {
 		return fmt.Errorf("label is not a json string: %w", err)
 	}
-	if label != "REQ" {
-		return fmt.Errorf(`client req msg labes must be "REQ" but got %q`, label)
+	if label != MsgLabelReq {
+		return fmt.Errorf(`client req msg labes must be %q but got %q`, MsgLabelReq, label)
 	}
 
 	var ret ClientReqMsg
@@ -246,8 +246,8 @@ func (msg *ClientCloseMsg) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("client close msg length must be 2 but got %d", len(elems))
 	}
 
-	if elems[0] != "CLOSE" {
-		return fmt.Errorf(`client close msg label must be "CLOSE" but got %q`, elems[0])
+	if elems[0] != MsgLabelClose {
+		return fmt.Errorf(`client close msg label must be %q but got %q`, MsgLabelClose, elems[0])
 	}
 
 	msg.SubscriptionID = strings.Clone(elems[1])
@@ -278,8 +278,8 @@ func (msg *ClientAuthMsg) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("client auth msg length must be 2 but got %d", len(elems))
 	}
 
-	if elems[0] != "AUTH" {
-		return fmt.Errorf(`client auth msg label must be "AUTH" but got %q`, elems[0])
+	if elems[0] != MsgLabelAuth {
+		return fmt.Errorf(`client auth msg label must be %q but got %q`, MsgLabelAuth, elems[0])
 	}
 
 	msg.Challenge = strings.Clone(elems[1])
@@ -315,8 +315,8 @@ func (msg *ClientCountMsg) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(elems[0], &label); err != nil {
 		return fmt.Errorf("label is not a json string: %w", err)
 	}
-	if label != "COUNT" {
-		return fmt.Errorf(`client count msg labes must be "COUNT" but got %q`, label)
+	if label != MsgLabelCount {
+		return fmt.Errorf(`client count msg labes must be %q but got %q`, MsgLabelCount, label)
 	}
 
 	var ret ClientCountMsg
@@ -602,7 +602,7 @@ func (msg *ServerEOSEMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerEOSEMsg
 	}
 
-	v := [2]string{"EOSE", msg.SubscriptionID}
+	v := [2]string{MsgLabelEOSE, msg.SubscriptionID}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		return nil, errors.Join(err, ErrMarshalServerEOSEMsg)
@@ -633,7 +633,7 @@ func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerEventMsg
 	}
 
-	v := [3]interface{}{"EVENT", msg.SubscriptionID, msg.Event}
+	v := [3]interface{}{MsgLabelEvent, msg.SubscriptionID, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		return nil, errors.Join(err, ErrMarshalServerEventMsg)
@@ -667,7 +667,7 @@ func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerNoticeMsg
 	}
 
-	v := [2]string{"NOTICE", msg.Message}
+	v := [2]string{MsgLabelNotice, msg.Message}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerNoticeMsg)
@@ -715,7 +715,7 @@ func (msg *ServerOKMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerOKMsg
 	}
 
-	v := [4]interface{}{"OK", msg.EventID, msg.Accepted, msg.Message()}
+	v := [4]interface{}{MsgLabelOK, msg.EventID, msg.Accepted, msg.Message()}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerOKMsg)
@@ -747,7 +747,7 @@ func (msg *ServerAuthMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerAuthMsg
 	}
 
-	v := [2]interface{}{"AUTH", msg.Event}
+	v := [2]interface{}{MsgLabelAuth, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerAuthMsg)
@@ -785,7 +785,7 @@ func (msg *ServerCountMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	v := [3]interface{}{
-		"COUNT",
+		MsgLabelCount,
 		msg.SubscriptionID,
 		payload{Count: msg.Count, Approximate: msg.Approximate},
 	}
@@ -842,7 +842,7 @@ func (msg *ServerClosedMsg) MarshalJSON() ([]byte, error) {
 		return nil, ErrMarshalServerClosedMsg
 	}
 
-	v := [3]string{"CLOSED", msg.SubscriptionID, msg.Message()}
+	v := [3]string{MsgLabelClosed, msg.SubscriptionID, msg.Message()}
 	ret, err := json.Marshal(&v)
 	if err != nil {
 		err = errors.Join(err, ErrMarshalServerClosedMsg)

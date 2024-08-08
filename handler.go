@@ -1934,15 +1934,15 @@ func (m *simpleLoggingMiddlewareBase) ServeNostrClientMsg(
 ) (<-chan ClientMsg, <-chan ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *ClientEventMsg:
-		m.logger.InfoContext(ctx, "client msg", "type", "EVENT", "id", msg.Event.ID)
+		m.logger.InfoContext(ctx, "client msg", "type", MsgLabelEvent, "id", msg.Event.ID)
 	case *ClientReqMsg:
-		m.logger.InfoContext(ctx, "client msg", "type", "REQ", "subid", msg.SubscriptionID)
+		m.logger.InfoContext(ctx, "client msg", "type", MsgLabelReq, "subid", msg.SubscriptionID)
 	case *ClientCloseMsg:
-		m.logger.InfoContext(ctx, "client msg", "type", "CLOSE", "subid", msg.SubscriptionID)
+		m.logger.InfoContext(ctx, "client msg", "type", MsgLabelClose, "subid", msg.SubscriptionID)
 	case *ClientAuthMsg:
-		m.logger.InfoContext(ctx, "client msg", "type", "AUTH")
+		m.logger.InfoContext(ctx, "client msg", "type", MsgLabelAuth)
 	case *ClientCountMsg:
-		m.logger.InfoContext(ctx, "client msg", "type", "COUNT", "subid", msg.SubscriptionID)
+		m.logger.InfoContext(ctx, "client msg", "type", MsgLabelCount, "subid", msg.SubscriptionID)
 	default:
 		m.logger.InfoContext(ctx, "client msg", "msg", msg)
 	}
@@ -1956,15 +1956,15 @@ func (m *simpleLoggingMiddlewareBase) ServeNostrServerMsg(
 ) (<-chan ServerMsg, error) {
 	switch msg := msg.(type) {
 	case *ServerEventMsg:
-		m.logger.InfoContext(ctx, "server msg", "type", "EVENT", "id", msg.Event.ID)
+		m.logger.InfoContext(ctx, "server msg", "type", MsgLabelEvent, "id", msg.Event.ID)
 	case *ServerOKMsg:
-		m.logger.InfoContext(ctx, "server msg", "type", "OK", "id", msg.EventID)
+		m.logger.InfoContext(ctx, "server msg", "type", MsgLabelOK, "id", msg.EventID)
 	case *ServerClosedMsg:
-		m.logger.InfoContext(ctx, "server msg", "type", "CLOSED", "subid", msg.SubscriptionID)
+		m.logger.InfoContext(ctx, "server msg", "type", MsgLabelClosed, "subid", msg.SubscriptionID)
 	case *ServerAuthMsg:
-		m.logger.InfoContext(ctx, "server msg", "type", "AUTH")
+		m.logger.InfoContext(ctx, "server msg", "type", MsgLabelAuth)
 	case *ServerCountMsg:
-		m.logger.InfoContext(ctx, "server msg", "type", "COUNT", "subid", msg.SubscriptionID)
+		m.logger.InfoContext(ctx, "server msg", "type", MsgLabelCount, "subid", msg.SubscriptionID)
 	}
 
 	return newClosedBufCh(msg), nil
