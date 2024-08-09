@@ -1,11 +1,18 @@
 package mocrelay
 
 import (
+	"bufio"
+	"bytes"
+	_ "embed"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+//go:embed testdata/events_valid.jsonl
+var eventsValidJSONL []byte
 
 func TestParseClientMsg(t *testing.T) {
 	type Expect struct {
@@ -1289,6 +1296,19 @@ func BenchmarkServerMsg_Marshal_Closed(b *testing.B) {
 }
 
 func TestEvent_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		sc := bufio.NewScanner(bytes.NewReader(eventsValidJSONL))
+		for i := 0; sc.Scan(); i++ {
+			t.Run(fmt.Sprintf("event-%d", i), func(t *testing.T) {
+				var ev Event
+				err := ev.UnmarshalJSON(sc.Bytes())
+				if err != nil {
+					t.Errorf("failed to unmarshal: %v", err)
+				}
+			})
+		}
+	})
+
 	type Expect struct {
 		Event *Event
 		IsErr bool
