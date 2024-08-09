@@ -14,6 +14,9 @@ import (
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
+//go:embed testdata/events_invalid.jsonl
+var eventsInvalidJSONL []byte
+
 func TestParseClientMsg(t *testing.T) {
 	type Expect struct {
 		MsgType ClientMsg
@@ -1305,6 +1308,21 @@ func TestEvent_UnmarshalJSON(t *testing.T) {
 				if err != nil {
 					t.Errorf("failed to unmarshal: %v", err)
 				}
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		sc := bufio.NewScanner(bytes.NewReader(eventsInvalidJSONL))
+		for i := 0; sc.Scan(); i++ {
+			t.Run(fmt.Sprintf("event-%d", i), func(t *testing.T) {
+				var ev Event
+				err := ev.UnmarshalJSON(sc.Bytes())
+				if err == nil {
+					t.Errorf("unexpected success")
+					return
+				}
+				t.Logf("expected error: %v", err)
 			})
 		}
 	})

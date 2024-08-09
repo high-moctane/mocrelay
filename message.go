@@ -1011,8 +1011,12 @@ func (ev *Event) UnmarshalJSON(b []byte) error {
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return fmt.Errorf("not a single json object: %w", err)
 	}
-	if len(obj) != 7 {
-		return errors.New("contains some extra fields")
+	if l := len(obj); l != 7 {
+		if l < 7 {
+			return errors.New("missing fields")
+		} else {
+			return errors.New("extra fields")
+		}
 	}
 
 	var ret Event
