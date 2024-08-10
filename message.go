@@ -10,6 +10,7 @@ import (
 	"io"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1394,6 +1395,35 @@ func (ev *Event) CreatedAtTime() time.Time {
 		return time.Unix(0, 0)
 	}
 	return time.Unix(ev.CreatedAt, 0)
+}
+
+func (ev *Event) Address() string {
+	if ev == nil {
+		return ""
+	}
+
+	switch ev.EventType() {
+	case EventTypeReplaceable:
+		return fmt.Sprintf("%d:%s:", ev.Kind, ev.Pubkey)
+
+	case EventTypeParamReplaceable:
+		idx := slices.IndexFunc(ev.Tags, func(t Tag) bool {
+			return len(t) >= 1 && t[0] == "d"
+		})
+		if idx < 0 {
+			return ""
+		}
+
+		d := ""
+		if len(ev.Tags[idx]) > 1 {
+			d = ev.Tags[idx][1]
+		}
+
+		return fmt.Sprintf("%d:%s:%s", ev.Kind, ev.Pubkey, d)
+
+	default:
+		return ""
+	}
 }
 
 type Tag []string

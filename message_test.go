@@ -2309,6 +2309,91 @@ func TestEvent_VerifyID(t *testing.T) {
 	}
 }
 
+func TestEvent_Address(t *testing.T) {
+	tests := []struct {
+		name string
+		in   *Event
+		want string
+	}{
+		{
+			name: "ok: replaceable",
+			in: &Event{
+				ID:        "ea955a6580fdfe0981ef9fc1d1b94ed2d0b68aac5c1182140fa0c006bf8ffc83",
+				Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				CreatedAt: 1723295596,
+				Kind:      10000,
+				Tags:      []Tag{},
+				Content:   "",
+				Sig:       "01549c7df037abfa40bfb3189c7ad0fb073df430156d93136e1338f359bcbbc541fcccc68762ab349359bfc06556ed26e2afec92bcc37c92dedb6789756c7308",
+			},
+			want: "10000:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:",
+		},
+		{
+			name: "ok: parametrize replaceable",
+			in: &Event{
+				ID:        "9bd6f9bc73440ba166c520456b93482028d9a26813921e63cf1242bec30cb108",
+				Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				CreatedAt: 1723295732,
+				Kind:      30000,
+				Tags: []Tag{
+					{"d", "param"},
+				},
+				Content: "",
+				Sig:     "bfa961f412dc0e850cda828e0d6203268d8494fb067427f4399859d1b6367c6ac2e185fd7be0ec88081c44d18a5eab770e15fb725c0e4b58269dc30b10f736fa",
+			},
+			want: "30000:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:param",
+		},
+		{
+			name: "ok: parametrize replaceable without param",
+			in: &Event{
+				ID:        "9bd6f9bc73440ba166c520456b93482028d9a26813921e63cf1242bec30cb108",
+				Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				CreatedAt: 1723295732,
+				Kind:      30000,
+				Tags: []Tag{
+					{"d"},
+				},
+				Content: "",
+				Sig:     "bfa961f412dc0e850cda828e0d6203268d8494fb067427f4399859d1b6367c6ac2e185fd7be0ec88081c44d18a5eab770e15fb725c0e4b58269dc30b10f736fa",
+			},
+			want: "30000:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:",
+		},
+		{
+			name: "ng: parametrize replaceable dtag not found",
+			in: &Event{
+				ID:        "9bd6f9bc73440ba166c520456b93482028d9a26813921e63cf1242bec30cb108",
+				Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				CreatedAt: 1723295732,
+				Kind:      30000,
+				Tags:      []Tag{},
+				Content:   "",
+				Sig:       "bfa961f412dc0e850cda828e0d6203268d8494fb067427f4399859d1b6367c6ac2e185fd7be0ec88081c44d18a5eab770e15fb725c0e4b58269dc30b10f736fa",
+			},
+			want: "",
+		},
+		{
+			name: "ng: kind1",
+			in: &Event{
+				ID:        "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				CreatedAt: 1723212754,
+				Kind:      1,
+				Tags:      []Tag{},
+				Content:   "",
+				Sig:       "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f",
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.in.Address()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func BenchmarkEvent_Verify(b *testing.B) {
 	event := &Event{
 		ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
