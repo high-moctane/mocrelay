@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1325,13 +1326,65 @@ func BenchmarkServerMsg_Marshal_Closed(b *testing.B) {
 
 func TestEvent_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		sc := bufio.NewScanner(bytes.NewReader(eventsValidJSONL))
-		for i := 0; sc.Scan(); i++ {
+		jsons := bytes.Split(bytes.TrimSpace(eventsValidJSONL), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want Event
+		}{
+			{
+				in: jsons[0],
+				want: Event{
+					ID:        "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723212754,
+					Kind:      1,
+					Tags:      []Tag{},
+					Content:   "",
+					Sig:       "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f",
+				},
+			},
+			{
+				in: jsons[1],
+				want: Event{
+					ID:        "07e782ba4b5fe85b91264d03c445c339b8783e0ea2ae3bdfb0122eda513d86ac",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723212830,
+					Kind:      1,
+					Tags:      []Tag{},
+					Content:   "with content",
+					Sig:       "a714af322ebf22bec24364319efc635e88230c099a8e08238fff1f4f5608494cddbcc77bef426cc653e4994ac23625553500d05244dd28ed2ac3096cff0387af",
+				},
+			},
+			{
+				in: jsons[2],
+				want: Event{
+					ID:        "80cfa4cff224ad441b9cb50fdce68a47f30a2d7e38fa2b06f2ddac748bbac137",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723212930,
+					Kind:      1,
+					Tags: []Tag{
+						{"key1", "value1"},
+						{"key2"},
+						{"key3", "value3-1", "value3-2"},
+					},
+					Content: "with tags",
+					Sig:     "7553bd8efb6e338e58cd9b807225dfd5d71043f94173aa234c7727aa28236009ee34aa76422e6d3912a5d104100c49148b043202df7f8b258782b1816434d1ea",
+				},
+			},
+		}
+
+		for i, tt := range tests {
 			t.Run(fmt.Sprintf("event-%d", i), func(t *testing.T) {
 				var ev Event
-				err := ev.UnmarshalJSON(sc.Bytes())
+				err := ev.UnmarshalJSON(tt.in)
 				if err != nil {
 					t.Errorf("failed to unmarshal: %v", err)
+					return
+				}
+				if !reflect.DeepEqual(tt.want, ev) {
+					t.Errorf("want: %v, got: %v", tt.want, ev)
+					return
 				}
 			})
 		}
