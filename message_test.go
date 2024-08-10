@@ -450,8 +450,8 @@ func TestClientReqMsg_MarshalJSON(t *testing.T) {
 						Authors: []string{},
 						Kinds:   []int64{},
 						Tags: map[string][]string{
-							"#e": {},
-							"#p": {},
+							"e": {},
+							"p": {},
 						},
 						Since: toPtr[int64](100),
 						Until: toPtr[int64](10000),
@@ -468,11 +468,11 @@ func TestClientReqMsg_MarshalJSON(t *testing.T) {
 						},
 						Kinds: []int64{0, 1, 10000, 20000, 30000},
 						Tags: map[string][]string{
-							"#e": {
+							"e": {
 								"0000000000000000000000000000000000000000000000000000000000000000",
 								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 							},
-							"#p": {
+							"p": {
 								"0000000000000000000000000000000000000000000000000000000000000000",
 								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 							},
@@ -525,8 +525,8 @@ func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
 							Authors: []string{},
 							Kinds:   []int64{},
 							Tags: map[string][]string{
-								"#e": {},
-								"#p": {},
+								"e": {},
+								"p": {},
 							},
 							Since: toPtr[int64](100),
 							Until: toPtr[int64](10000),
@@ -543,11 +543,11 @@ func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
 							},
 							Kinds: []int64{0, 1, 10000, 20000, 30000},
 							Tags: map[string][]string{
-								"#e": {
+								"e": {
 									"0000000000000000000000000000000000000000000000000000000000000000",
 									"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 								},
-								"#p": {
+								"p": {
 									"0000000000000000000000000000000000000000000000000000000000000000",
 									"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 								},
@@ -748,8 +748,8 @@ func TestClientCountMsg_MarshalJSON(t *testing.T) {
 						Authors: []string{},
 						Kinds:   []int64{},
 						Tags: map[string][]string{
-							"#e": {},
-							"#p": {},
+							"e": {},
+							"p": {},
 						},
 						Since: toPtr[int64](100),
 						Until: toPtr[int64](10000),
@@ -766,11 +766,11 @@ func TestClientCountMsg_MarshalJSON(t *testing.T) {
 						},
 						Kinds: []int64{0, 1, 10000, 20000, 30000},
 						Tags: map[string][]string{
-							"#e": {
+							"e": {
 								"0000000000000000000000000000000000000000000000000000000000000000",
 								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 							},
-							"#p": {
+							"p": {
 								"0000000000000000000000000000000000000000000000000000000000000000",
 								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 							},
@@ -823,8 +823,8 @@ func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
 							Authors: []string{},
 							Kinds:   []int64{},
 							Tags: map[string][]string{
-								"#e": {},
-								"#p": {},
+								"e": {},
+								"p": {},
 							},
 							Since: toPtr[int64](100),
 							Until: toPtr[int64](10000),
@@ -841,11 +841,11 @@ func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
 							},
 							Kinds: []int64{0, 1, 10000, 20000, 30000},
 							Tags: map[string][]string{
-								"#e": {
+								"e": {
 									"0000000000000000000000000000000000000000000000000000000000000000",
 									"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 								},
-								"#p": {
+								"p": {
 									"0000000000000000000000000000000000000000000000000000000000000000",
 									"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 								},
@@ -904,8 +904,8 @@ func TestReqFilter_MarshalJSON(t *testing.T) {
 				Authors: []string{},
 				Kinds:   []int64{},
 				Tags: map[string][]string{
-					"#e": {},
-					"#p": {},
+					"e": {},
+					"p": {},
 				},
 				Since: toPtr[int64](100),
 				Until: toPtr[int64](10000),
@@ -925,11 +925,11 @@ func TestReqFilter_MarshalJSON(t *testing.T) {
 				},
 				Kinds: []int64{0, 1, 10000, 20000, 30000},
 				Tags: map[string][]string{
-					"#e": {
+					"e": {
 						"0000000000000000000000000000000000000000000000000000000000000000",
 						"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 					},
-					"#p": {
+					"p": {
 						"0000000000000000000000000000000000000000000000000000000000000000",
 						"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 					},
@@ -974,8 +974,8 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 					Authors: []string{},
 					Kinds:   []int64{},
 					Tags: map[string][]string{
-						"#e": {},
-						"#p": {},
+						"e": {},
+						"p": {},
 					},
 					Since: toPtr[int64](100),
 					Until: toPtr[int64](10000),
@@ -995,11 +995,11 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 					},
 					Kinds: []int64{0, 1, 10000, 20000, 30000},
 					Tags: map[string][]string{
-						"#e": {
+						"e": {
 							"0000000000000000000000000000000000000000000000000000000000000000",
 							"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 						},
-						"#p": {
+						"p": {
 							"0000000000000000000000000000000000000000000000000000000000000000",
 							"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 						},

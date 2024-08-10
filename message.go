@@ -478,7 +478,7 @@ func (fil ReqFilter) MarshalJSON() ([]byte, error) {
 
 	if fil.Tags != nil {
 		for k, v := range fil.Tags {
-			obj[k] = v
+			obj["#"+k] = v
 		}
 	}
 
@@ -585,7 +585,7 @@ func (fil *ReqFilter) UnmarshalJSON(b []byte) error {
 			for i := range vs {
 				vs[i] = strings.Clone(vs[i])
 			}
-			ret.Tags[strings.Clone(k)] = vs
+			ret.Tags[strings.Clone(k[1:2])] = vs
 
 		case k == "since":
 			numSince, ok := v.(json.Number)
@@ -655,8 +655,8 @@ func (fil *ReqFilter) Valid() (ok bool) {
 
 	if fil.Tags != nil {
 		for tag, vals := range fil.Tags {
-			if len(tag) != 2 || tag[0] != '#' ||
-				!('A' <= tag[1] && tag[1] <= 'Z' || 'a' <= tag[1] && tag[1] <= 'z') {
+			if len(tag) != 1 ||
+				!('A' <= tag[0] && tag[0] <= 'Z' || 'a' <= tag[0] && tag[0] <= 'z') {
 				return
 			}
 			if vals == nil {
@@ -664,17 +664,17 @@ func (fil *ReqFilter) Valid() (ok bool) {
 			}
 
 			switch tag {
-			case "#e":
+			case "e":
 				if !sliceAllFunc(vals, validID) {
 					return
 				}
 
-			case "#p":
+			case "p":
 				if !sliceAllFunc(vals, validPubkey) {
 					return
 				}
 
-			case "#a":
+			case "a":
 				if !sliceAllFunc(vals, validNaddr) {
 					return
 				}

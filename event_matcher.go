@@ -86,7 +86,7 @@ func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterEventMatcher {
 			for _, val := range vals {
 				m[val] = true
 			}
-			ret.f.Tags[string(tag[1])] = m
+			ret.f.Tags[tag] = m
 		}
 	}
 

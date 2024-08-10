@@ -322,7 +322,7 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 			},
 			filter: ReqFilter{
 				Tags: map[string][]string{
-					"#e": {},
+					"e": {},
 				},
 			},
 			want: false,
@@ -349,7 +349,7 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 			},
 			filter: ReqFilter{
 				Tags: map[string][]string{
-					"#e": {
+					"e": {
 						"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 					},
@@ -379,7 +379,7 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 			},
 			filter: ReqFilter{
 				Tags: map[string][]string{
-					"#e": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
+					"e": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
 				},
 			},
 			want: false,
@@ -406,8 +406,8 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 			},
 			filter: ReqFilter{
 				Tags: map[string][]string{
-					"#e": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
-					"#p": {},
+					"e": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
+					"p": {},
 				},
 			},
 			want: false,
@@ -434,11 +434,11 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 			},
 			filter: ReqFilter{
 				Tags: map[string][]string{
-					"#e": {
+					"e": {
 						"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 					},
-					"#p": {
+					"p": {
 						"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 						"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 					},
@@ -468,8 +468,8 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 			},
 			filter: ReqFilter{
 				Tags: map[string][]string{
-					"#e": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
-					"#p": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
+					"e": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
+					"p": {"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2"},
 				},
 			},
 			want: false,
@@ -603,8 +603,8 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 				},
 				Kinds: []int64{1},
 				Tags: map[string][]string{
-					"#e": {"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c"},
-					"#p": {"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					"e": {"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c"},
+					"p": {"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
 				},
 				Since: toPtr(int64(1693157791)),
 				Until: toPtr(int64(1693157791)),
@@ -640,8 +640,8 @@ func TestReqFilterMatcher_Match(t *testing.T) {
 				},
 				Kinds: []int64{1},
 				Tags: map[string][]string{
-					"#e": {"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
-					"#p": {"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					"e": {"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
+					"p": {"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"},
 				},
 				Since: toPtr(int64(1693157791)),
 				Until: toPtr(int64(1693157791)),

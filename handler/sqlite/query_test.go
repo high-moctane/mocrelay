@@ -427,8 +427,8 @@ func Test_queryEvent(t *testing.T) {
 			fs: []*mocrelay.ReqFilter{
 				{
 					Tags: map[string][]string{
-						"#e": {"value1", "value3"},
-						"#p": {""},
+						"e": {"value1", "value3"},
+						"p": {""},
 					},
 				},
 			},
@@ -681,8 +681,8 @@ func Test_queryEvent(t *testing.T) {
 					Authors: []string{"bb11", "bb33"},
 					Kinds:   []int64{1, 1000},
 					Tags: map[string][]string{
-						"#e": {"value1", "value2"},
-						"#p": {""},
+						"e": {"value1", "value2"},
+						"p": {""},
 					},
 					Since: toPtr[int64](50),
 					Until: toPtr[int64](67),

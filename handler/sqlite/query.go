@@ -148,15 +148,13 @@ func buildEventQuery(
 			sub = sub.Distinct()
 
 			for key, values := range f.Tags {
-				k := key[1:]
-
 				tagHashes := make([][]byte, len(values))
 				for i, value := range values {
-					b := md5.Sum([]byte(k + value))
+					b := md5.Sum([]byte(key + value))
 					tagHashes[i] = b[:]
 				}
 
-				etag := t.As("etag" + k)
+				etag := t.As("etag" + key)
 
 				sub = sub.
 					Join(etag, goqu.On(
