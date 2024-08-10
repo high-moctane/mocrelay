@@ -54,10 +54,10 @@ var serverEventMsgsValidJSONL []byte
 //go:embed testdata/servereventmsgs_invalid.jsonl
 var serverEventMsgsInvalidJSONL []byte
 
-//go:embed testdata/servernoticemsg_valid.jsonl
+//go:embed testdata/servernoticemsgs_valid.jsonl
 var serverNoticeMsgsValidJSONL []byte
 
-//go:embed testdata/servernoticemsg_invalid.jsonl
+//go:embed testdata/servernoticemsgs_invalid.jsonl
 var serverNoticeMsgsInvalidJSONL []byte
 
 //go:embed testdata/serverokmsgs_valid.jsonl
