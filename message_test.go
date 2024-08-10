@@ -762,13 +762,6 @@ func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
 				Err:  nil,
 			},
 		},
-		{
-			Name:  "ng: nil",
-			Input: nil,
-			Expect: Expect{
-				Err: ErrMarshalServerEOSEMsg,
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -842,13 +835,6 @@ func TestServerEventMsg_MarshalJSON(t *testing.T) {
 				Err: nil,
 			},
 		},
-		{
-			Name:  "ng: nil",
-			Input: nil,
-			Expect: Expect{
-				Err: ErrMarshalServerEventMsg,
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -882,13 +868,6 @@ func TestServerNoticeMsg_MarshalJSON(t *testing.T) {
 			Expect: Expect{
 				Json: []byte(`["NOTICE","msg"]`),
 				Err:  nil,
-			},
-		},
-		{
-			Name:  "ng: nil",
-			Input: nil,
-			Expect: Expect{
-				Err: ErrMarshalServerNoticeMsg,
 			},
 		},
 	}
@@ -940,13 +919,6 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 			Expect: Expect{
 				Json: []byte(`["OK","event_id",false,"error: msg"]`),
 				Err:  nil,
-			},
-		},
-		{
-			Name:  "ng: nil",
-			Input: nil,
-			Expect: Expect{
-				Err: ErrMarshalServerOKMsg,
 			},
 		},
 	}
@@ -1023,13 +995,6 @@ func TestServerAuthMsg_MarshalJSON(t *testing.T) {
 				Err: nil,
 			},
 		},
-		{
-			Name:  "ng: nil",
-			Input: nil,
-			Expect: Expect{
-				Err: ErrMarshalServerAuthMsg,
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -1079,13 +1044,6 @@ func TestServerCountMsg_MarshalJSON(t *testing.T) {
 				Err:  nil,
 			},
 		},
-		{
-			Name:  "ng: nil",
-			Input: nil,
-			Expect: Expect{
-				Err: ErrMarshalServerCountMsg,
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -1133,13 +1091,6 @@ func TestServerClosedMsg_MarshalJSON(t *testing.T) {
 			Expect: Expect{
 				Json: []byte(`["CLOSED","sub_id","error: msg"]`),
 				Err:  nil,
-			},
-		},
-		{
-			Name:  "ng: nil",
-			Input: nil,
-			Expect: Expect{
-				Err: ErrMarshalServerClosedMsg,
 			},
 		},
 	}

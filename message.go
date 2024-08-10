@@ -125,11 +125,7 @@ type ClientEventMsg struct {
 
 func (*ClientEventMsg) ClientMsg() {}
 
-func (msg *ClientEventMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nullJSON, nil
-	}
-
+func (msg ClientEventMsg) MarshalJSON() ([]byte, error) {
 	v := [2]any{MsgLabelEvent, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -183,11 +179,7 @@ type ClientReqMsg struct {
 
 func (*ClientReqMsg) ClientMsg() {}
 
-func (msg *ClientReqMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nullJSON, nil
-	}
-
+func (msg ClientReqMsg) MarshalJSON() ([]byte, error) {
 	v := make([]any, 2+len(msg.ReqFilters))
 	v[0] = MsgLabelReq
 	v[1] = msg.SubscriptionID
@@ -269,11 +261,7 @@ type ClientCloseMsg struct {
 
 func (*ClientCloseMsg) ClientMsg() {}
 
-func (msg *ClientCloseMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nullJSON, nil
-	}
-
+func (msg ClientCloseMsg) MarshalJSON() ([]byte, error) {
 	v := [2]string{MsgLabelClose, msg.SubscriptionID}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -315,11 +303,7 @@ type ClientAuthMsg struct {
 
 func (*ClientAuthMsg) ClientMsg() {}
 
-func (msg *ClientAuthMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nullJSON, nil
-	}
-
+func (msg ClientAuthMsg) MarshalJSON() ([]byte, error) {
 	v := [2]string{MsgLabelAuth, msg.Challenge}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -362,11 +346,7 @@ type ClientCountMsg struct {
 
 func (*ClientCountMsg) ClientMsg() {}
 
-func (msg *ClientCountMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nullJSON, nil
-	}
-
+func (msg ClientCountMsg) MarshalJSON() ([]byte, error) {
 	v := make([]any, 2+len(msg.ReqFilters))
 	v[0] = MsgLabelCount
 	v[1] = msg.SubscriptionID
@@ -722,11 +702,7 @@ func (*ServerEOSEMsg) ServerMsg() {}
 
 var ErrMarshalServerEOSEMsg = errors.New("failed to marshal server eose msg")
 
-func (msg *ServerEOSEMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nil, ErrMarshalServerEOSEMsg
-	}
-
+func (msg ServerEOSEMsg) MarshalJSON() ([]byte, error) {
 	v := [2]string{MsgLabelEOSE, msg.SubscriptionID}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -753,11 +729,7 @@ func (*ServerEventMsg) ServerMsg() {}
 
 var ErrMarshalServerEventMsg = errors.New("failed to marshal server event msg")
 
-func (msg *ServerEventMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nil, ErrMarshalServerEventMsg
-	}
-
+func (msg ServerEventMsg) MarshalJSON() ([]byte, error) {
 	v := [3]any{MsgLabelEvent, msg.SubscriptionID, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -787,11 +759,7 @@ func (*ServerNoticeMsg) ServerMsg() {}
 
 var ErrMarshalServerNoticeMsg = errors.New("failed to marshal server notice msg")
 
-func (msg *ServerNoticeMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nil, ErrMarshalServerNoticeMsg
-	}
-
+func (msg ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 	v := [2]string{MsgLabelNotice, msg.Message}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -835,11 +803,7 @@ func (msg *ServerOKMsg) Message() string {
 
 var ErrMarshalServerOKMsg = errors.New("failed to marshal server ok msg")
 
-func (msg *ServerOKMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nil, ErrMarshalServerOKMsg
-	}
-
+func (msg ServerOKMsg) MarshalJSON() ([]byte, error) {
 	v := [4]any{MsgLabelOK, msg.EventID, msg.Accepted, msg.Message()}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -867,11 +831,7 @@ func (*ServerAuthMsg) ServerMsg() {}
 
 var ErrMarshalServerAuthMsg = errors.New("failed to marshal server auth msg")
 
-func (msg *ServerAuthMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nil, ErrMarshalServerAuthMsg
-	}
-
+func (msg ServerAuthMsg) MarshalJSON() ([]byte, error) {
 	v := [2]any{MsgLabelAuth, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -899,11 +859,7 @@ func (*ServerCountMsg) ServerMsg() {}
 
 var ErrMarshalServerCountMsg = errors.New("failed to marshal server count msg")
 
-func (msg *ServerCountMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nil, ErrMarshalServerCountMsg
-	}
-
+func (msg ServerCountMsg) MarshalJSON() ([]byte, error) {
 	type payload struct {
 		Count       uint64 `json:"count"`
 		Approximate *bool  `json:"approximate,omitempty"`
@@ -962,11 +918,7 @@ func (msg *ServerClosedMsg) Message() string {
 
 var ErrMarshalServerClosedMsg = errors.New("failed to marshal server closed msg")
 
-func (msg *ServerClosedMsg) MarshalJSON() ([]byte, error) {
-	if msg == nil {
-		return nil, ErrMarshalServerClosedMsg
-	}
-
+func (msg ServerClosedMsg) MarshalJSON() ([]byte, error) {
 	v := [3]string{MsgLabelClosed, msg.SubscriptionID, msg.Message()}
 	ret, err := json.Marshal(&v)
 	if err != nil {
