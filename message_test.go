@@ -316,6 +316,31 @@ func TestClientEventMsg_UnmarshalJSON(t *testing.T) {
 	}
 }
 
+func TestEvent_JSONIdempotency(t *testing.T) {
+	sc := bufio.NewScanner(bytes.NewReader(eventsValidJSONL))
+	for i := 0; sc.Scan(); i++ {
+		t.Run(fmt.Sprintf("event_%d", i), func(t *testing.T) {
+			b := sc.Bytes()
+
+			var ev Event
+			err := json.Unmarshal(b, &ev)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			got, err := json.Marshal(ev)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if !bytes.Equal(b, got) {
+				t.Errorf("expected %s but got %s", b, got)
+			}
+		})
+	}
+}
+
 func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
 	type Expect struct {
 		SubscriptionID string
