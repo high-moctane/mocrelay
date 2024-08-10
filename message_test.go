@@ -78,6 +78,12 @@ var serverCountMsgsValidJSONL []byte
 //go:embed testdata/servercountmsgs_invalid.jsonl
 var serverCountMsgsInvalidJSONL []byte
 
+//go:embed testdata/serverclosedmsgs_valid.jsonl
+var serverClosedMsgsValidJSONL []byte
+
+//go:embed testdata/serverclosedmsgs_invalid.jsonl
+var serverClosedMsgsInvalidJSONL []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -1687,52 +1693,183 @@ func TestServerCountMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerClosedMsg_MarshalJSON(t *testing.T) {
-	type Expect struct {
-		Json []byte
-		Err  error
-	}
+	jsons := bytes.Split(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
-		Name   string
-		Input  *ServerClosedMsg
-		Expect Expect
+		in   ServerClosedMsg
+		want []byte
 	}{
 		{
-			Name: "ok: server closed message",
-			Input: &ServerClosedMsg{
-				SubscriptionID: "sub_id",
-				MsgPrefix:      ServerClosedMsgPrefixNoPrefix,
-				Msg:            "msg",
-			},
-			Expect: Expect{
-				Json: []byte(`["CLOSED","sub_id","msg"]`),
-				Err:  nil,
-			},
+			in:   ServerClosedMsg{SubscriptionID: "subid", Msg: ""},
+			want: jsons[0],
 		},
 		{
-			Name: "ok: server closed message with prefix",
-			Input: &ServerClosedMsg{
-				SubscriptionID: "sub_id",
+			in:   ServerClosedMsg{SubscriptionID: "subid", Msg: "with msg"},
+			want: jsons[1],
+		},
+		{
+			in: ServerClosedMsg{
+				SubscriptionID: "subid",
+				Msg:            "with prefix",
+				MsgPrefix:      ServerClosedMsgPrefixPoW,
+			},
+			want: jsons[2],
+		},
+		{
+			in: ServerClosedMsg{
+				SubscriptionID: "subid",
+				Msg:            "with prefix",
+				MsgPrefix:      ServerClosedMsgPrefixDuplicate,
+			},
+			want: jsons[3],
+		},
+		{
+			in: ServerClosedMsg{
+				SubscriptionID: "subid",
+				Msg:            "with prefix",
+				MsgPrefix:      ServerClosedMsgPrefixBlocked,
+			},
+			want: jsons[4],
+		},
+		{
+			in: ServerClosedMsg{
+				SubscriptionID: "subid",
+				Msg:            "with prefix",
+				MsgPrefix:      ServerClosedMsgPrefixRateLimited,
+			},
+			want: jsons[5],
+		},
+		{
+			in: ServerClosedMsg{
+				SubscriptionID: "subid",
+				Msg:            "with prefix",
+				MsgPrefix:      ServerClosedMsgPrefixInvalid,
+			},
+			want: jsons[6],
+		},
+		{
+			in: ServerClosedMsg{
+				SubscriptionID: "subid",
+				Msg:            "with prefix",
 				MsgPrefix:      ServerClosedMsgPrefixError,
-				Msg:            "msg",
 			},
-			Expect: Expect{
-				Json: []byte(`["CLOSED","sub_id","error: msg"]`),
-				Err:  nil,
-			},
+			want: jsons[7],
+		},
+		{
+			in:   ServerClosedMsg{SubscriptionID: "subid", Msg: "prefix: with unknown prefix"},
+			want: jsons[8],
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got, err := tt.Input.MarshalJSON()
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
-				return
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			assert.Equal(t, tt.Expect.Json, got)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
 		})
 	}
+}
+
+func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ServerClosedMsg
+		}{
+			{
+				in:   jsons[0],
+				want: ServerClosedMsg{SubscriptionID: "subid", Msg: ""},
+			},
+			{
+				in:   jsons[1],
+				want: ServerClosedMsg{SubscriptionID: "subid", Msg: "with msg"},
+			},
+			{
+				in: jsons[2],
+				want: ServerClosedMsg{
+					SubscriptionID: "subid",
+					Msg:            "with prefix",
+					MsgPrefix:      ServerClosedMsgPrefixPoW,
+				},
+			},
+			{
+				in: jsons[3],
+				want: ServerClosedMsg{
+					SubscriptionID: "subid",
+					Msg:            "with prefix",
+					MsgPrefix:      ServerClosedMsgPrefixDuplicate,
+				},
+			},
+			{
+				in: jsons[4],
+				want: ServerClosedMsg{
+					SubscriptionID: "subid",
+					Msg:            "with prefix",
+					MsgPrefix:      ServerClosedMsgPrefixBlocked,
+				},
+			},
+			{
+				in: jsons[5],
+				want: ServerClosedMsg{
+					SubscriptionID: "subid",
+					Msg:            "with prefix",
+					MsgPrefix:      ServerClosedMsgPrefixRateLimited,
+				},
+			},
+			{
+				in: jsons[6],
+				want: ServerClosedMsg{
+					SubscriptionID: "subid",
+					Msg:            "with prefix",
+					MsgPrefix:      ServerClosedMsgPrefixInvalid,
+				},
+			},
+			{
+				in: jsons[7],
+				want: ServerClosedMsg{
+					SubscriptionID: "subid",
+					Msg:            "with prefix",
+					MsgPrefix:      ServerClosedMsgPrefixError,
+				},
+			},
+			{
+				in:   jsons[8],
+				want: ServerClosedMsg{SubscriptionID: "subid", Msg: "prefix: with unknown prefix"},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerClosedMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverClosedMsgsInvalidJSONL), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerClosedMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func BenchmarkServerMsg_Marshal_All(b *testing.B) {

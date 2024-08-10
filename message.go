@@ -1114,7 +1114,7 @@ const (
 	ServerClosedMsgPrefixDuplicate   = "duplicate: "
 	ServerClosedMsgPrefixBlocked     = "blocked: "
 	ServerClosedMsgPrefixRateLimited = "rate-limited: "
-	ServerClosedMsgPrefixRateInvalid = "invalid: "
+	ServerClosedMsgPrefixInvalid     = "invalid: "
 	ServerClosedMsgPrefixError       = "error: "
 )
 
@@ -1150,6 +1150,55 @@ func (msg ServerClosedMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	return ret, err
+}
+
+func (msg *ServerClosedMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, nullJSON) {
+		return nil
+	}
+
+	var elems []string
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 3 {
+		return fmt.Errorf("server closed msg length must be 3 but got %d", len(elems))
+	}
+
+	if elems[0] != MsgLabelClosed {
+		return fmt.Errorf(`server closed msg label must be %q but got %q`, MsgLabelClosed, elems[0])
+	}
+
+	ret := ServerClosedMsg{
+		SubscriptionID: strings.Clone(elems[1]),
+	}
+
+	rawmsg := elems[2]
+	switch {
+	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixPoW):
+		ret.MsgPrefix = ServerClosedMsgPrefixPoW
+
+	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixDuplicate):
+		ret.MsgPrefix = ServerClosedMsgPrefixDuplicate
+
+	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixBlocked):
+		ret.MsgPrefix = ServerClosedMsgPrefixBlocked
+
+	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixRateLimited):
+		ret.MsgPrefix = ServerClosedMsgPrefixRateLimited
+
+	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixInvalid):
+		ret.MsgPrefix = ServerClosedMsgPrefixInvalid
+
+	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixError):
+		ret.MsgPrefix = ServerClosedMsgPrefixError
+	}
+
+	ret.Msg = strings.Clone(rawmsg[len(ret.MsgPrefix):])
+
+	*msg = ret
+
+	return nil
 }
 
 type EventType int
