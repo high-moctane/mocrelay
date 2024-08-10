@@ -991,6 +991,38 @@ func (msg ServerAuthMsg) MarshalJSON() ([]byte, error) {
 	return ret, err
 }
 
+func (msg *ServerAuthMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, nullJSON) {
+		return nil
+	}
+
+	var elems []json.RawMessage
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 2 {
+		return fmt.Errorf("server auth msg length must be 2 but got %d", len(elems))
+	}
+
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label must be string: %w", err)
+	}
+	if label != MsgLabelAuth {
+		return fmt.Errorf(`server auth msg label must be %q but got %q`, MsgLabelAuth, elems[0])
+	}
+
+	var ret ServerAuthMsg
+	ret.Event = new(Event)
+	if err := ret.Event.UnmarshalJSON(elems[1]); err != nil {
+		return fmt.Errorf("failed to unmarshal event json: %w", err)
+	}
+
+	*msg = ret
+
+	return nil
+}
+
 type ServerCountMsg struct {
 	SubscriptionID string
 	Count          uint64

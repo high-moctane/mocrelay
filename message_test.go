@@ -66,6 +66,12 @@ var serverOKMsgsValidJSONL []byte
 //go:embed testdata/serverokmsgs_invalid.jsonl
 var serverOKMsgsInvalidJSONL []byte
 
+//go:embed testdata/serverauthmsgs_valid.jsonl
+var serverAuthMsgsValidJSONL []byte
+
+//go:embed testdata/serverauthmsgs_invalid.jsonl
+var serverAuthMsgsInvalidJSONL []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -1499,77 +1505,91 @@ func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerAuthMsg_MarshalJSON(t *testing.T) {
-	// TODO(high-moctane) use auth event
-
-	type Expect struct {
-		Json []byte
-		Err  error
-	}
+	jsons := bytes.Split(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
-		Name   string
-		Input  *ServerAuthMsg
-		Expect Expect
+		in   ServerAuthMsg
+		want []byte
 	}{
 		{
-			Name: "ok: server auth message",
-			Input: &ServerAuthMsg{
+			in: ServerAuthMsg{
 				Event: &Event{
-					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
-					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-					CreatedAt: 1693157791,
-					Kind:      1,
-					Tags: []Tag{{
-						"e",
-						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-						"",
-						"root",
-					}, {
-						"p",
-						"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-					},
-					},
-					Content: "powa",
-					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+					ID:        "37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723280486,
+					Kind:      22242,
+					Tags:      []Tag{{"relay", "example.com"}, {"challenge", "challengemsg"}},
+					Content:   "",
+					Sig:       "a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb",
 				},
 			},
-			Expect: Expect{
-				Json: []byte(`["AUTH",` +
-					`{` +
-					`"id":"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
-					`"pubkey":"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-					`"created_at":1693157791,` +
-					`"kind":1,` +
-					`"tags":[` +
-					`[` +
-					`"e",` +
-					`"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-					`"",` +
-					`"root"` +
-					`],` +
-					`[` +
-					`"p",` +
-					`"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
-					`]` +
-					`],` +
-					`"content":"powa",` +
-					`"sig":"795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
-					`}]`),
-				Err: nil,
-			},
+			want: jsons[0],
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got, err := tt.Input.MarshalJSON()
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
-				return
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			assert.Equal(t, tt.Expect.Json, got)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
 		})
 	}
+}
+
+func TestServerAuthMsg_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ServerAuthMsg
+		}{
+			{
+				in: jsons[0],
+				want: ServerAuthMsg{
+					Event: &Event{
+						ID:        "37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829",
+						Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+						CreatedAt: 1723280486,
+						Kind:      22242,
+						Tags:      []Tag{{"relay", "example.com"}, {"challenge", "challengemsg"}},
+						Content:   "",
+						Sig:       "a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb",
+					},
+				},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerAuthMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverAuthMsgsInvalidJSONL), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerAuthMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestServerCountMsg_MarshalJSON(t *testing.T) {
