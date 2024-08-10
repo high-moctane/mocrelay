@@ -18,6 +18,9 @@ var eventsValidJSONL []byte
 //go:embed testdata/events_invalid.jsonl
 var eventsInvalidJSONL []byte
 
+//go:embed testdata/reqfilter_valid.jsonl
+var reqFilterValidJSONL []byte
+
 func TestParseClientMsg(t *testing.T) {
 	type Expect struct {
 		MsgType ClientMsg
@@ -629,6 +632,73 @@ func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestReqFilter_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(reqFilterValidJSONL), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ReqFilter
+		}{
+			{
+				in:   jsons[0],
+				want: ReqFilter{},
+			},
+			{
+				in: jsons[1],
+				want: ReqFilter{
+					IDs:     []string{},
+					Authors: []string{},
+					Kinds:   []int64{},
+					Tags: map[string][]string{
+						"#e": {},
+						"#p": {},
+					},
+					Since: toPtr[int64](100),
+					Until: toPtr[int64](10000),
+					Limit: toPtr[int64](200),
+				},
+			},
+			{
+				in: jsons[2],
+				want: ReqFilter{
+					IDs: []string{
+						"0000000000000000000000000000000000000000000000000000000000000000",
+						"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+					},
+					Authors: []string{
+						"0000000000000000000000000000000000000000000000000000000000000000",
+						"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+					},
+					Kinds: []int64{0, 1, 10000, 20000, 30000},
+					Tags: map[string][]string{
+						"#e": {
+							"0000000000000000000000000000000000000000000000000000000000000000",
+							"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+						},
+						"#p": {
+							"0000000000000000000000000000000000000000000000000000000000000000",
+							"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+						},
+					},
+					Since: toPtr[int64](100),
+					Until: toPtr[int64](10000),
+					Limit: toPtr[int64](200),
+				},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ReqFilter
+				err := got.UnmarshalJSON(tt.in)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
 	type Expect struct {
 		ReqFilter ReqFilter
 		IsErr     bool
