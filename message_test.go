@@ -1293,7 +1293,7 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 				Accepted:  false,
 				Msg:       "with prefix",
-				MsgPrefix: ServerOKMsgPrefixPoW,
+				MsgPrefix: MachineReadablePrefixPoW,
 			},
 			want: jsons[2],
 		},
@@ -1302,7 +1302,7 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 				Accepted:  false,
 				Msg:       "with prefix",
-				MsgPrefix: ServerOKMsgPrefixDuplicate,
+				MsgPrefix: MachineReadablePrefixDuplicate,
 			},
 			want: jsons[3],
 		},
@@ -1311,7 +1311,7 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 				Accepted:  false,
 				Msg:       "with prefix",
-				MsgPrefix: ServerOkMsgPrefixBlocked,
+				MsgPrefix: MachineReadablePrefixBlocked,
 			},
 			want: jsons[4],
 		},
@@ -1320,7 +1320,7 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 				Accepted:  false,
 				Msg:       "with prefix",
-				MsgPrefix: ServerOkMsgPrefixRateLimited,
+				MsgPrefix: MachineReadablePrefixRateLimited,
 			},
 			want: jsons[5],
 		},
@@ -1329,7 +1329,7 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 				Accepted:  false,
 				Msg:       "with prefix",
-				MsgPrefix: ServerOkMsgPrefixInvalid,
+				MsgPrefix: MachineReadablePrefixInvalid,
 			},
 			want: jsons[6],
 		},
@@ -1338,7 +1338,7 @@ func TestServerOKMsg_MarshalJSON(t *testing.T) {
 				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 				Accepted:  false,
 				Msg:       "with prefix",
-				MsgPrefix: ServerOkMsgPrefixError,
+				MsgPrefix: MachineReadablePrefixError,
 			},
 			want: jsons[7],
 		},
@@ -1387,7 +1387,7 @@ func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
 					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 					Accepted:  false,
 					Msg:       "with prefix",
-					MsgPrefix: ServerOKMsgPrefixPoW,
+					MsgPrefix: MachineReadablePrefixPoW,
 				},
 			},
 			{
@@ -1396,7 +1396,7 @@ func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
 					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 					Accepted:  false,
 					Msg:       "with prefix",
-					MsgPrefix: ServerOKMsgPrefixDuplicate,
+					MsgPrefix: MachineReadablePrefixDuplicate,
 				},
 			},
 			{
@@ -1405,7 +1405,7 @@ func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
 					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 					Accepted:  false,
 					Msg:       "with prefix",
-					MsgPrefix: ServerOkMsgPrefixBlocked,
+					MsgPrefix: MachineReadablePrefixBlocked,
 				},
 			},
 			{
@@ -1414,7 +1414,7 @@ func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
 					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 					Accepted:  false,
 					Msg:       "with prefix",
-					MsgPrefix: ServerOkMsgPrefixRateLimited,
+					MsgPrefix: MachineReadablePrefixRateLimited,
 				},
 			},
 			{
@@ -1423,7 +1423,7 @@ func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
 					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 					Accepted:  false,
 					Msg:       "with prefix",
-					MsgPrefix: ServerOkMsgPrefixInvalid,
+					MsgPrefix: MachineReadablePrefixInvalid,
 				},
 			},
 			{
@@ -1432,7 +1432,7 @@ func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
 					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 					Accepted:  false,
 					Msg:       "with prefix",
-					MsgPrefix: ServerOkMsgPrefixError,
+					MsgPrefix: MachineReadablePrefixError,
 				},
 			},
 		}
@@ -1660,7 +1660,7 @@ func TestServerClosedMsg_MarshalJSON(t *testing.T) {
 			in: ServerClosedMsg{
 				SubscriptionID: "subid",
 				Msg:            "with prefix",
-				MsgPrefix:      ServerClosedMsgPrefixPoW,
+				MsgPrefix:      MachineReadablePrefixPoW,
 			},
 			want: jsons[2],
 		},
@@ -1668,7 +1668,7 @@ func TestServerClosedMsg_MarshalJSON(t *testing.T) {
 			in: ServerClosedMsg{
 				SubscriptionID: "subid",
 				Msg:            "with prefix",
-				MsgPrefix:      ServerClosedMsgPrefixDuplicate,
+				MsgPrefix:      MachineReadablePrefixDuplicate,
 			},
 			want: jsons[3],
 		},
@@ -1676,7 +1676,7 @@ func TestServerClosedMsg_MarshalJSON(t *testing.T) {
 			in: ServerClosedMsg{
 				SubscriptionID: "subid",
 				Msg:            "with prefix",
-				MsgPrefix:      ServerClosedMsgPrefixBlocked,
+				MsgPrefix:      MachineReadablePrefixBlocked,
 			},
 			want: jsons[4],
 		},
@@ -1684,7 +1684,7 @@ func TestServerClosedMsg_MarshalJSON(t *testing.T) {
 			in: ServerClosedMsg{
 				SubscriptionID: "subid",
 				Msg:            "with prefix",
-				MsgPrefix:      ServerClosedMsgPrefixRateLimited,
+				MsgPrefix:      MachineReadablePrefixRateLimited,
 			},
 			want: jsons[5],
 		},
@@ -1692,7 +1692,7 @@ func TestServerClosedMsg_MarshalJSON(t *testing.T) {
 			in: ServerClosedMsg{
 				SubscriptionID: "subid",
 				Msg:            "with prefix",
-				MsgPrefix:      ServerClosedMsgPrefixInvalid,
+				MsgPrefix:      MachineReadablePrefixInvalid,
 			},
 			want: jsons[6],
 		},
@@ -1700,7 +1700,7 @@ func TestServerClosedMsg_MarshalJSON(t *testing.T) {
 			in: ServerClosedMsg{
 				SubscriptionID: "subid",
 				Msg:            "with prefix",
-				MsgPrefix:      ServerClosedMsgPrefixError,
+				MsgPrefix:      MachineReadablePrefixError,
 			},
 			want: jsons[7],
 		},
@@ -1744,7 +1744,7 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 				want: ServerClosedMsg{
 					SubscriptionID: "subid",
 					Msg:            "with prefix",
-					MsgPrefix:      ServerClosedMsgPrefixPoW,
+					MsgPrefix:      MachineReadablePrefixPoW,
 				},
 			},
 			{
@@ -1752,7 +1752,7 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 				want: ServerClosedMsg{
 					SubscriptionID: "subid",
 					Msg:            "with prefix",
-					MsgPrefix:      ServerClosedMsgPrefixDuplicate,
+					MsgPrefix:      MachineReadablePrefixDuplicate,
 				},
 			},
 			{
@@ -1760,7 +1760,7 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 				want: ServerClosedMsg{
 					SubscriptionID: "subid",
 					Msg:            "with prefix",
-					MsgPrefix:      ServerClosedMsgPrefixBlocked,
+					MsgPrefix:      MachineReadablePrefixBlocked,
 				},
 			},
 			{
@@ -1768,7 +1768,7 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 				want: ServerClosedMsg{
 					SubscriptionID: "subid",
 					Msg:            "with prefix",
-					MsgPrefix:      ServerClosedMsgPrefixRateLimited,
+					MsgPrefix:      MachineReadablePrefixRateLimited,
 				},
 			},
 			{
@@ -1776,7 +1776,7 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 				want: ServerClosedMsg{
 					SubscriptionID: "subid",
 					Msg:            "with prefix",
-					MsgPrefix:      ServerClosedMsgPrefixInvalid,
+					MsgPrefix:      MachineReadablePrefixInvalid,
 				},
 			},
 			{
@@ -1784,7 +1784,7 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 				want: ServerClosedMsg{
 					SubscriptionID: "subid",
 					Msg:            "with prefix",
-					MsgPrefix:      ServerClosedMsgPrefixError,
+					MsgPrefix:      MachineReadablePrefixError,
 				},
 			},
 			{

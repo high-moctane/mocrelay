@@ -33,6 +33,40 @@ const (
 	MsgLabelClosed = "CLOSED"
 )
 
+const (
+	MachineReadablePrefixPoW         = "pow: "
+	MachineReadablePrefixDuplicate   = "duplicate: "
+	MachineReadablePrefixBlocked     = "blocked: "
+	MachineReadablePrefixRateLimited = "rate-limited: "
+	MachineReadablePrefixInvalid     = "invalid: "
+	MachineReadablePrefixError       = "error: "
+)
+
+func parseMachineReadablePrefixMsg(msg string) (prefix, content string) {
+	switch {
+	case strings.HasPrefix(msg, MachineReadablePrefixPoW):
+		return MachineReadablePrefixPoW, msg[len(MachineReadablePrefixPoW):]
+
+	case strings.HasPrefix(msg, MachineReadablePrefixDuplicate):
+		return MachineReadablePrefixDuplicate, msg[len(MachineReadablePrefixDuplicate):]
+
+	case strings.HasPrefix(msg, MachineReadablePrefixBlocked):
+		return MachineReadablePrefixBlocked, msg[len(MachineReadablePrefixBlocked):]
+
+	case strings.HasPrefix(msg, MachineReadablePrefixRateLimited):
+		return MachineReadablePrefixRateLimited, msg[len(MachineReadablePrefixRateLimited):]
+
+	case strings.HasPrefix(msg, MachineReadablePrefixInvalid):
+		return MachineReadablePrefixInvalid, msg[len(MachineReadablePrefixInvalid):]
+
+	case strings.HasPrefix(msg, MachineReadablePrefixError):
+		return MachineReadablePrefixError, msg[len(MachineReadablePrefixError):]
+
+	default:
+		return "", msg
+	}
+}
+
 type ClientMsg interface {
 	ClientMsg()
 	UnmarshalJSON([]byte) error
@@ -864,16 +898,6 @@ type ServerOKMsg struct {
 	MsgPrefix string
 }
 
-const (
-	ServerOKMsgPrefixNoPrefix    = ""
-	ServerOKMsgPrefixPoW         = "pow: "
-	ServerOKMsgPrefixDuplicate   = "duplicate: "
-	ServerOkMsgPrefixBlocked     = "blocked: "
-	ServerOkMsgPrefixRateLimited = "rate-limited: "
-	ServerOkMsgPrefixInvalid     = "invalid: "
-	ServerOkMsgPrefixError       = "error: "
-)
-
 func NewServerOKMsg(eventID string, accepted bool, prefix, msg string) *ServerOKMsg {
 	return &ServerOKMsg{
 		EventID:   eventID,
@@ -936,27 +960,7 @@ func (msg *ServerOKMsg) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("msg is not a json string: %w", err)
 	}
 
-	switch {
-	case strings.HasPrefix(rawmsg, ServerOKMsgPrefixPoW):
-		ret.MsgPrefix = ServerOKMsgPrefixPoW
-
-	case strings.HasPrefix(rawmsg, ServerOKMsgPrefixDuplicate):
-		ret.MsgPrefix = ServerOKMsgPrefixDuplicate
-
-	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixBlocked):
-		ret.MsgPrefix = ServerOkMsgPrefixBlocked
-
-	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixRateLimited):
-		ret.MsgPrefix = ServerOkMsgPrefixRateLimited
-
-	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixInvalid):
-		ret.MsgPrefix = ServerOkMsgPrefixInvalid
-
-	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixError):
-		ret.MsgPrefix = ServerOkMsgPrefixError
-	}
-
-	ret.Msg = strings.Clone(rawmsg[len(ret.MsgPrefix):])
+	ret.MsgPrefix, ret.Msg = parseMachineReadablePrefixMsg(rawmsg)
 
 	*msg = ret
 
@@ -1108,16 +1112,6 @@ type ServerClosedMsg struct {
 	MsgPrefix      string
 }
 
-const (
-	ServerClosedMsgPrefixNoPrefix    = ""
-	ServerClosedMsgPrefixPoW         = "pow: "
-	ServerClosedMsgPrefixDuplicate   = "duplicate: "
-	ServerClosedMsgPrefixBlocked     = "blocked: "
-	ServerClosedMsgPrefixRateLimited = "rate-limited: "
-	ServerClosedMsgPrefixInvalid     = "invalid: "
-	ServerClosedMsgPrefixError       = "error: "
-)
-
 func NewServerClosedMsg(subID string, prefix, msg string) *ServerClosedMsg {
 	return &ServerClosedMsg{
 		SubscriptionID: subID,
@@ -1173,28 +1167,7 @@ func (msg *ServerClosedMsg) UnmarshalJSON(b []byte) error {
 		SubscriptionID: strings.Clone(elems[1]),
 	}
 
-	rawmsg := elems[2]
-	switch {
-	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixPoW):
-		ret.MsgPrefix = ServerClosedMsgPrefixPoW
-
-	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixDuplicate):
-		ret.MsgPrefix = ServerClosedMsgPrefixDuplicate
-
-	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixBlocked):
-		ret.MsgPrefix = ServerClosedMsgPrefixBlocked
-
-	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixRateLimited):
-		ret.MsgPrefix = ServerClosedMsgPrefixRateLimited
-
-	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixInvalid):
-		ret.MsgPrefix = ServerClosedMsgPrefixInvalid
-
-	case strings.HasPrefix(rawmsg, ServerClosedMsgPrefixError):
-		ret.MsgPrefix = ServerClosedMsgPrefixError
-	}
-
-	ret.Msg = strings.Clone(rawmsg[len(ret.MsgPrefix):])
+	ret.MsgPrefix, ret.Msg = parseMachineReadablePrefixMsg(elems[2])
 
 	*msg = ret
 

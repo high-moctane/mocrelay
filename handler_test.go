@@ -213,13 +213,13 @@ func TestRouterHandler_Handle(t *testing.T) {
 				NewServerOKMsg(
 					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 					true,
-					ServerOKMsgPrefixNoPrefix,
+					"",
 					"",
 				),
 				NewServerOKMsg(
 					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 					true,
-					ServerOKMsgPrefixNoPrefix,
+					"",
 					"",
 				),
 			},
@@ -318,13 +318,13 @@ func TestRouterHandler_Handle(t *testing.T) {
 				NewServerOKMsg(
 					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
 					true,
-					ServerOKMsgPrefixNoPrefix,
+					"",
 					"",
 				),
 				NewServerOKMsg(
 					"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
 					true,
-					ServerOKMsgPrefixNoPrefix,
+					"",
 					"",
 				),
 			},

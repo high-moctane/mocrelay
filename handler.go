@@ -196,7 +196,7 @@ func (router *RouterHandler) recv(
 
 	case *ClientEventMsg:
 		router.subs.Publish(msg.Event)
-		return NewServerOKMsg(msg.Event.ID, true, ServerOKMsgPrefixNoPrefix, "")
+		return NewServerOKMsg(msg.Event.ID, true, "", "")
 
 	case *ClientCloseMsg:
 		router.subs.Unsubscribe(reqID, msg.SubscriptionID)
@@ -327,7 +327,7 @@ func (h *simpleCacheHandler) ServeNostrClientMsg(
 		if h.c.Add(ev) {
 			okMsg = NewServerOKMsg(msg.Event.ID, true, "", "")
 		} else {
-			okMsg = NewServerOKMsg(msg.Event.ID, false, ServerOKMsgPrefixDuplicate, "already have this event")
+			okMsg = NewServerOKMsg(msg.Event.ID, false, MachineReadablePrefixDuplicate, "already have this event")
 		}
 		return newClosedBufCh(okMsg), nil
 
@@ -1115,7 +1115,7 @@ func (m *simpleEventCreatedAtMiddlewareBase) ServeNostrClientMsg(
 			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
 				msg.Event.ID,
 				false,
-				ServerOKMsgPrefixNoPrefix,
+				"",
 				"too old created_at",
 			))
 			return nil, smsgCh, nil
@@ -1123,7 +1123,7 @@ func (m *simpleEventCreatedAtMiddlewareBase) ServeNostrClientMsg(
 			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
 				msg.Event.ID,
 				false,
-				ServerOKMsgPrefixNoPrefix,
+				"",
 				"too far off created_at",
 			))
 			return nil, smsgCh, nil
@@ -1588,7 +1588,7 @@ func (m *simpleCreatedAtLowerLimitMiddlewareBase) ServeNostrClientMsg(
 			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
 				msg.Event.ID,
 				false,
-				ServerOKMsgPrefixNoPrefix,
+				"",
 				"too old created_at",
 			))
 			return nil, smsgCh, nil
@@ -1643,7 +1643,7 @@ func (m *simpleCreatedAtUpperLimitMiddlewareBase) ServeNostrClientMsg(
 			smsgCh := newClosedBufCh[ServerMsg](NewServerOKMsg(
 				msg.Event.ID,
 				false,
-				ServerOKMsgPrefixNoPrefix,
+				"",
 				"too far off created_at",
 			))
 			return nil, smsgCh, nil
@@ -1711,7 +1711,7 @@ func (m *simpleRecvEventUniqueFilterMiddlewareBase) ServeNostrClientMsg(
 			okMsg := NewServerOKMsg(
 				msg.Event.ID,
 				false,
-				ServerOKMsgPrefixDuplicate,
+				MachineReadablePrefixDuplicate,
 				"the event already found",
 			)
 			return nil, newClosedBufCh[ServerMsg](okMsg), nil
@@ -1830,7 +1830,7 @@ func (m *simpleRecvEventAllowFilterMiddlewareBase) ServeNostrClientMsg(
 			okMsg := NewServerOKMsg(
 				msg.Event.ID,
 				false,
-				ServerOkMsgPrefixBlocked,
+				MachineReadablePrefixBlocked,
 				"the event is not allowed",
 			)
 			return nil, newClosedBufCh[ServerMsg](okMsg), nil
@@ -1884,7 +1884,7 @@ func (m *simpleRecvEventDenyFilterMiddlewareBase) ServeNostrClientMsg(
 			okMsg := NewServerOKMsg(
 				msg.Event.ID,
 				false,
-				ServerOkMsgPrefixBlocked,
+				MachineReadablePrefixBlocked,
 				"the event is not allowed",
 			)
 			return nil, newClosedBufCh[ServerMsg](okMsg), nil
