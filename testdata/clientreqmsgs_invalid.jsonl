@@ -1,0 +1,6 @@
+["REQ","subid",{}
+["REQ","subid"]
+["RE","subid",{}]
+["REQ",1,{}]
+["REQ","subid",1]
+["REQ","subid",{"invalid":1}]

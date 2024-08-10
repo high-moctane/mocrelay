@@ -18,6 +18,12 @@ var clientEventMsgsValidJSON []byte
 //go:embed testdata/clienteventmsgs_invalid.jsonl
 var clientEventMsgsInvalidJSON []byte
 
+//go:embed testdata/clientreqmsgs_valid.jsonl
+var clientReqMsgsValidJSON []byte
+
+//go:embed testdata/clientreqmsgs_invalid.jsonl
+var clientReqMsgsInvalidJSON []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -413,95 +419,92 @@ func TestClientEventMsg_UnarshalJSON(t *testing.T) {
 }
 
 func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
-	type Expect struct {
-		SubscriptionID string
-		ReqFilters     []*ReqFilter
-		IsErr          bool
-	}
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSON), []byte("\n"))
 
-	tests := []struct {
-		Name   string
-		Input  []byte
-		Expect Expect
-	}{
-		{
-			Name: "ok: client REQ message",
-			Input: []byte(
-				`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
-			),
-			Expect: Expect{
-				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				ReqFilters: []*ReqFilter{
-					{
-						IDs:     []string{"powa11", "powa12"},
-						Authors: []string{"meu11", "meu12"},
-						Kinds:   []int64{1, 3},
-						Tags: map[string][]string{
-							"#e": {"moyasu11", "moyasu12"},
+		tests := []struct {
+			in   []byte
+			want ClientReqMsg
+		}{
+			{
+				in: jsons[0],
+				want: ClientReqMsg{
+					SubscriptionID: "subid",
+					ReqFilters:     []*ReqFilter{{}},
+				},
+			},
+			{
+				in: jsons[1],
+				want: ClientReqMsg{
+					SubscriptionID: "subid",
+					ReqFilters: []*ReqFilter{
+						{
+							IDs:     []string{},
+							Authors: []string{},
+							Kinds:   []int64{},
+							Tags: map[string][]string{
+								"#e": {},
+								"#p": {},
+							},
+							Since: toPtr[int64](100),
+							Until: toPtr[int64](10000),
+							Limit: toPtr[int64](200),
 						},
-						Since: toPtr(int64(16)),
-						Until: toPtr(int64(184838)),
-						Limit: toPtr(int64(143)),
-					},
-					{
-						IDs:     []string{"powa21", "powa22"},
-						Authors: []string{"meu21", "meu22"},
-						Kinds:   []int64{11, 33},
-						Tags:    map[string][]string{"#e": {"moyasu21", "moyasu22"}},
-						Since:   toPtr(int64(17)),
-						Until:   toPtr(int64(184839)),
-						Limit:   toPtr(int64(144)),
-					},
-				},
-				IsErr: false,
-			},
-		},
-		{
-			Name:  "ok: client REQ message empty",
-			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{}]`),
-			Expect: Expect{
-				SubscriptionID: "8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",
-				ReqFilters: []*ReqFilter{
-					{
-						IDs:     nil,
-						Authors: nil,
-						Kinds:   nil,
-						Tags:    nil,
-						Since:   nil,
-						Until:   nil,
-						Limit:   nil,
+						{
+							IDs: []string{
+								"0000000000000000000000000000000000000000000000000000000000000000",
+								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+							},
+							Authors: []string{
+								"0000000000000000000000000000000000000000000000000000000000000000",
+								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+							},
+							Kinds: []int64{0, 1, 10000, 20000, 30000},
+							Tags: map[string][]string{
+								"#e": {
+									"0000000000000000000000000000000000000000000000000000000000000000",
+									"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+								},
+								"#p": {
+									"0000000000000000000000000000000000000000000000000000000000000000",
+									"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+								},
+							},
+							Since: toPtr[int64](100),
+							Until: toPtr[int64](10000),
+							Limit: toPtr[int64](200),
+						},
 					},
 				},
-				IsErr: false,
 			},
-		},
-		{
-			Name:  "ng: client REQ message invalid",
-			Input: []byte(`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":1}]`),
-			Expect: Expect{
-				IsErr: true,
-			},
-		},
-	}
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			var msg ClientReqMsg
-			err := msg.UnmarshalJSON(tt.Input)
-			if (err != nil) != tt.Expect.IsErr {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			if err != nil {
-				return
-			}
-			assert.Equal(t, tt.Expect.SubscriptionID, msg.SubscriptionID)
-			assert.Len(t, msg.ReqFilters, len(tt.Expect.ReqFilters))
-			for i := 0; i < len(tt.Expect.ReqFilters); i++ {
-				assert.EqualExportedValues(t, *tt.Expect.ReqFilters[i], *msg.ReqFilters[i])
-			}
-		})
-	}
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ClientReqMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsInvalidJSON), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ClientReqMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestClientCloseMsg_UnmarshalJSON(t *testing.T) {
