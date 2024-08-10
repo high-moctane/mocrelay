@@ -72,6 +72,12 @@ var serverAuthMsgsValidJSONL []byte
 //go:embed testdata/serverauthmsgs_invalid.jsonl
 var serverAuthMsgsInvalidJSONL []byte
 
+//go:embed testdata/servercountmsgs_valid.jsonl
+var serverCountMsgsValidJSONL []byte
+
+//go:embed testdata/servercountmsgs_invalid.jsonl
+var serverCountMsgsInvalidJSONL []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -1593,52 +1599,91 @@ func TestServerAuthMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerCountMsg_MarshalJSON(t *testing.T) {
-	type Expect struct {
-		Json []byte
-		Err  error
-	}
+	jsons := bytes.Split(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
-		Name   string
-		Input  *ServerCountMsg
-		Expect Expect
+		in   ServerCountMsg
+		want []byte
 	}{
 		{
-			Name: "ok: server count message",
-			Input: &ServerCountMsg{
-				SubscriptionID: "sub_id",
-				Count:          192,
-				Approximate:    nil,
-			},
-			Expect: Expect{
-				Json: []byte(`["COUNT","sub_id",{"count":192}]`),
-				Err:  nil,
-			},
+			in:   ServerCountMsg{SubscriptionID: "subid", Count: 100},
+			want: jsons[0],
 		},
 		{
-			Name: "ok: server count message",
-			Input: &ServerCountMsg{
-				SubscriptionID: "sub_id",
-				Count:          192,
-				Approximate:    toPtr(false),
-			},
-			Expect: Expect{
-				Json: []byte(`["COUNT","sub_id",{"count":192,"approximate":false}]`),
-				Err:  nil,
-			},
+			in:   ServerCountMsg{SubscriptionID: "subid", Count: 100, Approximate: toPtr(false)},
+			want: jsons[1],
+		},
+		{
+			in:   ServerCountMsg{SubscriptionID: "subid", Count: 100, Approximate: toPtr(true)},
+			want: jsons[2],
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got, err := tt.Input.MarshalJSON()
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
-				return
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			assert.Equal(t, tt.Expect.Json, got)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
 		})
 	}
+}
+
+func TestServerCountMsg_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ServerCountMsg
+		}{
+			{
+				in:   jsons[0],
+				want: ServerCountMsg{SubscriptionID: "subid", Count: 100},
+			},
+			{
+				in: jsons[1],
+				want: ServerCountMsg{
+					SubscriptionID: "subid",
+					Count:          100,
+					Approximate:    toPtr(false),
+				},
+			},
+			{
+				in:   jsons[2],
+				want: ServerCountMsg{SubscriptionID: "subid", Count: 100, Approximate: toPtr(true)},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerCountMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverCountMsgsInvalidJSONL), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerCountMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestServerClosedMsg_MarshalJSON(t *testing.T) {

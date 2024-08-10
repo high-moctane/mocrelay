@@ -1041,16 +1041,17 @@ func (*ServerCountMsg) ServerMsg() {}
 
 var ErrMarshalServerCountMsg = errors.New("failed to marshal server count msg")
 
+type serverCountMsgPayload struct {
+	Count       uint64 `json:"count"`
+	Approximate *bool  `json:"approximate,omitempty"`
+}
+
 func (msg ServerCountMsg) MarshalJSON() ([]byte, error) {
-	type payload struct {
-		Count       uint64 `json:"count"`
-		Approximate *bool  `json:"approximate,omitempty"`
-	}
 
 	v := [3]any{
 		MsgLabelCount,
 		msg.SubscriptionID,
-		payload{Count: msg.Count, Approximate: msg.Approximate},
+		serverCountMsgPayload{Count: msg.Count, Approximate: msg.Approximate},
 	}
 	ret, err := json.Marshal(&v)
 	if err != nil {
@@ -1058,6 +1059,47 @@ func (msg ServerCountMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	return ret, err
+}
+
+func (msg *ServerCountMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, nullJSON) {
+		return nil
+	}
+
+	var elems []json.RawMessage
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 3 {
+		return fmt.Errorf("server count msg length must be 3 but got %d", len(elems))
+	}
+
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label must be string: %w", err)
+	}
+	if label != MsgLabelCount {
+		return fmt.Errorf(`server count msg label must be %q but got %q`, MsgLabelCount, elems[0])
+	}
+
+	var ret ServerCountMsg
+	if err := json.Unmarshal(elems[1], &ret.SubscriptionID); err != nil {
+		return fmt.Errorf("subscription id is not a json string: %w", err)
+	}
+
+	dec := json.NewDecoder(bytes.NewBuffer(elems[2]))
+	dec.DisallowUnknownFields()
+	var payload serverCountMsgPayload
+	if err := dec.Decode(&payload); err != nil {
+		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	}
+
+	ret.Count = payload.Count
+	ret.Approximate = payload.Approximate
+
+	*msg = ret
+
+	return nil
 }
 
 type ServerClosedMsg struct {
