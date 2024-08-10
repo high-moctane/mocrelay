@@ -896,6 +896,74 @@ func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
 	})
 }
 
+func TestReqFilter_MarshalJSON(t *testing.T) {
+	jsons := bytes.Split(bytes.TrimSpace(reqFilterValidJSONL), []byte("\n"))
+
+	tests := []struct {
+		in   ReqFilter
+		want []byte
+	}{
+		{
+			in:   ReqFilter{},
+			want: jsons[0],
+		},
+		{
+			in: ReqFilter{
+				IDs:     []string{},
+				Authors: []string{},
+				Kinds:   []int64{},
+				Tags: map[string][]string{
+					"#e": {},
+					"#p": {},
+				},
+				Since: toPtr[int64](100),
+				Until: toPtr[int64](10000),
+				Limit: toPtr[int64](200),
+			},
+			want: jsons[1],
+		},
+		{
+			in: ReqFilter{
+				IDs: []string{
+					"0000000000000000000000000000000000000000000000000000000000000000",
+					"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+				},
+				Authors: []string{
+					"0000000000000000000000000000000000000000000000000000000000000000",
+					"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+				},
+				Kinds: []int64{0, 1, 10000, 20000, 30000},
+				Tags: map[string][]string{
+					"#e": {
+						"0000000000000000000000000000000000000000000000000000000000000000",
+						"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+					},
+					"#p": {
+						"0000000000000000000000000000000000000000000000000000000000000000",
+						"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+					},
+				},
+				Since: toPtr[int64](100),
+				Until: toPtr[int64](10000),
+				Limit: toPtr[int64](200),
+			},
+			want: jsons[2],
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestReqFilter_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		jsons := bytes.Split(bytes.TrimSpace(reqFilterValidJSONL), []byte("\n"))
