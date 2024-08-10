@@ -145,7 +145,7 @@ func (msg *ClientEventMsg) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("not a json array: %w", err)
 	}
 	if len(elems) != 2 {
-		return fmt.Errorf("client event msg length must be 3 but got %d", len(elems))
+		return fmt.Errorf("client event msg length must be 2 but got %d", len(elems))
 	}
 
 	var label string

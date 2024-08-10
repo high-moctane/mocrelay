@@ -12,6 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+//go:embed testdata/clienteventmsgs_valid.jsonl
+var clientEventMsgsValidJSON []byte
+
+//go:embed testdata/clienteventmsgs_invalid.jsonl
+var clientEventMsgsInvalidJSON []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -144,30 +150,6 @@ func TestParseClientMsg(t *testing.T) {
 	}
 }
 
-func TestReqFilter_JSONIdempotency(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(reqFilterValidJSONL), []byte("\n"))
-
-	for i, b := range jsons {
-		t.Run(fmt.Sprintf("event_%d", i), func(t *testing.T) {
-			var f ReqFilter
-			err := json.Unmarshal(b, &f)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			got, err := json.Marshal(f)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if !bytes.Equal(b, got) {
-				t.Errorf("expected %s but got %s", b, got)
-			}
-		})
-	}
-}
-
 func BenchmarkParseClientMsg_All(b *testing.B) {
 	eventJSON := []byte(`["EVENT",` +
 		`{` +
@@ -278,97 +260,88 @@ func BenchmarkParseClientMsg_Count(b *testing.B) {
 	}
 }
 
-func TestClientEventMsg_UnmarshalJSON(t *testing.T) {
-	type Expect struct {
-		Event Event
-		IsErr bool
-	}
+func TestClientEventMsg_UnarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSON), []byte("\n"))
 
-	tests := []struct {
-		Name   string
-		Input  []byte
-		Expect Expect
-	}{
-		{
-			Name: "ok: client event message",
-			Input: []byte(`["EVENT",` +
-				`{` +
-				`"kind": 1,` +
-				`"pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-				`"created_at": 1693156107,` +
-				`"tags": [],` +
-				`"content": "ぽわ〜",` +
-				`"id": "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-				`"sig": "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee"` +
-				`}` +
-				`]`),
-			Expect: Expect{
-				Event: Event{
-					ID:        "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-					CreatedAt: 1693156107,
-					Kind:      1,
-					Tags:      []Tag{},
-					Content:   "ぽわ〜",
-					Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
+		tests := []struct {
+			in   []byte
+			want ClientEventMsg
+		}{
+			{
+				in: jsons[0],
+				want: ClientEventMsg{
+					Event: &Event{
+						ID:        "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+						Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+						CreatedAt: 1723212754,
+						Kind:      1,
+						Tags:      []Tag{},
+						Content:   "",
+						Sig:       "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f",
+					},
 				},
-				IsErr: false,
 			},
-		},
-		{
-			Name:  "ng: client event message invalid type",
-			Input: []byte(`["EVENT",3000]`),
-			Expect: Expect{
-				IsErr: true,
+			{
+				in: jsons[1],
+				want: ClientEventMsg{
+					Event: &Event{
+						ID:        "07e782ba4b5fe85b91264d03c445c339b8783e0ea2ae3bdfb0122eda513d86ac",
+						Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+						CreatedAt: 1723212830,
+						Kind:      1,
+						Tags:      []Tag{},
+						Content:   "with content",
+						Sig:       "a714af322ebf22bec24364319efc635e88230c099a8e08238fff1f4f5608494cddbcc77bef426cc653e4994ac23625553500d05244dd28ed2ac3096cff0387af",
+					},
+				},
 			},
-		},
-		{
-			Name:  "ng: client event message invalid length",
-			Input: []byte(`["EVENT"]`),
-			Expect: Expect{
-				IsErr: true,
+			{
+				in: jsons[2],
+				want: ClientEventMsg{
+					Event: &Event{
+						ID:        "80cfa4cff224ad441b9cb50fdce68a47f30a2d7e38fa2b06f2ddac748bbac137",
+						Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+						CreatedAt: 1723212930,
+						Kind:      1,
+						Tags: []Tag{
+							{"key1", "value1"},
+							{"key2"},
+							{"key3", "value3-1", "value3-2"},
+						},
+						Content: "with tags",
+						Sig:     "7553bd8efb6e338e58cd9b807225dfd5d71043f94173aa234c7727aa28236009ee34aa76422e6d3912a5d104100c49148b043202df7f8b258782b1816434d1ea",
+					},
+				},
 			},
-		},
-	}
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			var msg ClientEventMsg
-			err := msg.UnmarshalJSON(tt.Input)
-			if (err != nil) != tt.Expect.IsErr {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			if err != nil {
-				return
-			}
-			assert.EqualExportedValues(t, tt.Expect.Event, *(msg.Event))
-		})
-	}
-}
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ClientEventMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
 
-func TestEvent_JSONIdempotency(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(eventsValidJSONL), []byte("\n"))
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsInvalidJSON), []byte("\n"))
 
-	for i, b := range jsons {
-		t.Run(fmt.Sprintf("event_%d", i), func(t *testing.T) {
-			var ev Event
-			err := json.Unmarshal(b, &ev)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			got, err := json.Marshal(ev)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if !bytes.Equal(b, got) {
-				t.Errorf("expected %s but got %s", b, got)
-			}
-		})
-	}
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ClientEventMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
@@ -739,6 +712,30 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestReqFilter_JSONIdempotency(t *testing.T) {
+	jsons := bytes.Split(bytes.TrimSpace(reqFilterValidJSONL), []byte("\n"))
+
+	for i, b := range jsons {
+		t.Run(fmt.Sprintf("event_%d", i), func(t *testing.T) {
+			var f ReqFilter
+			err := json.Unmarshal(b, &f)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			got, err := json.Marshal(f)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if !bytes.Equal(b, got) {
+				t.Errorf("expected %s but got %s", b, got)
+			}
+		})
+	}
 }
 
 func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
@@ -1306,6 +1303,35 @@ func BenchmarkServerMsg_Marshal_Closed(b *testing.B) {
 	}
 }
 
+func BenchmarkParseEvent(b *testing.B) {
+	input := []byte(`{` +
+		`  "kind": 1,` +
+		`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
+		`  "created_at": 1693157791,` +
+		`  "tags": [` +
+		`    [` +
+		`      "e",` +
+		`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
+		`      "",` +
+		`      "root"` +
+		`    ],` +
+		`    [` +
+		`      "p",` +
+		`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
+		`    ]` +
+		`  ],` +
+		`  "content": "powa",` +
+		`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
+		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
+		`}`)
+
+	var event Event
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		event.UnmarshalJSON(input)
+	}
+}
+
 func TestEvent_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		jsons := bytes.Split(bytes.TrimSpace(eventsValidJSONL), []byte("\n"))
@@ -1388,32 +1414,27 @@ func TestEvent_UnmarshalJSON(t *testing.T) {
 	})
 }
 
-func BenchmarkParseEvent(b *testing.B) {
-	input := []byte(`{` +
-		`  "kind": 1,` +
-		`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-		`  "created_at": 1693157791,` +
-		`  "tags": [` +
-		`    [` +
-		`      "e",` +
-		`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-		`      "",` +
-		`      "root"` +
-		`    ],` +
-		`    [` +
-		`      "p",` +
-		`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
-		`    ]` +
-		`  ],` +
-		`  "content": "powa",` +
-		`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
-		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
-		`}`)
+func TestEvent_JSONIdempotency(t *testing.T) {
+	jsons := bytes.Split(bytes.TrimSpace(eventsValidJSONL), []byte("\n"))
 
-	var event Event
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		event.UnmarshalJSON(input)
+	for i, b := range jsons {
+		t.Run(fmt.Sprintf("event_%d", i), func(t *testing.T) {
+			var ev Event
+			err := json.Unmarshal(b, &ev)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			got, err := json.Marshal(ev)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if !bytes.Equal(b, got) {
+				t.Errorf("expected %s but got %s", b, got)
+			}
+		})
 	}
 }
 
