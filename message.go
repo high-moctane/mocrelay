@@ -764,6 +764,43 @@ func (msg ServerEventMsg) MarshalJSON() ([]byte, error) {
 	return ret, nil
 }
 
+func (msg *ServerEventMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, nullJSON) {
+		return nil
+	}
+
+	var elems []json.RawMessage
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 3 {
+		return fmt.Errorf("server event msg length must be 3 but got %d", len(elems))
+	}
+
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label must be string: %w", err)
+	}
+	if label != MsgLabelEvent {
+		return fmt.Errorf("server event msg label must be %q but got %q", MsgLabelEvent, label)
+	}
+
+	var ret ServerEventMsg
+
+	if err := json.Unmarshal(elems[1], &ret.SubscriptionID); err != nil {
+		return fmt.Errorf("subscription id is not a json string: %w", err)
+	}
+
+	ret.Event = new(Event)
+	if err := ret.Event.UnmarshalJSON(elems[2]); err != nil {
+		return fmt.Errorf("failed to unmarshal event json: %w", err)
+	}
+
+	*msg = ret
+
+	return nil
+}
+
 type ServerNoticeMsg struct {
 	Message string
 }

@@ -48,6 +48,12 @@ var serverEOSEMsgsValidJSON []byte
 //go:embed testdata/servereosemsgs_invalid.jsonl
 var serverEOSEMsgsInvalidJSON []byte
 
+//go:embed testdata/servereventmsgs_valid.jsonl
+var serverEventMsgsValidJSON []byte
+
+//go:embed testdata/servereventmsgs_invalid.jsonl
+var serverEventMsgsInvalidJSON []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -1123,76 +1129,93 @@ func TestServerEOSEMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerEventMsg_MarshalJSON(t *testing.T) {
-	type Expect struct {
-		Json []byte
-		Err  error
-	}
+	jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSON), []byte("\n"))
 
 	tests := []struct {
-		Name   string
-		Input  *ServerEventMsg
-		Expect Expect
+		in   ServerEventMsg
+		want []byte
 	}{
 		{
-			Name: "ok: server event message",
-			Input: &ServerEventMsg{
-				SubscriptionID: "sub_id",
+			in: ServerEventMsg{
+				SubscriptionID: "subid",
 				Event: &Event{
-					ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
-					Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-					CreatedAt: 1693157791,
+					ID:        "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723212754,
 					Kind:      1,
-					Tags: []Tag{{
-						"e",
-						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-						"",
-						"root",
-					}, {
-						"p",
-						"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-					},
-					},
-					Content: "powa",
-					Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
+					Tags:      []Tag{},
+					Content:   "",
+					Sig:       "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f",
 				},
 			},
-			Expect: Expect{
-				Json: []byte(`["EVENT","sub_id",` +
-					`{` +
-					`"id":"49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
-					`"pubkey":"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-					`"created_at":1693157791,` +
-					`"kind":1,` +
-					`"tags":[` +
-					`[` +
-					`"e",` +
-					`"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-					`"",` +
-					`"root"` +
-					`],` +
-					`[` +
-					`"p",` +
-					`"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
-					`]` +
-					`],` +
-					`"content":"powa",` +
-					`"sig":"795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
-					`}]`),
-				Err: nil,
-			},
+			want: jsons[0],
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got, err := tt.Input.MarshalJSON()
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
-				return
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			assert.Equal(t, tt.Expect.Json, got)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
 		})
 	}
+}
+
+func TestServerEventMsg_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSON), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ServerEventMsg
+		}{
+			{
+				in: jsons[0],
+				want: ServerEventMsg{
+					SubscriptionID: "subid",
+					Event: &Event{
+						ID:        "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+						Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+						CreatedAt: 1723212754,
+						Kind:      1,
+						Tags:      []Tag{},
+						Content:   "",
+						Sig:       "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f",
+					},
+				},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerEventMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsInvalidJSON), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerEventMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestServerNoticeMsg_MarshalJSON(t *testing.T) {
