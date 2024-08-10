@@ -34,7 +34,7 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 	var gots []ServerMsg
 	var gotjsons, wantjsons []string
 	for _, v := range out {
-		j, err := v.MarshalJSON()
+		j, err := json.Marshal(v)
 		if err != nil {
 			t.Errorf("unexpect error: %s", err)
 			return
@@ -54,7 +54,7 @@ Loop:
 	}
 
 	for _, v := range gots {
-		j, err := v.MarshalJSON()
+		j, err := json.Marshal(v)
 		if err != nil {
 			t.Errorf("unexpect error: %s", err)
 			return

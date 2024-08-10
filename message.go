@@ -68,8 +68,7 @@ func parseMachineReadablePrefixMsg(msg string) (prefix, content string) {
 }
 
 type ClientMsg interface {
-	ClientMsg()
-	UnmarshalJSON([]byte) error
+	ClientMsgLabel() string
 }
 
 func isNilClientMsg(msg ClientMsg) bool {
@@ -157,7 +156,7 @@ type ClientEventMsg struct {
 	Event *Event
 }
 
-func (*ClientEventMsg) ClientMsg() {}
+func (*ClientEventMsg) ClientMsgLabel() string { return MsgLabelEvent }
 
 func (msg ClientEventMsg) MarshalJSON() ([]byte, error) {
 	v := [2]any{MsgLabelEvent, msg.Event}
@@ -211,7 +210,7 @@ type ClientReqMsg struct {
 	ReqFilters     []*ReqFilter
 }
 
-func (*ClientReqMsg) ClientMsg() {}
+func (*ClientReqMsg) ClientMsgLabel() string { return MsgLabelReq }
 
 func (msg ClientReqMsg) MarshalJSON() ([]byte, error) {
 	v := make([]any, 2+len(msg.ReqFilters))
@@ -293,7 +292,7 @@ type ClientCloseMsg struct {
 	SubscriptionID string
 }
 
-func (*ClientCloseMsg) ClientMsg() {}
+func (*ClientCloseMsg) ClientMsgLabel() string { return MsgLabelClose }
 
 func (msg ClientCloseMsg) MarshalJSON() ([]byte, error) {
 	v := [2]string{MsgLabelClose, msg.SubscriptionID}
@@ -335,7 +334,7 @@ type ClientAuthMsg struct {
 	Challenge string
 }
 
-func (*ClientAuthMsg) ClientMsg() {}
+func (*ClientAuthMsg) ClientMsgLabel() string { return MsgLabelAuth }
 
 func (msg ClientAuthMsg) MarshalJSON() ([]byte, error) {
 	v := [2]string{MsgLabelAuth, msg.Challenge}
@@ -378,7 +377,7 @@ type ClientCountMsg struct {
 	ReqFilters     []*ReqFilter
 }
 
-func (*ClientCountMsg) ClientMsg() {}
+func (*ClientCountMsg) ClientMsgLabel() string { return MsgLabelCount }
 
 func (msg ClientCountMsg) MarshalJSON() ([]byte, error) {
 	v := make([]any, 2+len(msg.ReqFilters))
@@ -714,8 +713,7 @@ func (fil *ReqFilter) Valid() (ok bool) {
 }
 
 type ServerMsg interface {
-	ServerMsg()
-	MarshalJSON() ([]byte, error)
+	ServerMsgLabel() string
 }
 
 func isNilServerMsg(msg ServerMsg) bool {
@@ -732,7 +730,7 @@ func NewServerEOSEMsg(subID string) *ServerEOSEMsg {
 	}
 }
 
-func (*ServerEOSEMsg) ServerMsg() {}
+func (*ServerEOSEMsg) ServerMsgLabel() string { return MsgLabelEOSE }
 
 var ErrMarshalServerEOSEMsg = errors.New("failed to marshal server eose msg")
 
@@ -784,7 +782,7 @@ func NewServerEventMsg(subID string, event *Event) *ServerEventMsg {
 	return ret
 }
 
-func (*ServerEventMsg) ServerMsg() {}
+func (*ServerEventMsg) ServerMsgLabel() string { return MsgLabelEvent }
 
 var ErrMarshalServerEventMsg = errors.New("failed to marshal server event msg")
 
@@ -851,7 +849,7 @@ func NewServerNoticeMsgf(format string, a ...any) *ServerNoticeMsg {
 	}
 }
 
-func (*ServerNoticeMsg) ServerMsg() {}
+func (*ServerNoticeMsg) ServerMsgLabel() string { return MsgLabelNotice }
 
 var ErrMarshalServerNoticeMsg = errors.New("failed to marshal server notice msg")
 
@@ -907,7 +905,7 @@ func NewServerOKMsg(eventID string, accepted bool, prefix, msg string) *ServerOK
 	}
 }
 
-func (*ServerOKMsg) ServerMsg() {}
+func (*ServerOKMsg) ServerMsgLabel() string { return MsgLabelOK }
 
 func (msg *ServerOKMsg) Message() string {
 	return msg.MsgPrefix + msg.Msg
@@ -981,7 +979,7 @@ func NewServerAuthMsg(event *Event) (*ServerAuthMsg, error) {
 	return &ServerAuthMsg{Event: event}, nil
 }
 
-func (*ServerAuthMsg) ServerMsg() {}
+func (*ServerAuthMsg) ServerMsgLabel() string { return MsgLabelAuth }
 
 var ErrMarshalServerAuthMsg = errors.New("failed to marshal server auth msg")
 
@@ -1041,7 +1039,7 @@ func NewServerCountMsg(subID string, count uint64, approx *bool) *ServerCountMsg
 	}
 }
 
-func (*ServerCountMsg) ServerMsg() {}
+func (*ServerCountMsg) ServerMsgLabel() string { return MsgLabelCount }
 
 var ErrMarshalServerCountMsg = errors.New("failed to marshal server count msg")
 
@@ -1128,7 +1126,7 @@ func NewServerClosedMsgf(subID string, prefix, format string, a ...any) *ServerC
 	}
 }
 
-func (*ServerClosedMsg) ServerMsg() {}
+func (*ServerClosedMsg) ServerMsgLabel() string { return MsgLabelClosed }
 
 func (msg *ServerClosedMsg) Message() string {
 	return msg.MsgPrefix + msg.Msg
