@@ -587,6 +587,32 @@ func TestClientCloseMsg_UnmarshalJSON(t *testing.T) {
 	})
 }
 
+func TestClientAuthMsg_MarshalJSON(t *testing.T) {
+	jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSON), []byte("\n"))
+
+	tests := []struct {
+		in   ClientAuthMsg
+		want []byte
+	}{
+		{
+			in:   ClientAuthMsg{Challenge: "challenge"},
+			want: jsons[0],
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestClientAuthMsg_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSON), []byte("\n"))
