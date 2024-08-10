@@ -712,6 +712,31 @@ func (msg ServerEOSEMsg) MarshalJSON() ([]byte, error) {
 	return ret, nil
 }
 
+func (msg *ServerEOSEMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, nullJSON) {
+		return nil
+	}
+
+	var elems []string
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 2 {
+		return fmt.Errorf("server EOSE msg length must be 2 but got %d", len(elems))
+	}
+	if elems[0] != MsgLabelEOSE {
+		return fmt.Errorf(`server EOSE msg label must be %q but got %q`, MsgLabelEOSE, elems[0])
+	}
+
+	ret := ServerEOSEMsg{
+		SubscriptionID: strings.Clone(elems[1]),
+	}
+
+	*msg = ret
+
+	return nil
+}
+
 type ServerEventMsg struct {
 	SubscriptionID string
 	Event          *Event

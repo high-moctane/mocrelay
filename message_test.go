@@ -42,6 +42,12 @@ var clientCountMsgsValidJSON []byte
 //go:embed testdata/clientcountmsgs_invalid.jsonl
 var clientCountMsgsInvalidJSON []byte
 
+//go:embed testdata/servereosemsgs_valid.jsonl
+var serverEOSEMsgsValidJSON []byte
+
+//go:embed testdata/servereosemsgs_invalid.jsonl
+var serverEOSEMsgsInvalidJSON []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -1049,38 +1055,71 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
-	type Expect struct {
-		Json []byte
-		Err  error
-	}
+	jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSON), []byte("\n"))
 
 	tests := []struct {
-		Name   string
-		Input  *ServerEOSEMsg
-		Expect Expect
+		in   ServerEOSEMsg
+		want []byte
 	}{
 		{
-			Name: "ok: server eose message",
-			Input: &ServerEOSEMsg{
-				SubscriptionID: "sub_id",
-			},
-			Expect: Expect{
-				Json: []byte(`["EOSE","sub_id"]`),
-				Err:  nil,
-			},
+			in:   ServerEOSEMsg{SubscriptionID: "subid"},
+			want: jsons[0],
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got, err := tt.Input.MarshalJSON()
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
-				return
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			assert.Equal(t, tt.Expect.Json, got)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
 		})
 	}
+}
+
+func TestServerEOSEMsg_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSON), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ServerEOSEMsg
+		}{
+			{
+				in:   jsons[0],
+				want: ServerEOSEMsg{SubscriptionID: "subid"},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerEOSEMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsInvalidJSON), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerEOSEMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestServerEventMsg_MarshalJSON(t *testing.T) {
