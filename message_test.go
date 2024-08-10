@@ -13,46 +13,52 @@ import (
 )
 
 //go:embed testdata/clienteventmsgs_valid.jsonl
-var clientEventMsgsValidJSON []byte
+var clientEventMsgsValidJSONL []byte
 
 //go:embed testdata/clienteventmsgs_invalid.jsonl
-var clientEventMsgsInvalidJSON []byte
+var clientEventMsgsInvalidJSONL []byte
 
 //go:embed testdata/clientreqmsgs_valid.jsonl
-var clientReqMsgsValidJSON []byte
+var clientReqMsgsValidJSONL []byte
 
 //go:embed testdata/clientreqmsgs_invalid.jsonl
-var clientReqMsgsInvalidJSON []byte
+var clientReqMsgsInvalidJSONL []byte
 
 //go:embed testdata/clientclosemsgs_valid.jsonl
-var clientCloseMsgsValidJSON []byte
+var clientCloseMsgsValidJSONL []byte
 
 //go:embed testdata/clientclosemsgs_invalid.jsonl
-var clientCloseMsgsInvalidJSON []byte
+var clientCloseMsgsInvalidJSONL []byte
 
 //go:embed testdata/clientauthmsgs_valid.jsonl
-var clientAuthMsgsValidJSON []byte
+var clientAuthMsgsValidJSONL []byte
 
 //go:embed testdata/clientauthmsgs_invalid.jsonl
-var clientAuthMsgsInvalidJSON []byte
+var clientAuthMsgsInvalidJSONL []byte
 
 //go:embed testdata/clientcountmsgs_valid.jsonl
-var clientCountMsgsValidJSON []byte
+var clientCountMsgsValidJSONL []byte
 
 //go:embed testdata/clientcountmsgs_invalid.jsonl
-var clientCountMsgsInvalidJSON []byte
+var clientCountMsgsInvalidJSONL []byte
 
 //go:embed testdata/servereosemsgs_valid.jsonl
-var serverEOSEMsgsValidJSON []byte
+var serverEOSEMsgsValidJSONL []byte
 
 //go:embed testdata/servereosemsgs_invalid.jsonl
-var serverEOSEMsgsInvalidJSON []byte
+var serverEOSEMsgsInvalidJSONL []byte
 
 //go:embed testdata/servereventmsgs_valid.jsonl
-var serverEventMsgsValidJSON []byte
+var serverEventMsgsValidJSONL []byte
 
 //go:embed testdata/servereventmsgs_invalid.jsonl
-var serverEventMsgsInvalidJSON []byte
+var serverEventMsgsInvalidJSONL []byte
+
+//go:embed testdata/servernoticemsg_valid.jsonl
+var serverNoticeMsgsValidJSONL []byte
+
+//go:embed testdata/servernoticemsg_invalid.jsonl
+var serverNoticeMsgsInvalidJSONL []byte
 
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
@@ -297,7 +303,7 @@ func BenchmarkParseClientMsg_Count(b *testing.B) {
 }
 
 func TestClientEventMsg_MarshalJSON(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSON), []byte("\n"))
+	jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
 		in   ClientEventMsg
@@ -366,7 +372,7 @@ func TestClientEventMsg_MarshalJSON(t *testing.T) {
 
 func TestClientEventMsg_UnarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSONL), []byte("\n"))
 
 		tests := []struct {
 			in   []byte
@@ -433,7 +439,7 @@ func TestClientEventMsg_UnarshalJSON(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsInvalidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsInvalidJSONL), []byte("\n"))
 
 		for i, b := range jsons {
 			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
@@ -449,7 +455,7 @@ func TestClientEventMsg_UnarshalJSON(t *testing.T) {
 }
 
 func TestClientReqMsg_MarshalJSON(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSON), []byte("\n"))
+	jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
 		in   ClientReqMsg
@@ -523,7 +529,7 @@ func TestClientReqMsg_MarshalJSON(t *testing.T) {
 
 func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSONL), []byte("\n"))
 
 		tests := []struct {
 			in   []byte
@@ -595,7 +601,7 @@ func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsInvalidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsInvalidJSONL), []byte("\n"))
 
 		for i, b := range jsons {
 			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
@@ -611,7 +617,7 @@ func TestClientReqMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestClientCloseMsg_MarshalJSON(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsValidJSON), []byte("\n"))
+	jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
 		in   ClientCloseMsg
@@ -638,7 +644,7 @@ func TestClientCloseMsg_MarshalJSON(t *testing.T) {
 
 func TestClientCloseMsg_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsValidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsValidJSONL), []byte("\n"))
 
 		tests := []struct {
 			in   []byte
@@ -663,7 +669,7 @@ func TestClientCloseMsg_UnmarshalJSON(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsInvalidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsInvalidJSONL), []byte("\n"))
 
 		for i, b := range jsons {
 			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
@@ -679,7 +685,7 @@ func TestClientCloseMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestClientAuthMsg_MarshalJSON(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSON), []byte("\n"))
+	jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
 		in   ClientAuthMsg
@@ -706,7 +712,7 @@ func TestClientAuthMsg_MarshalJSON(t *testing.T) {
 
 func TestClientAuthMsg_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSONL), []byte("\n"))
 
 		tests := []struct {
 			in   []byte
@@ -731,7 +737,7 @@ func TestClientAuthMsg_UnmarshalJSON(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsInvalidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsInvalidJSONL), []byte("\n"))
 
 		for i, b := range jsons {
 			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
@@ -747,7 +753,7 @@ func TestClientAuthMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestClientCountMsg_MarshalJSON(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSON), []byte("\n"))
+	jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
 		in   ClientCountMsg
@@ -821,7 +827,7 @@ func TestClientCountMsg_MarshalJSON(t *testing.T) {
 
 func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSONL), []byte("\n"))
 
 		tests := []struct {
 			in   []byte
@@ -893,7 +899,7 @@ func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsInvalidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsInvalidJSONL), []byte("\n"))
 
 		for i, b := range jsons {
 			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
@@ -1061,7 +1067,7 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSON), []byte("\n"))
+	jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
 		in   ServerEOSEMsg
@@ -1088,7 +1094,7 @@ func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
 
 func TestServerEOSEMsg_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n"))
 
 		tests := []struct {
 			in   []byte
@@ -1113,7 +1119,7 @@ func TestServerEOSEMsg_UnmarshalJSON(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsInvalidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(serverEOSEMsgsInvalidJSONL), []byte("\n"))
 
 		for i, b := range jsons {
 			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
@@ -1129,7 +1135,7 @@ func TestServerEOSEMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerEventMsg_MarshalJSON(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSON), []byte("\n"))
+	jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
 		in   ServerEventMsg
@@ -1167,7 +1173,7 @@ func TestServerEventMsg_MarshalJSON(t *testing.T) {
 
 func TestServerEventMsg_UnmarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n"))
 
 		tests := []struct {
 			in   []byte
@@ -1203,7 +1209,7 @@ func TestServerEventMsg_UnmarshalJSON(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsInvalidJSON), []byte("\n"))
+		jsons := bytes.Split(bytes.TrimSpace(serverEventMsgsInvalidJSONL), []byte("\n"))
 
 		for i, b := range jsons {
 			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
@@ -1219,38 +1225,71 @@ func TestServerEventMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerNoticeMsg_MarshalJSON(t *testing.T) {
-	type Expect struct {
-		Json []byte
-		Err  error
-	}
+	jsons := bytes.Split(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
-		Name   string
-		Input  *ServerNoticeMsg
-		Expect Expect
+		in   ServerNoticeMsg
+		want []byte
 	}{
 		{
-			Name: "ok: server notice message",
-			Input: &ServerNoticeMsg{
-				Message: "msg",
-			},
-			Expect: Expect{
-				Json: []byte(`["NOTICE","msg"]`),
-				Err:  nil,
-			},
+			in:   ServerNoticeMsg{Message: "msg"},
+			want: jsons[0],
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got, err := tt.Input.MarshalJSON()
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
-				return
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			assert.Equal(t, tt.Expect.Json, got)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
 		})
 	}
+}
+
+func TestServerNoticeMsg_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ServerNoticeMsg
+		}{
+			{
+				in:   jsons[0],
+				want: ServerNoticeMsg{Message: "msg"},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerNoticeMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverNoticeMsgsInvalidJSONL), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerNoticeMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestServerOKMsg_MarshalJSON(t *testing.T) {

@@ -831,6 +831,32 @@ func (msg ServerNoticeMsg) MarshalJSON() ([]byte, error) {
 	return ret, err
 }
 
+func (msg *ServerNoticeMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, nullJSON) {
+		return nil
+	}
+
+	var elems []string
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 2 {
+		return fmt.Errorf("server notice msg length must be 2 but got %d", len(elems))
+	}
+
+	if elems[0] != MsgLabelNotice {
+		return fmt.Errorf(`server notice msg label must be %q but got %q`, MsgLabelNotice, elems[0])
+	}
+
+	ret := ServerNoticeMsg{
+		Message: strings.Clone(elems[1]),
+	}
+
+	*msg = ret
+
+	return nil
+}
+
 type ServerOKMsg struct {
 	EventID   string
 	Accepted  bool
