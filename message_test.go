@@ -60,6 +60,12 @@ var serverNoticeMsgsValidJSONL []byte
 //go:embed testdata/servernoticemsg_invalid.jsonl
 var serverNoticeMsgsInvalidJSONL []byte
 
+//go:embed testdata/serverokmsgs_valid.jsonl
+var serverOKMsgsValidJSONL []byte
+
+//go:embed testdata/serverokmsgs_invalid.jsonl
+var serverOKMsgsInvalidJSONL []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -1293,54 +1299,203 @@ func TestServerNoticeMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestServerOKMsg_MarshalJSON(t *testing.T) {
-	type Expect struct {
-		Json []byte
-		Err  error
-	}
+	jsons := bytes.Split(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n"))
 
 	tests := []struct {
-		Name   string
-		Input  *ServerOKMsg
-		Expect Expect
+		in   ServerOKMsg
+		want []byte
 	}{
 		{
-			Name: "ok: server ok message",
-			Input: &ServerOKMsg{
-				EventID:   "event_id",
-				Accepted:  true,
-				MsgPrefix: ServerOKMsgPrefixNoPrefix,
-				Msg:       "msg",
+			in: ServerOKMsg{
+				EventID:  "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Accepted: true,
+				Msg:      "",
 			},
-			Expect: Expect{
-				Json: []byte(`["OK","event_id",true,"msg"]`),
-				Err:  nil,
-			},
+			want: jsons[0],
 		},
 		{
-			Name: "ok: server ok message with prefix",
-			Input: &ServerOKMsg{
-				EventID:   "event_id",
+			in: ServerOKMsg{
+				EventID:  "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Accepted: false,
+				Msg:      "with msg",
+			},
+			want: jsons[1],
+		},
+		{
+			in: ServerOKMsg{
+				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
 				Accepted:  false,
+				Msg:       "with prefix",
+				MsgPrefix: ServerOKMsgPrefixPoW,
+			},
+			want: jsons[2],
+		},
+		{
+			in: ServerOKMsg{
+				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Accepted:  false,
+				Msg:       "with prefix",
+				MsgPrefix: ServerOKMsgPrefixDuplicate,
+			},
+			want: jsons[3],
+		},
+		{
+			in: ServerOKMsg{
+				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Accepted:  false,
+				Msg:       "with prefix",
+				MsgPrefix: ServerOkMsgPrefixBlocked,
+			},
+			want: jsons[4],
+		},
+		{
+			in: ServerOKMsg{
+				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Accepted:  false,
+				Msg:       "with prefix",
+				MsgPrefix: ServerOkMsgPrefixRateLimited,
+			},
+			want: jsons[5],
+		},
+		{
+			in: ServerOKMsg{
+				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Accepted:  false,
+				Msg:       "with prefix",
+				MsgPrefix: ServerOkMsgPrefixInvalid,
+			},
+			want: jsons[6],
+		},
+		{
+			in: ServerOKMsg{
+				EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				Accepted:  false,
+				Msg:       "with prefix",
 				MsgPrefix: ServerOkMsgPrefixError,
-				Msg:       "msg",
 			},
-			Expect: Expect{
-				Json: []byte(`["OK","event_id",false,"error: msg"]`),
-				Err:  nil,
-			},
+			want: jsons[7],
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got, err := tt.Input.MarshalJSON()
-			if tt.Expect.Err != nil || err != nil {
-				assert.ErrorIs(t, err, tt.Expect.Err)
-				return
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			assert.Equal(t, tt.Expect.Json, got)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
 		})
 	}
+}
+
+func TestServerOKMsg_UnmarshalJSON(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n"))
+
+		tests := []struct {
+			in   []byte
+			want ServerOKMsg
+		}{
+			{
+				in: jsons[0],
+				want: ServerOKMsg{
+					EventID:  "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted: true,
+					Msg:      "",
+				},
+			},
+			{
+				in: jsons[1],
+				want: ServerOKMsg{
+					EventID:  "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted: false,
+					Msg:      "with msg",
+				},
+			},
+			{
+				in: jsons[2],
+				want: ServerOKMsg{
+					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted:  false,
+					Msg:       "with prefix",
+					MsgPrefix: ServerOKMsgPrefixPoW,
+				},
+			},
+			{
+				in: jsons[3],
+				want: ServerOKMsg{
+					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted:  false,
+					Msg:       "with prefix",
+					MsgPrefix: ServerOKMsgPrefixDuplicate,
+				},
+			},
+			{
+				in: jsons[4],
+				want: ServerOKMsg{
+					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted:  false,
+					Msg:       "with prefix",
+					MsgPrefix: ServerOkMsgPrefixBlocked,
+				},
+			},
+			{
+				in: jsons[5],
+				want: ServerOKMsg{
+					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted:  false,
+					Msg:       "with prefix",
+					MsgPrefix: ServerOkMsgPrefixRateLimited,
+				},
+			},
+			{
+				in: jsons[6],
+				want: ServerOKMsg{
+					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted:  false,
+					Msg:       "with prefix",
+					MsgPrefix: ServerOkMsgPrefixInvalid,
+				},
+			},
+			{
+				in: jsons[7],
+				want: ServerOKMsg{
+					EventID:   "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Accepted:  false,
+					Msg:       "with prefix",
+					MsgPrefix: ServerOkMsgPrefixError,
+				},
+			},
+		}
+
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerOKMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(serverOKMsgsInvalidJSONL), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ServerOKMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestServerAuthMsg_MarshalJSON(t *testing.T) {

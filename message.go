@@ -870,7 +870,7 @@ const (
 	ServerOKMsgPrefixDuplicate   = "duplicate: "
 	ServerOkMsgPrefixBlocked     = "blocked: "
 	ServerOkMsgPrefixRateLimited = "rate-limited: "
-	ServerOkMsgPrefixRateInvalid = "invalid: "
+	ServerOkMsgPrefixInvalid     = "invalid: "
 	ServerOkMsgPrefixError       = "error: "
 )
 
@@ -899,6 +899,68 @@ func (msg ServerOKMsg) MarshalJSON() ([]byte, error) {
 	}
 
 	return ret, err
+}
+
+func (msg *ServerOKMsg) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(b, nullJSON) {
+		return nil
+	}
+
+	var elems []json.RawMessage
+	if err := json.Unmarshal(b, &elems); err != nil {
+		return fmt.Errorf("not a json array: %w", err)
+	}
+	if len(elems) != 4 {
+		return fmt.Errorf("server ok msg length must be 4 but got %d", len(elems))
+	}
+
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label must be string: %w", err)
+	}
+	if label != MsgLabelOK {
+		return fmt.Errorf(`server notice msg label must be %q but got %q`, MsgLabelOK, elems[0])
+	}
+
+	var ret ServerOKMsg
+	if err := json.Unmarshal(elems[1], &ret.EventID); err != nil {
+		return fmt.Errorf("event id is not a json string: %w", err)
+	}
+
+	if err := json.Unmarshal(elems[2], &ret.Accepted); err != nil {
+		return fmt.Errorf("accepted is not a json boolean: %w", err)
+	}
+
+	var rawmsg string
+	if err := json.Unmarshal(elems[3], &rawmsg); err != nil {
+		return fmt.Errorf("msg is not a json string: %w", err)
+	}
+
+	switch {
+	case strings.HasPrefix(rawmsg, ServerOKMsgPrefixPoW):
+		ret.MsgPrefix = ServerOKMsgPrefixPoW
+
+	case strings.HasPrefix(rawmsg, ServerOKMsgPrefixDuplicate):
+		ret.MsgPrefix = ServerOKMsgPrefixDuplicate
+
+	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixBlocked):
+		ret.MsgPrefix = ServerOkMsgPrefixBlocked
+
+	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixRateLimited):
+		ret.MsgPrefix = ServerOkMsgPrefixRateLimited
+
+	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixInvalid):
+		ret.MsgPrefix = ServerOkMsgPrefixInvalid
+
+	case strings.HasPrefix(rawmsg, ServerOkMsgPrefixError):
+		ret.MsgPrefix = ServerOkMsgPrefixError
+	}
+
+	ret.Msg = strings.Clone(rawmsg[len(ret.MsgPrefix):])
+
+	*msg = ret
+
+	return nil
 }
 
 type ServerAuthMsg struct {
