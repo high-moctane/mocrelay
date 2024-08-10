@@ -217,112 +217,61 @@ func TestParseClientMsg(t *testing.T) {
 }
 
 func BenchmarkParseClientMsg_All(b *testing.B) {
-	eventJSON := []byte(`["EVENT",` +
-		`{` +
-		`  "kind": 1,` +
-		`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-		`  "created_at": 1693157791,` +
-		`  "tags": [` +
-		`    [` +
-		`      "e",` +
-		`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-		`      "",` +
-		`      "root"` +
-		`    ],` +
-		`    [` +
-		`      "p",` +
-		`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
-		`    ]` +
-		`  ],` +
-		`  "content": "powa",` +
-		`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
-		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
-		`}]`)
-	reqJSON := []byte(
-		`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
-	)
-	closeJSON := []byte(`["CLOSE","sub_id"]`)
-	authJSON := []byte(`["AUTH","challenge"]`)
-	countJSON := []byte(
-		`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
-	)
+	var jsons [][]byte
+	jsons = append(jsons, bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSONL), []byte("\n"))...)
+	jsons = append(jsons, bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSONL), []byte("\n"))...)
+	jsons = append(jsons, bytes.Split(bytes.TrimSpace(clientCloseMsgsValidJSONL), []byte("\n"))...)
+	jsons = append(jsons, bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSONL), []byte("\n"))...)
+	jsons = append(jsons, bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSONL), []byte("\n"))...)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i += 5 {
-		ParseClientMsg(eventJSON)
-		ParseClientMsg(reqJSON)
-		ParseClientMsg(closeJSON)
-		ParseClientMsg(authJSON)
-		ParseClientMsg(countJSON)
+	for i := 0; i < b.N; i++ {
+		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
 
 func BenchmarkParseClientMsg_Event(b *testing.B) {
-	eventJSON := []byte(`["EVENT",` +
-		`{` +
-		`  "kind": 1,` +
-		`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-		`  "created_at": 1693157791,` +
-		`  "tags": [` +
-		`    [` +
-		`      "e",` +
-		`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-		`      "",` +
-		`      "root"` +
-		`    ],` +
-		`    [` +
-		`      "p",` +
-		`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
-		`    ]` +
-		`  ],` +
-		`  "content": "powa",` +
-		`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
-		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
-		`}]`)
+	jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSONL), []byte("\n"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseClientMsg(eventJSON)
+		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
 
 func BenchmarkParseClientMsg_Req(b *testing.B) {
-	reqJSON := []byte(
-		`["REQ","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
-	)
+	jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSONL), []byte("\n"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseClientMsg(reqJSON)
+		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
 
 func BenchmarkParseClientMsg_Close(b *testing.B) {
-	closeJSON := []byte(`["CLOSE","sub_id"]`)
+	jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsValidJSONL), []byte("\n"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseClientMsg(closeJSON)
+		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
 
 func BenchmarkParseClientMsg_Auth(b *testing.B) {
-	authJSON := []byte(`["AUTH","challenge"]`)
+	jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSONL), []byte("\n"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseClientMsg(authJSON)
+		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
 
 func BenchmarkParseClientMsg_Count(b *testing.B) {
-	countJSON := []byte(
-		`["COUNT","8d405a05-a8d7-4cc5-8bc1-53eac4f7949d",{"ids":["powa11","powa12"],"authors":["meu11","meu12"],"kinds":[1,3],"#e":["moyasu11","moyasu12"],"since":16,"until":184838,"limit":143},{"ids":["powa21","powa22"],"authors":["meu21","meu22"],"kinds":[11,33],"#e":["moyasu21","moyasu22"],"since":17,"until":184839,"limit":144}]`,
-	)
+	jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSONL), []byte("\n"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseClientMsg(countJSON)
+		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
 
@@ -1873,230 +1822,196 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func BenchmarkServerMsg_Marshal_All(b *testing.B) {
-	var eose ServerMsg = &ServerEOSEMsg{
-		SubscriptionID: "sub_id",
+	var msgs []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n")) {
+		var msg ServerEOSEMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		msgs = append(msgs, &msg)
 	}
-	var event ServerMsg = &ServerEventMsg{
-		SubscriptionID: "sub_id",
-		Event: &Event{
-			ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
-			Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			CreatedAt: 1693157791,
-			Kind:      1,
-			Tags: []Tag{{
-				"e",
-				"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-				"",
-				"root",
-			}, {
-				"p",
-				"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			},
-			},
-			Content: "powa",
-			Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
-		},
+	for _, b := range bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n")) {
+		var msg ServerEventMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		msgs = append(msgs, &msg)
 	}
-	var notice ServerMsg = &ServerNoticeMsg{
-		Message: "msg",
+	for _, b := range bytes.Split(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n")) {
+		var msg ServerNoticeMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		msgs = append(msgs, &msg)
 	}
-	var ok ServerMsg = &ServerOKMsg{
-		EventID:   "event_id",
-		Accepted:  false,
-		MsgPrefix: ServerOkMsgPrefixError,
-		Msg:       "msg",
+	for _, b := range bytes.Split(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n")) {
+		var msg ServerOKMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		msgs = append(msgs, &msg)
 	}
-
-	// TODO(high-moctane) use auth event
-	var auth ServerMsg = &ServerAuthMsg{
-		Event: &Event{
-			ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
-			Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			CreatedAt: 1693157791,
-			Kind:      1,
-			Tags: []Tag{{
-				"e",
-				"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-				"",
-				"root",
-			}, {
-				"p",
-				"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			},
-			},
-			Content: "powa",
-			Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
-		},
+	for _, b := range bytes.Split(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n")) {
+		var msg ServerAuthMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		msgs = append(msgs, &msg)
 	}
-	var count ServerMsg = &ServerCountMsg{
-		SubscriptionID: "sub_id",
-		Count:          192,
-		Approximate:    toPtr(false),
+	for _, b := range bytes.Split(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n")) {
+		var msg ServerCountMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		msgs = append(msgs, &msg)
 	}
-	var closed ServerMsg = &ServerClosedMsg{
-		SubscriptionID: "sub_id",
-		MsgPrefix:      ServerClosedMsgPrefixError,
-		Msg:            "msg",
+	for _, b := range bytes.Split(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n")) {
+		var msg ServerClosedMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		msgs = append(msgs, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(eose)
-		json.Marshal(event)
-		json.Marshal(notice)
-		json.Marshal(ok)
-		json.Marshal(auth)
-		json.Marshal(count)
-		json.Marshal(closed)
+		json.Marshal(msgs[i%len(msgs)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_EOSE(b *testing.B) {
-	var eose ServerMsg = &ServerEOSEMsg{
-		SubscriptionID: "sub_id",
+	var eose []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n")) {
+		var msg ServerEOSEMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		eose = append(eose, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(eose)
+		json.Marshal(eose[i%len(eose)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Event(b *testing.B) {
-	var event ServerMsg = &ServerEventMsg{
-		SubscriptionID: "sub_id",
-		Event: &Event{
-			ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
-			Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			CreatedAt: 1693157791,
-			Kind:      1,
-			Tags: []Tag{{
-				"e",
-				"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-				"",
-				"root",
-			}, {
-				"p",
-				"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			},
-			},
-			Content: "powa",
-			Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
-		},
+	var event []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n")) {
+		var msg ServerEventMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		event = append(event, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(event)
+		json.Marshal(event[i%len(event)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Notice(b *testing.B) {
-	var notice ServerMsg = &ServerNoticeMsg{
-		Message: "msg",
+	var notice []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n")) {
+		var msg ServerNoticeMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		notice = append(notice, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(notice)
+		json.Marshal(notice[i%len(notice)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_OK(b *testing.B) {
-	var ok ServerMsg = &ServerOKMsg{
-		EventID:   "event_id",
-		Accepted:  false,
-		MsgPrefix: ServerOkMsgPrefixError,
-		Msg:       "msg",
+	var ok []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n")) {
+		var msg ServerOKMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		ok = append(ok, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(ok)
+		json.Marshal(ok[i%len(ok)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Auth(b *testing.B) {
-	// TODO(high-moctane) use auth event
-	var auth ServerMsg = &ServerAuthMsg{
-		Event: &Event{
-			ID:        "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",
-			Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			CreatedAt: 1693157791,
-			Kind:      1,
-			Tags: []Tag{{
-				"e",
-				"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-				"",
-				"root",
-			}, {
-				"p",
-				"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-			},
-			},
-			Content: "powa",
-			Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
-		},
+	var auth []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n")) {
+		var msg ServerAuthMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		auth = append(auth, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(auth)
+		json.Marshal(auth[i%len(auth)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
-	var count ServerMsg = &ServerCountMsg{
-		SubscriptionID: "sub_id",
-		Count:          192,
-		Approximate:    toPtr(false),
+	var count []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n")) {
+		var msg ServerCountMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		count = append(count, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(count)
+		json.Marshal(count[i%len(count)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Closed(b *testing.B) {
-	var closed ServerMsg = &ServerClosedMsg{
-		SubscriptionID: "sub_id",
-		MsgPrefix:      ServerClosedMsgPrefixError,
-		Msg:            "msg",
+	var closed []ServerMsg
+	for _, b := range bytes.Split(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n")) {
+		var msg ServerClosedMsg
+		err := json.Unmarshal(b, &msg)
+		if err != nil {
+			panic(err)
+		}
+		closed = append(closed, &msg)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(closed)
+		json.Marshal(closed[i%len(closed)])
 	}
 }
 
 func BenchmarkParseEvent(b *testing.B) {
-	input := []byte(`{` +
-		`  "kind": 1,` +
-		`  "pubkey": "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",` +
-		`  "created_at": 1693157791,` +
-		`  "tags": [` +
-		`    [` +
-		`      "e",` +
-		`      "d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",` +
-		`      "",` +
-		`      "root"` +
-		`    ],` +
-		`    [` +
-		`      "p",` +
-		`      "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"` +
-		`    ]` +
-		`  ],` +
-		`  "content": "powa",` +
-		`  "id": "49d58222bd85ddabfc19b8052d35bcce2bad8f1f3030c0bc7dc9f10dba82a8a2",` +
-		`  "sig": "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8"` +
-		`}`)
+	jsons := bytes.Split(bytes.TrimSpace(eventsValidJSONL), []byte("\n"))
 
 	var event Event
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		event.UnmarshalJSON(input)
+		event.UnmarshalJSON(jsons[i%len(jsons)])
 	}
 }
 
