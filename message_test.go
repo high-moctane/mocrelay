@@ -21,6 +21,9 @@ var eventsInvalidJSONL []byte
 //go:embed testdata/reqfilter_valid.jsonl
 var reqFilterValidJSONL []byte
 
+//go:embed testdata/reqfilter_invalid.jsonl
+var reqFilterInvalidJSONL []byte
+
 func TestParseClientMsg(t *testing.T) {
 	type Expect struct {
 		MsgType ClientMsg
@@ -699,85 +702,20 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 		}
 	})
 
-	type Expect struct {
-		ReqFilter ReqFilter
-		IsErr     bool
-	}
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(reqFilterInvalidJSONL), []byte("\n"))
 
-	tests := []struct {
-		Name   string
-		Input  []byte
-		Expect Expect
-	}{
-		{
-			Name:  "ok: empty",
-			Input: []byte("{}"),
-			Expect: Expect{
-				ReqFilter: ReqFilter{},
-				IsErr:     false,
-			},
-		},
-		{
-			Name: "ok: full",
-			Input: []byte(
-				`{"ids":["powa"],"authors":["meu"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`,
-			),
-			Expect: Expect{
-				ReqFilter: ReqFilter{
-					IDs:     []string{"powa"},
-					Authors: []string{"meu"},
-					Kinds:   []int64{1, 3},
-					Tags:    map[string][]string{"#e": {"moyasu"}},
-					Since:   toPtr(int64(16)),
-					Until:   toPtr(int64(184838)),
-					Limit:   toPtr(int64(143)),
-				},
-				IsErr: false,
-			},
-		},
-		{
-			Name: "ok: partial",
-			Input: []byte(
-				`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143}`,
-			),
-			Expect: Expect{
-				ReqFilter: ReqFilter{
-					IDs:     []string{"powa"},
-					Kinds:   []int64{1, 3},
-					Authors: nil,
-					Tags:    map[string][]string{"#e": {"moyasu"}},
-					Since:   toPtr(int64(16)),
-					Until:   toPtr(int64(184838)),
-					Limit:   toPtr(int64(143)),
-				},
-				IsErr: false,
-			},
-		},
-		{
-			Name: "ng: contains some extra fields",
-			Input: []byte(
-				`{"ids":["powa"],"kinds":[1,3],"#e":["moyasu"],"since":16,"until":184838,"limit":143,"powa":"meu"}`,
-			),
-			Expect: Expect{
-				IsErr: true,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			var fil ReqFilter
-			err := fil.UnmarshalJSON(tt.Input)
-			if (err != nil) != tt.Expect.IsErr {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			if err != nil {
-				return
-			}
-			assert.EqualExportedValues(t, tt.Expect.ReqFilter, fil)
-		})
-	}
+		for i, in := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ReqFilter
+				err := got.UnmarshalJSON(in)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
