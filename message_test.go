@@ -30,6 +30,12 @@ var clientCloseMsgsValidJSON []byte
 //go:embed testdata/clientclosemsgs_invalid.jsonl
 var clientCloseMsgsInvalidJSON []byte
 
+//go:embed testdata/clientauthmsgs_valid.jsonl
+var clientAuthMsgsValidJSON []byte
+
+//go:embed testdata/clientauthmsgs_invalid.jsonl
+var clientAuthMsgsInvalidJSON []byte
+
 //go:embed testdata/events_valid.jsonl
 var eventsValidJSONL []byte
 
@@ -582,55 +588,45 @@ func TestClientCloseMsg_UnmarshalJSON(t *testing.T) {
 }
 
 func TestClientAuthMsg_UnmarshalJSON(t *testing.T) {
-	type Expect struct {
-		Challenge string
-		IsErr     bool
-	}
+	t.Run("valid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSON), []byte("\n"))
 
-	tests := []struct {
-		Name   string
-		Input  []byte
-		Expect Expect
-	}{
-		{
-			Name:  "ok: client auth message",
-			Input: []byte(`["AUTH","challenge"]`),
-			Expect: Expect{
-				Challenge: "challenge",
-				IsErr:     false,
+		tests := []struct {
+			in   []byte
+			want ClientAuthMsg
+		}{
+			{
+				in:   jsons[0],
+				want: ClientAuthMsg{Challenge: "challenge"},
 			},
-		},
-		{
-			Name:  "ok: client auth message with some spaces",
-			Input: []byte(`[` + "\n" + `  "AUTH",` + "\n" + `  "challenge"` + "\n" + `]`),
-			Expect: Expect{
-				Challenge: "challenge",
-				IsErr:     false,
-			},
-		},
-		{
-			Name:  "ng: client auth message invalid type",
-			Input: []byte(`["AUTH",3000]`),
-			Expect: Expect{
-				IsErr: true,
-			},
-		},
-	}
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			var msg ClientAuthMsg
-			err := msg.UnmarshalJSON(tt.Input)
-			if (err != nil) != tt.Expect.IsErr {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			if err != nil {
-				return
-			}
-			assert.Equal(t, tt.Expect.Challenge, msg.Challenge)
-		})
-	}
+		for i, tt := range tests {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ClientAuthMsg
+				err := json.Unmarshal(tt.in, &got)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				assert.EqualExportedValues(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsInvalidJSON), []byte("\n"))
+
+		for i, b := range jsons {
+			t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+				var got ClientAuthMsg
+				err := json.Unmarshal(b, &got)
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				t.Logf("expected error: %v", err)
+			})
+		}
+	})
 }
 
 func TestClientCountMsg_UnmarshalJSON(t *testing.T) {
