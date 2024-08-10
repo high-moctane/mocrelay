@@ -260,6 +260,74 @@ func BenchmarkParseClientMsg_Count(b *testing.B) {
 	}
 }
 
+func TestClientEventMsg_MarshalJSON(t *testing.T) {
+	jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSON), []byte("\n"))
+
+	tests := []struct {
+		in   ClientEventMsg
+		want []byte
+	}{
+		{
+			in: ClientEventMsg{
+				Event: &Event{
+					ID:        "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723212754,
+					Kind:      1,
+					Tags:      []Tag{},
+					Content:   "",
+					Sig:       "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f",
+				},
+			},
+			want: jsons[0],
+		},
+		{
+			in: ClientEventMsg{
+				Event: &Event{
+					ID:        "07e782ba4b5fe85b91264d03c445c339b8783e0ea2ae3bdfb0122eda513d86ac",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723212830,
+					Kind:      1,
+					Tags:      []Tag{},
+					Content:   "with content",
+					Sig:       "a714af322ebf22bec24364319efc635e88230c099a8e08238fff1f4f5608494cddbcc77bef426cc653e4994ac23625553500d05244dd28ed2ac3096cff0387af",
+				},
+			},
+			want: jsons[1],
+		},
+		{
+			in: ClientEventMsg{
+				Event: &Event{
+					ID:        "80cfa4cff224ad441b9cb50fdce68a47f30a2d7e38fa2b06f2ddac748bbac137",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723212930,
+					Kind:      1,
+					Tags: []Tag{
+						{"key1", "value1"},
+						{"key2"},
+						{"key3", "value3-1", "value3-2"},
+					},
+					Content: "with tags",
+					Sig:     "7553bd8efb6e338e58cd9b807225dfd5d71043f94173aa234c7727aa28236009ee34aa76422e6d3912a5d104100c49148b043202df7f8b258782b1816434d1ea",
+				},
+			},
+			want: jsons[2],
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			got, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("want: %s, got: %s", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestClientEventMsg_UnarshalJSON(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSON), []byte("\n"))
