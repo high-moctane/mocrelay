@@ -450,11 +450,7 @@ type ReqFilter struct {
 	Limit   *int64
 }
 
-func (fil *ReqFilter) MarshalJSON() ([]byte, error) {
-	if fil == nil {
-		return nullJSON, nil
-	}
-
+func (fil ReqFilter) MarshalJSON() ([]byte, error) {
 	var obj = make(map[string]any)
 
 	if fil.IDs != nil {
