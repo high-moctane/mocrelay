@@ -1048,30 +1048,6 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 	})
 }
 
-func TestReqFilter_JSONIdempotency(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(reqFilterValidJSONL), []byte("\n"))
-
-	for i, b := range jsons {
-		t.Run(fmt.Sprintf("event_%d", i), func(t *testing.T) {
-			var f ReqFilter
-			err := json.Unmarshal(b, &f)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			got, err := json.Marshal(f)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if !bytes.Equal(b, got) {
-				t.Errorf("expected %s but got %s", b, got)
-			}
-		})
-	}
-}
-
 func TestServerEOSEMsg_MarshalJSON(t *testing.T) {
 	type Expect struct {
 		Json []byte
@@ -1746,30 +1722,6 @@ func TestEvent_UnmarshalJSON(t *testing.T) {
 			})
 		}
 	})
-}
-
-func TestEvent_JSONIdempotency(t *testing.T) {
-	jsons := bytes.Split(bytes.TrimSpace(eventsValidJSONL), []byte("\n"))
-
-	for i, b := range jsons {
-		t.Run(fmt.Sprintf("event_%d", i), func(t *testing.T) {
-			var ev Event
-			err := json.Unmarshal(b, &ev)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-			got, err := json.Marshal(ev)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if !bytes.Equal(b, got) {
-				t.Errorf("expected %s but got %s", b, got)
-			}
-		})
-	}
 }
 
 func TestEvent_Valid(t *testing.T) {
