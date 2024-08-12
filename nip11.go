@@ -63,5 +63,6 @@ func (nip11 *NIP11) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add("Content-Type", "application/nostr+json")
+	w.Header().Add("Access-Control-Allow-Origin", "*")
 	w.Write(nip11json)
 }
