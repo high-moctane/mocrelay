@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,6 +66,57 @@ func (k Nip11Kind) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("failed to marshal Nip11Kind: %w", err)
 	}
 	return ret, nil
+}
+
+func (k *Nip11Kind) UnmarshalJSON(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return fmt.Errorf("failed to unmarshal Nip11Kind: %w", err)
+	}
+
+	var ret Nip11Kind
+
+	switch v := v.(type) {
+	case json.Number:
+		i, err := v.Int64()
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal Nip11Kind: %w", err)
+		}
+		ret.From = int(i)
+		ret.To = int(i)
+	case []any:
+		if len(v) != 2 {
+			return fmt.Errorf("failed to unmarshal Nip11Kind: expected 2 elements, got %d", len(v))
+		}
+
+		i, ok := v[0].(json.Number)
+		if !ok {
+			return fmt.Errorf("failed to unmarshal Nip11Kind: expected number, got %T", v[0])
+		}
+		from, err := i.Int64()
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal Nip11Kind: %w", err)
+		}
+
+		i, ok = v[1].(json.Number)
+		if !ok {
+			return fmt.Errorf("failed to unmarshal Nip11Kind: expected number, got %T", v[1])
+		}
+		to, err := i.Int64()
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal Nip11Kind: %w", err)
+		}
+
+		ret.From = int(from)
+		ret.To = int(to)
+	}
+
+	*k = ret
+
+	return nil
 }
 
 type NIP11Fees struct {
