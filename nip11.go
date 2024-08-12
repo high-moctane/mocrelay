@@ -51,7 +51,7 @@ type NIP11Fees struct {
 func (nip11 *NIP11) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Accept") != "application/nostr+json" {
 		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "Need an Accept header of application/nostr_json")
+		io.WriteString(w, "Need an Accept header of application/nostr+json")
 		return
 	}
 
