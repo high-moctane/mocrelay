@@ -221,7 +221,7 @@ func newSubscriber(reqID string, msg *ClientReqMsg, ch chan ServerMsg) *subscrib
 	return &subscriber{
 		ReqID:          reqID,
 		SubscriptionID: msg.SubscriptionID,
-		Matcher:        NewReqFiltersEventMatchers(msg.ReqFilters),
+		Matcher:        NewReqFiltersEventLimitMatcher(msg.ReqFilters),
 		Ch:             ch,
 	}
 }
@@ -783,7 +783,7 @@ func (stat *mergeHandlerSessionReqState) SetSubID(subID string, fs []*ReqFilter)
 	stat.eose[subID] = make([]bool, stat.size)
 	stat.lastEvent[subID] = nil
 	stat.seen[subID] = make(map[string]bool)
-	stat.matcher[subID] = NewReqFiltersEventMatchers(fs)
+	stat.matcher[subID] = NewReqFiltersEventLimitMatcher(fs)
 }
 
 func (stat *mergeHandlerSessionReqState) SetEOSE(subID string, chIdx int) {

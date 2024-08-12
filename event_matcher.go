@@ -36,9 +36,9 @@ func (m EventLimitMatchers[T]) Done() bool {
 	return done
 }
 
-var _ EventLimitMatcher = (*ReqFilterEventMatcher)(nil)
+var _ EventLimitMatcher = (*ReqFilterEventLimitMatcher)(nil)
 
-type ReqFilterEventMatcher struct {
+type ReqFilterEventLimitMatcher struct {
 	cnt int64
 	f   struct {
 		IDs     map[string]bool
@@ -51,12 +51,12 @@ type ReqFilterEventMatcher struct {
 	}
 }
 
-func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterEventMatcher {
+func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterEventLimitMatcher {
 	if filter == nil {
 		panic("filter must be non-nil pointer")
 	}
 
-	ret := new(ReqFilterEventMatcher)
+	ret := new(ReqFilterEventLimitMatcher)
 
 	if filter.IDs != nil {
 		ret.f.IDs = make(map[string]bool)
@@ -97,7 +97,7 @@ func NewReqFilterMatcher(filter *ReqFilter) *ReqFilterEventMatcher {
 	return ret
 }
 
-func (m *ReqFilterEventMatcher) Match(event *Event) bool {
+func (m *ReqFilterEventLimitMatcher) Match(event *Event) bool {
 	if m.f.IDs != nil && !m.f.IDs[event.ID] {
 		return false
 	}
@@ -145,7 +145,7 @@ func (m *ReqFilterEventMatcher) Match(event *Event) bool {
 	return true
 }
 
-func (m *ReqFilterEventMatcher) LimitMatch(event *Event) bool {
+func (m *ReqFilterEventLimitMatcher) LimitMatch(event *Event) bool {
 	match := m.Match(event)
 	if match {
 		m.cnt++
@@ -153,19 +153,19 @@ func (m *ReqFilterEventMatcher) LimitMatch(event *Event) bool {
 	return match
 }
 
-func (m *ReqFilterEventMatcher) Done() bool {
+func (m *ReqFilterEventLimitMatcher) Done() bool {
 	return m.f.Limit != nil && *m.f.Limit <= m.cnt
 }
 
-type ReqFiltersMatcher []*ReqFilterEventMatcher
+type ReqFiltersLimitMatcher []*ReqFilterEventLimitMatcher
 
-func NewReqFiltersEventMatchers(
+func NewReqFiltersEventLimitMatcher(
 	filters []*ReqFilter,
-) EventLimitMatchers[*ReqFilterEventMatcher] {
+) EventLimitMatchers[*ReqFilterEventLimitMatcher] {
 	if filters == nil {
 		panic("filters must be non-nil slice")
 	}
-	ret := make([]*ReqFilterEventMatcher, len(filters))
+	ret := make([]*ReqFilterEventLimitMatcher, len(filters))
 	for i, f := range filters {
 		ret[i] = NewReqFilterMatcher(f)
 	}

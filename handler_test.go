@@ -2084,7 +2084,7 @@ func TestEventAllowFilterMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewReqFiltersEventMatchers(tt.filter)
+			m := NewReqFiltersEventLimitMatcher(tt.filter)
 
 			var h Handler
 			h = NewRouterHandler(100)
@@ -2133,7 +2133,7 @@ func TestEventDenyFilterMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewReqFiltersEventMatchers(tt.filter)
+			m := NewReqFiltersEventLimitMatcher(tt.filter)
 
 			var h Handler
 			h = NewRouterHandler(100)

@@ -18,7 +18,7 @@ func TestMatcher(t *testing.T) {
 		Sig:       "47f04052e5b6b3d9a0ca6493494af10618af35e00aeb30cdc86c2a33aca01738a3267f6ff5e06c0270eb0f4e25ba051782e8d7bba61706b857a66c4c17c88eee",
 	}
 
-	m := NewReqFiltersEventMatchers(filters)
+	m := NewReqFiltersEventLimitMatcher(filters)
 
 	match := m.LimitMatch(event)
 	assert.True(t, match)
