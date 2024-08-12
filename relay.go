@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/coder/websocket"
 	"golang.org/x/time/rate"
-	"nhooyr.io/websocket"
 )
 
 var (
