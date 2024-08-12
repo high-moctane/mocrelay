@@ -42,33 +42,42 @@ type NIP11Limitation struct {
 }
 
 type NIP11Retention struct {
-	Kinds []*Nip11RetentionKind `json:"kinds,omitempty"`
-	Time  *int                  `json:"time,omitempty"`
-	Count *int                  `json:"count,omitempty"`
+	Kinds []*Nip11Kind `json:"kinds,omitempty"`
+	Time  *int         `json:"time,omitempty"`
+	Count *int         `json:"count,omitempty"`
 }
 
-type Nip11RetentionKind struct {
+type Nip11Kind struct {
 	From, To int
 }
 
-func (k Nip11RetentionKind) MarshalJSON() ([]byte, error) {
+func (k Nip11Kind) MarshalJSON() ([]byte, error) {
 	if k.From == k.To {
 		ret, err := json.Marshal(k.From)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal Nip11RetentionKind: %w", err)
+			return nil, fmt.Errorf("failed to marshal Nip11Kind: %w", err)
 		}
 		return ret, nil
 	}
 
 	ret, err := json.Marshal([]int{k.From, k.To})
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal Nip11RetentionKind: %w", err)
+		return nil, fmt.Errorf("failed to marshal Nip11Kind: %w", err)
 	}
 	return ret, nil
 }
 
 type NIP11Fees struct {
-	// TODO(high-moctane) Impl
+	Admission    []*Nip11Fee `json:"admission,omitempty"`
+	Subscription []*Nip11Fee `json:"subscription,omitempty"`
+	Publication  []*Nip11Fee `json:"publication,omitempty"`
+}
+
+type Nip11Fee struct {
+	Kinds  []*Nip11Kind `json:"kinds,omitempty"`
+	Amount int          `json:"amount"`
+	Unit   string       `json:"unit,omitempty"`
+	Period *int         `json:"period,omitempty"`
 }
 
 func (nip11 *NIP11) ServeHTTP(w http.ResponseWriter, r *http.Request) {
