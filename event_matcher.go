@@ -4,15 +4,15 @@ type EventMatcher interface {
 	Match(*Event) bool
 }
 
-type EventCountMatcher interface {
+type EventLimitMatcher interface {
 	EventMatcher
-	CountMatch(*Event) bool
+	LimitMatch(*Event) bool
 	Done() bool
 }
 
-type EventCountMatchers[T EventCountMatcher] []T
+type EventLimitMatchers[T EventLimitMatcher] []T
 
-func (m EventCountMatchers[T]) Match(event *Event) bool {
+func (m EventLimitMatchers[T]) Match(event *Event) bool {
 	match := false
 	for _, mm := range m {
 		match = mm.Match(event) || match
@@ -20,15 +20,15 @@ func (m EventCountMatchers[T]) Match(event *Event) bool {
 	return match
 }
 
-func (m EventCountMatchers[T]) CountMatch(event *Event) bool {
+func (m EventLimitMatchers[T]) LimitMatch(event *Event) bool {
 	match := false
 	for _, mm := range m {
-		match = mm.CountMatch(event) || match
+		match = mm.LimitMatch(event) || match
 	}
 	return match
 }
 
-func (m EventCountMatchers[T]) Done() bool {
+func (m EventLimitMatchers[T]) Done() bool {
 	done := true
 	for _, mm := range m {
 		done = done && mm.Done()
@@ -36,7 +36,7 @@ func (m EventCountMatchers[T]) Done() bool {
 	return done
 }
 
-var _ EventCountMatcher = (*ReqFilterEventMatcher)(nil)
+var _ EventLimitMatcher = (*ReqFilterEventMatcher)(nil)
 
 type ReqFilterEventMatcher struct {
 	cnt int64
@@ -145,7 +145,7 @@ func (m *ReqFilterEventMatcher) Match(event *Event) bool {
 	return true
 }
 
-func (m *ReqFilterEventMatcher) CountMatch(event *Event) bool {
+func (m *ReqFilterEventMatcher) LimitMatch(event *Event) bool {
 	match := m.Match(event)
 	if match {
 		m.cnt++
@@ -161,7 +161,7 @@ type ReqFiltersMatcher []*ReqFilterEventMatcher
 
 func NewReqFiltersEventMatchers(
 	filters []*ReqFilter,
-) EventCountMatchers[*ReqFilterEventMatcher] {
+) EventLimitMatchers[*ReqFilterEventMatcher] {
 	if filters == nil {
 		panic("filters must be non-nil slice")
 	}

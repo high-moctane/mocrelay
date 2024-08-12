@@ -20,19 +20,19 @@ func TestMatcher(t *testing.T) {
 
 	m := NewReqFiltersEventMatchers(filters)
 
-	match := m.CountMatch(event)
+	match := m.LimitMatch(event)
 	assert.True(t, match)
 	assert.False(t, m.Done())
 
-	match = m.CountMatch(event)
+	match = m.LimitMatch(event)
 	assert.True(t, match)
 	assert.False(t, m.Done())
 
-	match = m.CountMatch(event)
+	match = m.LimitMatch(event)
 	assert.True(t, match)
 	assert.True(t, m.Done())
 
-	match = m.CountMatch(event)
+	match = m.LimitMatch(event)
 	assert.True(t, match)
 	assert.True(t, m.Done())
 }

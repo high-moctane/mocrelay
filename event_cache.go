@@ -190,7 +190,7 @@ func (c *EventCache) findNeedLock(
 				if m.Done() {
 					break
 				}
-				if m.CountMatch(it.Value()) {
+				if m.LimitMatch(it.Value()) {
 					ret.Set(it.Key(), it.Value())
 				}
 			}

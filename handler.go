@@ -766,7 +766,7 @@ type mergeHandlerSessionReqState struct {
 	// map[subID]map[eventID]seen
 	seen map[string]map[string]bool
 	// map[subID]EventMatcher
-	matcher map[string]EventCountMatcher
+	matcher map[string]EventLimitMatcher
 }
 
 func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
@@ -775,7 +775,7 @@ func newMergeHandlerSessionReqState(size int) *mergeHandlerSessionReqState {
 		eose:      make(map[string][]bool),
 		lastEvent: make(map[string]*ServerEventMsg),
 		seen:      make(map[string]map[string]bool),
-		matcher:   make(map[string]EventCountMatcher),
+		matcher:   make(map[string]EventLimitMatcher),
 	}
 }
 
@@ -843,7 +843,7 @@ func (stat *mergeHandlerSessionReqState) IsSendableEventMsg(
 	if stat.matcher[msg.SubscriptionID].Done() {
 		return false
 	}
-	if !stat.matcher[msg.SubscriptionID].CountMatch(msg.Event) {
+	if !stat.matcher[msg.SubscriptionID].LimitMatch(msg.Event) {
 		return false
 	}
 
