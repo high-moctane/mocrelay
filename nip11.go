@@ -2,6 +2,7 @@ package mocrelay
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -41,7 +42,29 @@ type NIP11Limitation struct {
 }
 
 type NIP11Retention struct {
-	// TODO(high-moctane) Impl
+	Kinds []*Nip11RetentionKind `json:"kinds,omitempty"`
+	Time  *int                  `json:"time,omitempty"`
+	Count *int                  `json:"count,omitempty"`
+}
+
+type Nip11RetentionKind struct {
+	From, To int
+}
+
+func (k Nip11RetentionKind) MarshalJSON() ([]byte, error) {
+	if k.From == k.To {
+		ret, err := json.Marshal(k.From)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal Nip11RetentionKind: %w", err)
+		}
+		return ret, nil
+	}
+
+	ret, err := json.Marshal([]int{k.From, k.To})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal Nip11RetentionKind: %w", err)
+	}
+	return ret, nil
 }
 
 type NIP11Fees struct {
