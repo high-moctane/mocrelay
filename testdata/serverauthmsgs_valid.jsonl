@@ -1,1 +1,1 @@
-["AUTH",{"id":"37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1723280486,"kind":22242,"tags":[["relay","example.com"],["challenge","challengemsg"]],"content":"","sig":"a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb"}]
+["AUTH","challenge"]

@@ -178,8 +178,10 @@ func TestParseClientMsg(t *testing.T) {
 			},
 		},
 		{
-			Name:  "ok: client auth message",
-			Input: []byte(`["AUTH","cf9ee89f-a07d-4ed6-9cc9-66ff6ef319f4"]`),
+			Name: "ok: client auth message",
+			Input: []byte(
+				`["AUTH",{"id":"37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1723280486,"kind":22242,"tags":[["relay","example.com"],["challenge","challengemsg"]],"content":"","sig":"a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb"}]`,
+			),
 			Expect: Expect{
 				MsgType: new(ClientAuthMsg),
 				IsErr:   false,
@@ -665,7 +667,17 @@ func TestClientAuthMsg_MarshalJSON(t *testing.T) {
 		want []byte
 	}{
 		{
-			in:   ClientAuthMsg{Challenge: "challenge"},
+			in: ClientAuthMsg{
+				Event: &Event{
+					ID:        "37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829",
+					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+					CreatedAt: 1723280486,
+					Kind:      22242,
+					Tags:      []Tag{{"relay", "example.com"}, {"challenge", "challengemsg"}},
+					Content:   "",
+					Sig:       "a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb",
+				},
+			},
 			want: jsons[0],
 		},
 	}
@@ -692,8 +704,18 @@ func TestClientAuthMsg_UnmarshalJSON(t *testing.T) {
 			want ClientAuthMsg
 		}{
 			{
-				in:   jsons[0],
-				want: ClientAuthMsg{Challenge: "challenge"},
+				in: jsons[0],
+				want: ClientAuthMsg{
+					Event: &Event{
+						ID:        "37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829",
+						Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+						CreatedAt: 1723280486,
+						Kind:      22242,
+						Tags:      []Tag{{"relay", "example.com"}, {"challenge", "challengemsg"}},
+						Content:   "",
+						Sig:       "a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb",
+					},
+				},
 			},
 		}
 
@@ -1473,17 +1495,7 @@ func TestServerAuthMsg_MarshalJSON(t *testing.T) {
 		want []byte
 	}{
 		{
-			in: ServerAuthMsg{
-				Event: &Event{
-					ID:        "37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829",
-					Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-					CreatedAt: 1723280486,
-					Kind:      22242,
-					Tags:      []Tag{{"relay", "example.com"}, {"challenge", "challengemsg"}},
-					Content:   "",
-					Sig:       "a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb",
-				},
-			},
+			in:   ServerAuthMsg{Challenge: "challenge"},
 			want: jsons[0],
 		},
 	}
@@ -1510,18 +1522,8 @@ func TestServerAuthMsg_UnmarshalJSON(t *testing.T) {
 			want ServerAuthMsg
 		}{
 			{
-				in: jsons[0],
-				want: ServerAuthMsg{
-					Event: &Event{
-						ID:        "37b9219808f916a0ab60cf40daf836cfd73ab6051d536e5453cadf8d424df829",
-						Pubkey:    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-						CreatedAt: 1723280486,
-						Kind:      22242,
-						Tags:      []Tag{{"relay", "example.com"}, {"challenge", "challengemsg"}},
-						Content:   "",
-						Sig:       "a5b7f83c7d65a5de41a81a688a450fa5c58bd86d7c106ec71721e64fb0a78d62e7413fbcbee17b0c6f3d7eeefbcf6fd482945942617f69b5a91e6d189ff62feb",
-					},
-				},
+				in:   jsons[0],
+				want: ServerAuthMsg{Challenge: "challenge"},
 			},
 		}
 

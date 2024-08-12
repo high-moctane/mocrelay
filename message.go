@@ -330,16 +330,24 @@ func (msg *ClientCloseMsg) Valid() bool { return msg != nil }
 var _ ClientMsg = (*ClientAuthMsg)(nil)
 
 type ClientAuthMsg struct {
-	Challenge string
+	Event *Event
+}
+
+func NewClientAuthMsg(event *Event) (*ClientAuthMsg, error) {
+	if event == nil {
+		return nil, errors.New("server auth msg event must be non nil value")
+	}
+
+	return &ClientAuthMsg{Event: event}, nil
 }
 
 func (*ClientAuthMsg) ClientMsgLabel() string { return MsgLabelAuth }
 
 func (msg ClientAuthMsg) MarshalJSON() ([]byte, error) {
-	v := [2]string{MsgLabelAuth, msg.Challenge}
+	v := [2]any{MsgLabelAuth, msg.Event}
 	ret, err := json.Marshal(&v)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal client auth msg: %w", err)
+		return nil, fmt.Errorf("failed to marshal server auth msg: %w", err)
 	}
 
 	return ret, nil
@@ -350,24 +358,36 @@ func (msg *ClientAuthMsg) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
-	var elems []string
+	var elems []json.RawMessage
 	if err := json.Unmarshal(b, &elems); err != nil {
 		return fmt.Errorf("not a json array: %w", err)
 	}
 	if len(elems) != 2 {
-		return fmt.Errorf("client auth msg length must be 2 but got %d", len(elems))
+		return fmt.Errorf("server auth msg length must be 2 but got %d", len(elems))
 	}
 
-	if elems[0] != MsgLabelAuth {
-		return fmt.Errorf(`client auth msg label must be %q but got %q`, MsgLabelAuth, elems[0])
+	var label string
+	if err := json.Unmarshal(elems[0], &label); err != nil {
+		return fmt.Errorf("label must be string: %w", err)
+	}
+	if label != MsgLabelAuth {
+		return fmt.Errorf(`server auth msg label must be %q but got %q`, MsgLabelAuth, elems[0])
 	}
 
-	msg.Challenge = strings.Clone(elems[1])
+	var ret ClientAuthMsg
+	ret.Event = new(Event)
+	if err := ret.Event.UnmarshalJSON(elems[1]); err != nil {
+		return fmt.Errorf("failed to unmarshal event json: %w", err)
+	}
+
+	*msg = ret
 
 	return nil
 }
 
-func (msg *ClientAuthMsg) Valid() bool { return msg != nil }
+func (msg *ClientAuthMsg) Valid() bool {
+	return msg != nil && msg.Event.Valid()
+}
 
 var _ ClientMsg = (*ClientCountMsg)(nil)
 
@@ -956,25 +976,19 @@ func (msg *ServerOKMsg) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+var _ ServerMsg = (*ServerAuthMsg)(nil)
+
 type ServerAuthMsg struct {
-	Event *Event
-}
-
-func NewServerAuthMsg(event *Event) (*ServerAuthMsg, error) {
-	if event == nil {
-		return nil, errors.New("server auth msg event must be non nil value")
-	}
-
-	return &ServerAuthMsg{Event: event}, nil
+	Challenge string
 }
 
 func (*ServerAuthMsg) ServerMsgLabel() string { return MsgLabelAuth }
 
 func (msg ServerAuthMsg) MarshalJSON() ([]byte, error) {
-	v := [2]any{MsgLabelAuth, msg.Event}
+	v := [2]string{MsgLabelAuth, msg.Challenge}
 	ret, err := json.Marshal(&v)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal server auth msg: %w", err)
+		return nil, fmt.Errorf("failed to marshal client auth msg: %w", err)
 	}
 
 	return ret, nil
@@ -985,32 +999,24 @@ func (msg *ServerAuthMsg) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
-	var elems []json.RawMessage
+	var elems []string
 	if err := json.Unmarshal(b, &elems); err != nil {
 		return fmt.Errorf("not a json array: %w", err)
 	}
 	if len(elems) != 2 {
-		return fmt.Errorf("server auth msg length must be 2 but got %d", len(elems))
+		return fmt.Errorf("client auth msg length must be 2 but got %d", len(elems))
 	}
 
-	var label string
-	if err := json.Unmarshal(elems[0], &label); err != nil {
-		return fmt.Errorf("label must be string: %w", err)
-	}
-	if label != MsgLabelAuth {
-		return fmt.Errorf(`server auth msg label must be %q but got %q`, MsgLabelAuth, elems[0])
+	if elems[0] != MsgLabelAuth {
+		return fmt.Errorf(`client auth msg label must be %q but got %q`, MsgLabelAuth, elems[0])
 	}
 
-	var ret ServerAuthMsg
-	ret.Event = new(Event)
-	if err := ret.Event.UnmarshalJSON(elems[1]); err != nil {
-		return fmt.Errorf("failed to unmarshal event json: %w", err)
-	}
-
-	*msg = ret
+	msg.Challenge = strings.Clone(elems[1])
 
 	return nil
 }
+
+func (msg *ServerAuthMsg) Valid() bool { return msg != nil }
 
 type ServerCountMsg struct {
 	SubscriptionID string
