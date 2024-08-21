@@ -2188,10 +2188,10 @@ func TestEvent_Valid(t *testing.T) {
 
 func TestEvent_Serialize(t *testing.T) {
 	tests := []struct {
-		name string
-		in   *Event
-		want []byte
-		err  error
+		name  string
+		in    *Event
+		want  []byte
+		isErr bool
 	}{
 		{
 			name: "ok",
@@ -2216,21 +2216,21 @@ func TestEvent_Serialize(t *testing.T) {
 			want: []byte(
 				`[0,"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",1693157791,1,[["e","d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c","","root"],["p","dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e"]],"powa"]`,
 			),
-			err: nil,
+			isErr: false,
 		},
 		{
-			name: "ng: nil",
-			in:   nil,
-			want: nil,
-			err:  ErrEventSerialize,
+			name:  "ng: nil",
+			in:    nil,
+			want:  nil,
+			isErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.in.Serialize()
-			if err != nil || tt.err != nil {
-				assert.ErrorIs(t, err, tt.err)
+			if (err != nil) != tt.isErr {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
 			assert.Equal(t, tt.want, got)

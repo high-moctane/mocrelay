@@ -1327,11 +1327,9 @@ func (ev *Event) Valid() bool {
 		validSig(ev.Sig)
 }
 
-var ErrEventSerialize = errors.New("failed to serialize event")
-
 func (ev *Event) Serialize() ([]byte, error) {
 	if ev == nil {
-		return nil, fmt.Errorf("empty event: %w", ErrEventSerialize)
+		return nil, errors.New("nil event")
 	}
 
 	v := [6]any{
@@ -1345,9 +1343,9 @@ func (ev *Event) Serialize() ([]byte, error) {
 
 	ret, err := json.Marshal(&v)
 	if err != nil {
-		err = errors.Join(err, ErrEventSerialize)
+		return nil, fmt.Errorf("failed to marshal event: %w", err)
 	}
-	return ret, err
+	return ret, nil
 }
 
 func (ev *Event) Verify() (bool, error) {
