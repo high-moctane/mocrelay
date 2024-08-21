@@ -41,47 +41,55 @@ type SimpleHandlerBase interface {
 	ServeNostrClientMsg(context.Context, ClientMsg) (<-chan ServerMsg, error)
 }
 
-func NewSimpleHandler(h SimpleHandlerBase) Handler {
-	return HandlerFunc(
-		func(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) (err error) {
-			ctx, err = h.ServeNostrStart(ctx)
-			if err != nil {
-				return
+type SimpleHandler struct {
+	base SimpleHandlerBase
+}
+
+func NewSimpleHandler(base SimpleHandlerBase) *SimpleHandler {
+	return &SimpleHandler{base: base}
+}
+
+func (h *SimpleHandler) ServeNostr(
+	ctx context.Context,
+	send chan<- ServerMsg,
+	recv <-chan ClientMsg,
+) error {
+	ctx, err := h.base.ServeNostrStart(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start: %w", err)
+	}
+	defer func() { err = errors.Join(err, h.base.ServeNostrEnd(ctx)) }()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case cmsg, ok := <-recv:
+			if !ok {
+				return ErrRecvClosed
 			}
-			defer func() { err = errors.Join(err, h.ServeNostrEnd(ctx)) }()
+			smsgCh, err := h.base.ServeNostrClientMsg(ctx, cmsg)
+			if err != nil {
+				return fmt.Errorf("failed to serve client msg: %w", err)
+			}
+			if smsgCh != nil {
+			L:
+				for {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
 
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-
-				case cmsg, ok := <-recv:
-					if !ok {
-						return ErrRecvClosed
-					}
-					smsgCh, err := h.ServeNostrClientMsg(ctx, cmsg)
-					if err != nil {
-						return err
-					}
-					if smsgCh != nil {
-					L:
-						for {
-							select {
-							case <-ctx.Done():
-								return ctx.Err()
-
-							case smsg, ok := <-smsgCh:
-								if !ok {
-									break L
-								}
-								sendServerMsgCtx(ctx, send, smsg)
-							}
+					case smsg, ok := <-smsgCh:
+						if !ok {
+							break L
 						}
+						sendServerMsgCtx(ctx, send, smsg)
 					}
 				}
 			}
-		},
-	)
+		}
+	}
 }
 
 type DefaultSimpleHandlerBase struct{}
