@@ -12,7 +12,7 @@ require (
 	github.com/igrmk/treemap/v2 v2.0.1
 	github.com/mattn/go-sqlite3 v1.14.23
 	github.com/pierrec/xxHash v0.1.5
-	github.com/prometheus/client_golang v1.20.2
+	github.com/prometheus/client_golang v1.20.3
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/time v0.6.0
 )
