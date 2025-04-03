@@ -1,6 +1,9 @@
 module github.com/high-moctane/mocrelay
 
 go 1.23.0
+
+toolchain go1.24.1
+
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/coder/websocket v1.8.13
@@ -11,7 +14,7 @@ require (
 	github.com/igrmk/treemap/v2 v2.0.1
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pierrec/xxHash v0.1.5
-	github.com/prometheus/client_golang v1.21.0
+	github.com/prometheus/client_golang v1.21.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/time v0.11.0
 )
