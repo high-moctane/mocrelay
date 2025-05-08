@@ -1,7 +1,8 @@
 SHELL := /bin/bash
 
-EXEDIR := cmd/mocrelay
-TARGET := $(EXEDIR)/mocrelay
+TARGET_DIR := cmd/mocrelay
+TARGET := $(TARGET_DIR)/mocrelay
+
 
 .PHONY: all
 all:
@@ -12,8 +13,8 @@ all:
 build: $(TARGET)
 
 
-$(TARGET): $(shell find . -name \*.go)
-	cd $(EXEDIR) && go build
+$(TARGET):
+	cd $(TARGET_DIR) && go build
 
 
 .PHONY: run
