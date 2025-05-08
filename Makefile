@@ -23,9 +23,9 @@ run: $(TARGET)
 
 .PHONY: check
 check:
-	test -z "$$(find . -name \*.go | xargs -P 8 -I {} golines -l {} 2>&1 | tee /dev/stderr)"
+	test -z "$$(find . -name \*.go | xargs -P 8 -I {} go tool golines -l {} 2>&1 | tee /dev/stderr)"
 	go vet ./...
-	staticcheck ./...
+	go tool staticcheck ./...
 
 
 .PHONY: test
@@ -45,16 +45,10 @@ clean:
 
 .PHONY: fmt
 fmt:
-	find . -name \*.go | xargs -P 8 -I {} golines -w {}
+	find . -name \*.go | xargs -P 8 -I {} go tool golines -w {}
 
 
-.PHONY: githook
-githook:
-	lefthook install
-
-
-.PHONY: tool
-tool:
-	go install github.com/segmentio/golines@latest
-	go install golang.org/x/tools/cmd/goimports@latest
-	go install honnef.co/go/tools/cmd/staticcheck@latest
+.PHONY: setup
+setup:
+	go install tool
+	go tool lefthook install
