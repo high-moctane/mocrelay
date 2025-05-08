@@ -15,3 +15,9 @@ func (f NeoHandlerFunc) NeoServeNostr(
 ) error {
 	return f(ctx, send, recv)
 }
+
+type NeoSimpleHandlerBase interface {
+	NeoServeNostrOnStart(ctx context.Context) (newCtx context.Context, err error)
+	NeoServeNostrClientMsg(ctx context.Context, msg ClientMsg) (<-chan ServerMsg, error)
+	NeoServeNostrOnEnd(ctx context.Context, serveErr error) error
+}
