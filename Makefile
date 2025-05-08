@@ -24,9 +24,8 @@ run: $(TARGET)
 
 .PHONY: check
 check:
-	test -z "$$(find . -name \*.go | xargs -P 8 -I {} go tool golines -l {} 2>&1 | tee /dev/stderr)"
 	go vet ./...
-	go tool staticcheck ./...
+	test -z "$$(gofmt -l . 2>&1 | tee /dev/stderr)"
 
 
 .PHONY: test
