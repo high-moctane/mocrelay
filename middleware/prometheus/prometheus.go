@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/high-moctane/mocrelay"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/high-moctane/mocrelay"
 
 	"github.com/google/uuid"
 )
@@ -377,7 +378,6 @@ func (c *reqCounter) ServeNostrClientMsg(
 	ctx context.Context,
 	msg mocrelay.ClientMsg,
 ) (<-chan mocrelay.ClientMsg, <-chan mocrelay.ServerMsg, error) {
-
 	switch msg := msg.(type) {
 	case *mocrelay.ClientReqMsg:
 		reqID := getRequestID(ctx)

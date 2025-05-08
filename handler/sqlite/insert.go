@@ -13,8 +13,9 @@ import (
 	"strings"
 
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
-	"github.com/high-moctane/mocrelay"
 	"github.com/pierrec/xxHash/xxHash32"
+
+	"github.com/high-moctane/mocrelay"
 )
 
 func insertEvents(

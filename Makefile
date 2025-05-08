@@ -46,7 +46,8 @@ clean:
 
 .PHONY: fmt
 fmt:
-	find . -name \*.go | xargs -P 8 -I {} go tool golines -w {}
+	go tool goimports -w -l -local github.com/high-moctane/mocrelay .
+	go tool gofumpt -w -l .
 
 
 .PHONY: setup

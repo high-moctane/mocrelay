@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/high-moctane/mocrelay"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/high-moctane/mocrelay"
 )
 
 func Test_insertEvents(t *testing.T) {

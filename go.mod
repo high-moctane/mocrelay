@@ -98,6 +98,7 @@ require (
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.6.1 // indirect
+	mvdan.cc/gofumpt v0.8.0 // indirect
 )
 
 tool (
@@ -105,4 +106,5 @@ tool (
 	github.com/segmentio/golines
 	golang.org/x/tools/cmd/goimports
 	honnef.co/go/tools/cmd/staticcheck
+	mvdan.cc/gofumpt
 )

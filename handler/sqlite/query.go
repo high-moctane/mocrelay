@@ -11,6 +11,7 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/doug-martin/goqu/v9/exp"
+
 	"github.com/high-moctane/mocrelay"
 )
 
@@ -276,9 +277,7 @@ func fetchRawEvent(
 	defer rows.Close()
 
 	for rows.Next() {
-		var (
-			raw rawEvent
-		)
+		var raw rawEvent
 		if err := rows.Scan(
 			&raw.ID,
 			&raw.Pubkey,

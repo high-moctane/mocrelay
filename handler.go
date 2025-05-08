@@ -17,9 +17,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
-var (
-	ErrRecvClosed = errors.New("recv closed")
-)
+var ErrRecvClosed = errors.New("recv closed")
 
 type Handler interface {
 	ServeNostr(ctx context.Context, send chan<- ServerMsg, recv <-chan ClientMsg) error

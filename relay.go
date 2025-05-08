@@ -16,9 +16,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-var (
-	ErrRelayStop = errors.New("relay stopped")
-)
+var ErrRelayStop = errors.New("relay stopped")
 
 type Relay struct {
 	Handler Handler

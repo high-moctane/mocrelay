@@ -2112,15 +2112,16 @@ func TestEvent_Valid(t *testing.T) {
 				Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 				CreatedAt: 1693157791,
 				Kind:      1,
-				Tags: []Tag{{
-					"e",
-					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-					"",
-					"root",
-				}, {
-					"p",
-					"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-				},
+				Tags: []Tag{
+					{
+						"e",
+						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						"",
+						"root",
+					}, {
+						"p",
+						"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					},
 				},
 				Content: "powa",
 				Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
@@ -2134,15 +2135,16 @@ func TestEvent_Valid(t *testing.T) {
 				Pubkey:    "DBF0BECF24BF8DD7D779D7FB547E6112964FF042B77A42CC2D8488636EED9F5E",
 				CreatedAt: 1693157791,
 				Kind:      1,
-				Tags: []Tag{{
-					"e",
-					"D2EA747B6E3A35D2A8B759857B73FCABA5E9F3CFB6F38D317E034BDDC0BF0D1C",
-					"",
-					"root",
-				}, {
-					"p",
-					"DBF0BECF24BF8DD7D779D7FB547E6112964FF042B77A42CC2D8488636EED9F5E",
-				},
+				Tags: []Tag{
+					{
+						"e",
+						"D2EA747B6E3A35D2A8B759857B73FCABA5E9F3CFB6F38D317E034BDDC0BF0D1C",
+						"",
+						"root",
+					}, {
+						"p",
+						"DBF0BECF24BF8DD7D779D7FB547E6112964FF042B77A42CC2D8488636EED9F5E",
+					},
 				},
 				Content: "powa",
 				Sig:     "795E51656E8B863805C41B3A6E1195ED63BF8C5DF1FC3A4078CD45AAF0D8838F2DC57B802819443364E8E38C0F35C97E409181680BFFF83E58949500F5A8F0C8",
@@ -2156,15 +2158,16 @@ func TestEvent_Valid(t *testing.T) {
 				Pubkey:    "dbf0becf24bf8dd7",
 				CreatedAt: 1693157791,
 				Kind:      1,
-				Tags: []Tag{{
-					"e",
-					"d2ea747b6e3a351c",
-					"",
-					"root",
-				}, {
-					"p",
-					"dbf0bec36eed9f5e",
-				},
+				Tags: []Tag{
+					{
+						"e",
+						"d2ea747b6e3a351c",
+						"",
+						"root",
+					}, {
+						"p",
+						"dbf0bec36eed9f5e",
+					},
 				},
 				Content: "powa",
 				Sig:     "795e55aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
@@ -2200,15 +2203,16 @@ func TestEvent_Serialize(t *testing.T) {
 				Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 				CreatedAt: 1693157791,
 				Kind:      1,
-				Tags: []Tag{{
-					"e",
-					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-					"",
-					"root",
-				}, {
-					"p",
-					"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-				},
+				Tags: []Tag{
+					{
+						"e",
+						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						"",
+						"root",
+					}, {
+						"p",
+						"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					},
 				},
 				Content: "powa",
 				Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
@@ -2252,15 +2256,16 @@ func TestEvent_VerifyID(t *testing.T) {
 				Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 				CreatedAt: 1693157791,
 				Kind:      1,
-				Tags: []Tag{{
-					"e",
-					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-					"",
-					"root",
-				}, {
-					"p",
-					"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-				},
+				Tags: []Tag{
+					{
+						"e",
+						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						"",
+						"root",
+					}, {
+						"p",
+						"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					},
 				},
 				Content: "powa",
 				Sig:     "795e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
@@ -2275,15 +2280,16 @@ func TestEvent_VerifyID(t *testing.T) {
 				Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 				CreatedAt: 1693157791,
 				Kind:      1,
-				Tags: []Tag{{
-					"e",
-					"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-					"",
-					"root",
-				}, {
-					"p",
-					"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-				},
+				Tags: []Tag{
+					{
+						"e",
+						"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+						"",
+						"root",
+					}, {
+						"p",
+						"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+					},
 				},
 				Content: "powa",
 				Sig:     "695e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
@@ -2402,15 +2408,16 @@ func BenchmarkEvent_Verify(b *testing.B) {
 		Pubkey:    "dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
 		CreatedAt: 1693157791,
 		Kind:      1,
-		Tags: []Tag{{
-			"e",
-			"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
-			"",
-			"root",
-		}, {
-			"p",
-			"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
-		},
+		Tags: []Tag{
+			{
+				"e",
+				"d2ea747b6e3a35d2a8b759857b73fcaba5e9f3cfb6f38d317e034bddc0bf0d1c",
+				"",
+				"root",
+			}, {
+				"p",
+				"dbf0becf24bf8dd7d779d7fb547e6112964ff042b77a42cc2d8488636eed9f5e",
+			},
 		},
 		Content: "powa",
 		Sig:     "695e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",

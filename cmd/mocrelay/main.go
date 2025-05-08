@@ -10,12 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/high-moctane/mocrelay"
-	mocsqlite "github.com/high-moctane/mocrelay/handler/sqlite"
-	mocprom "github.com/high-moctane/mocrelay/middleware/prometheus"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/high-moctane/mocrelay"
+	mocsqlite "github.com/high-moctane/mocrelay/handler/sqlite"
+	mocprom "github.com/high-moctane/mocrelay/middleware/prometheus"
 )
 
 func main() {

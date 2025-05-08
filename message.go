@@ -483,7 +483,7 @@ type ReqFilter struct {
 }
 
 func (fil ReqFilter) MarshalJSON() ([]byte, error) {
-	var obj = make(map[string]any)
+	obj := make(map[string]any)
 
 	if fil.IDs != nil {
 		obj["ids"] = fil.IDs
