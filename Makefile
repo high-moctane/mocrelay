@@ -30,12 +30,12 @@ check:
 
 .PHONY: test
 test:
-	GODEBUG=randautoseed=0 go test ./...
+	go test ./...
 
 
 .PHONY: bench
 bench:
-	GODEBUG=randautoseed=0 go test -bench . -benchmem
+	go test -bench . -benchmem
 
 
 .PHONY: clean
