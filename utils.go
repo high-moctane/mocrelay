@@ -2,7 +2,9 @@ package mocrelay
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"iter"
 	"slices"
 )
 
@@ -94,4 +96,35 @@ func validHexString(s string) bool {
 	}
 
 	return true
+}
+
+var errCtxChClosed = errors.New("ctxCh closed")
+
+func ctxCh[T any](ctx context.Context, ch <-chan T) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		var zero T
+
+		for {
+			select {
+			case <-ctx.Done():
+				for {
+					if !yield(zero, ctx.Err()) {
+						return
+					}
+				}
+
+			case v, ok := <-ch:
+				if !ok {
+					for {
+						if !yield(zero, errCtxChClosed) {
+							return
+						}
+					}
+				}
+				if !yield(v, nil) {
+					return
+				}
+			}
+		}
+	}
 }
