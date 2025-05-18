@@ -128,3 +128,16 @@ func recvCtx[T any](ctx context.Context, ch <-chan T) iter.Seq2[T, error] {
 		}
 	}
 }
+
+func pipeCtx[T any](ctx context.Context, send chan<- T, recv <-chan T) error {
+	for v, err := range recvCtx(ctx, recv) {
+		if err != nil {
+			return err
+		}
+		if err := sendCtx(ctx, send, v); err != nil {
+			return err
+		}
+	}
+
+	panic("unreachable")
+}
