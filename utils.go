@@ -35,23 +35,23 @@ func sliceAllFunc[T any](vs []T, f func(v T) bool) bool {
 	return !slices.ContainsFunc(vs, func(v T) bool { return !f(v) })
 }
 
-func sendCtx[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
+func sendCtx[T any](ctx context.Context, ch chan<- T, v T) error {
 	select {
 	case <-ctx.Done():
-		return false
+		return ctx.Err()
 	case ch <- v:
-		return true
+		return nil
 	}
 }
 
-func trySendCtx[T any](ctx context.Context, ch chan<- T, v T) (sent bool) {
+func trySendCtx[T any](ctx context.Context, ch chan<- T, v T) (sent bool, err error) {
 	select {
 	case <-ctx.Done():
-		return false
+		return false, ctx.Err()
 	case ch <- v:
-		return true
+		return true, nil
 	default:
-		return false
+		return false, nil
 	}
 }
 
@@ -59,14 +59,14 @@ func sendClientMsgCtx(ctx context.Context, ch chan<- ClientMsg, msg ClientMsg) (
 	if isNilClientMsg(msg) {
 		return
 	}
-	return sendCtx(ctx, ch, msg)
+	return sendCtx(ctx, ch, msg) == nil
 }
 
 func sendServerMsgCtx(ctx context.Context, ch chan<- ServerMsg, msg ServerMsg) (sent bool) {
 	if isNilServerMsg(msg) {
 		return
 	}
-	return sendCtx(ctx, ch, msg)
+	return sendCtx(ctx, ch, msg) == nil
 }
 
 type bufCh[T any] chan T
