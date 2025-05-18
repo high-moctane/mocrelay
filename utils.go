@@ -98,9 +98,9 @@ func validHexString(s string) bool {
 	return true
 }
 
-var errCtxChClosed = errors.New("ctxCh closed")
+var errRecvCtxChanClosed = errors.New("ctxCh closed")
 
-func ctxCh[T any](ctx context.Context, ch <-chan T) iter.Seq2[T, error] {
+func recvCtx[T any](ctx context.Context, ch <-chan T) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var zero T
 
@@ -116,7 +116,7 @@ func ctxCh[T any](ctx context.Context, ch <-chan T) iter.Seq2[T, error] {
 			case v, ok := <-ch:
 				if !ok {
 					for {
-						if !yield(zero, errCtxChClosed) {
+						if !yield(zero, errRecvCtxChanClosed) {
 							return
 						}
 					}
