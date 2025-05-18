@@ -98,7 +98,7 @@ func validHexString(s string) bool {
 	return true
 }
 
-var errRecvCtxChanClosed = errors.New("ctxCh closed")
+var errRecvCtxChanClosed = errors.New("channel closed")
 
 func recvCtx[T any](ctx context.Context, ch <-chan T) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
