@@ -2,6 +2,7 @@ package mocrelay
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -127,6 +128,45 @@ func TestNeoSimpleHandler(t *testing.T) {
 		}
 		if gotOnEnd != want {
 			t.Errorf("expected context value to be %v, gotOnEnd %v", want, gotOnEnd)
+		}
+	})
+
+	t.Run("error on NeoServeNostrClientMsg", func(t *testing.T) {
+		serveErr := errors.New("test error")
+		onEndErr := errors.New("on end error")
+
+		base := &mockNeoSimpleHandlerBase{
+			neoServeNostrOnStartFunc: func(ctx context.Context) (context.Context, error) {
+				return ctx, nil
+			},
+			neoServeNostrClientMsg: func(ctx context.Context, msg ClientMsg) (<-chan ServerMsg, error) {
+				return nil, serveErr
+			},
+			neoServeNostrOnEnd: func(ctx context.Context, err error) error {
+				if err != serveErr {
+					t.Errorf("expected error to be %v, got %v", serveErr, err)
+				}
+				return onEndErr
+			},
+		}
+
+		send := make(chan ServerMsg, 10)
+		recv := newClosedBufCh[ClientMsg](&ClientReqMsg{})
+
+		ctx := t.Context()
+
+		handler := NewNeoSimpleHandler(base)
+
+		err := handler.NeoServeNostr(ctx, send, recv)
+		if err != onEndErr {
+			t.Errorf("expected error to be %v, got %v", onEndErr, err)
+		}
+
+		select {
+		case msg := <-send:
+			t.Errorf("got extra message: %v", msg)
+
+		default:
 		}
 	})
 }
