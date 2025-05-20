@@ -171,7 +171,7 @@ func TestNeoSimpleHandler(t *testing.T) {
 	})
 
 	t.Run("error on NeoServeNostrClientMsg", func(t *testing.T) {
-		serveErr := errors.New("on start error")
+		serveErr := errors.New("on serve error")
 		onEndErr := errors.New("on end error")
 
 		base := &mockNeoSimpleHandlerBase{
