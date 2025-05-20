@@ -70,18 +70,23 @@ func TestNeoSimpleHandler(t *testing.T) {
 		ctxKey := "testKey"
 
 		want := "testValue"
-		var got string
+		var gotServeNostrClientMsg, gotOnEnd string
 
 		base := &mockNeoSimpleHandlerBase{
 			neoServeNostrOnStartFunc: func(ctx context.Context) (context.Context, error) {
 				return context.WithValue(ctx, ctxKey, "testValue"), nil
 			},
 			neoServeNostrClientMsg: func(ctx context.Context, msg ClientMsg) (<-chan ServerMsg, error) {
+				var ok bool
+				gotServeNostrClientMsg, ok = ctx.Value(ctxKey).(string)
+				if !ok {
+					t.Fatal("expected context to contain key")
+				}
 				return newClosedBufCh[ServerMsg](&ServerClosedMsg{}), nil
 			},
 			neoServeNostrOnEnd: func(ctx context.Context, err error) error {
 				var ok bool
-				got, ok = ctx.Value(ctxKey).(string)
+				gotOnEnd, ok = ctx.Value(ctxKey).(string)
 				if !ok {
 					t.Fatal("expected context to contain key")
 				}
@@ -117,8 +122,11 @@ func TestNeoSimpleHandler(t *testing.T) {
 		default:
 		}
 
-		if got != want {
-			t.Errorf("expected context value to be %v, got %v", want, got)
+		if gotServeNostrClientMsg != want {
+			t.Errorf("expected context value to be %v, gotServeNostrClientMsg %v", want, gotServeNostrClientMsg)
+		}
+		if gotOnEnd != want {
+			t.Errorf("expected context value to be %v, gotOnEnd %v", want, gotOnEnd)
 		}
 	})
 }
