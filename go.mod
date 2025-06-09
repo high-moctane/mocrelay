@@ -14,7 +14,7 @@ require (
 	github.com/pierrec/xxHash v0.1.5
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/time v0.11.0
+	golang.org/x/time v0.12.0
 )
 
 require (
