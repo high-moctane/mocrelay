@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5
-	github.com/coder/websocket v1.8.13
+	github.com/coder/websocket v1.8.14
 	github.com/doug-martin/goqu/v9 v9.19.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
