@@ -25,50 +25,83 @@ func main() {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer cancel()
 
+	// Load configuration
+	config, err := mocrelay.LoadConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	// Setup Prometheus registry
 	reg := prometheus.NewRegistry()
 
-	db, err := sql.Open("sqlite3", ":memory:?cache=shared")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-	if err := db.Ping(); err != nil {
-		panic(err)
+	// Build handlers based on configuration
+	handlers := make([]mocrelay.Handler, 0)
+
+	// Add cache handler
+	handlers = append(handlers, mocrelay.NewCacheHandler(config.CacheSize))
+
+	// Add router handler
+	handlers = append(handlers, mocrelay.NewRouterHandler(config.RouterSize))
+
+	// Add SQLite handler if enabled
+	if config.SQLiteEnabled {
+		db, err := sql.Open("sqlite3", config.SQLitePath)
+		if err != nil {
+			panic(err)
+		}
+		defer db.Close()
+		if err := db.Ping(); err != nil {
+			panic(err)
+		}
+
+		sqliteOpt := &mocsqlite.SQLiteHandlerOption{
+			EventBulkInsertNum: config.SQLiteBulkInsertNum,
+			EventBulkInsertDur: config.SQLiteBulkInsertDuration,
+			MaxLimit:           uint(config.SQLiteMaxLimit),
+			Logger:             slog.Default(),
+		}
+		sqliteHandler, err := mocsqlite.NewSQLiteHandler(ctx, db, sqliteOpt)
+		if err != nil {
+			panic(err)
+		}
+		handlers = append(handlers, sqliteHandler)
 	}
 
-	sqliteHandler, err := mocsqlite.NewSQLiteHandler(ctx, db, nil)
-	if err != nil {
-		panic(err)
+	// Merge all handlers
+	h := mocrelay.NewMergeHandler(handlers...)
+
+	// Add Prometheus middleware if enabled
+	if config.PrometheusEnabled {
+		h = mocprom.NewPrometheusMiddleware(reg)(h)
 	}
 
-	h := mocrelay.NewMergeHandler(
-		mocrelay.NewCacheHandler(100),
-		mocrelay.NewRouterHandler(100),
-		sqliteHandler,
-	)
-	h = mocprom.NewPrometheusMiddleware(reg)(h)
-
-	opt := mocrelay.NewDefaultRelayOption()
-	opt.Logger = slog.Default()
+	// Create relay with configured options
+	opt := &mocrelay.RelayOption{
+		Logger:             slog.Default(),
+		SendTimeout:        config.ServerSendTimeout,
+		RecvRateLimitRate:  config.RelayRecvRateLimitRate,
+		RecvRateLimitBurst: config.RelayRecvRateLimitBurst,
+		MaxMessageLength:   config.RelayMaxMessageLength,
+		PingDuration:       config.ServerPingDuration,
+	}
 	relay := mocrelay.NewRelay(h, opt)
 
-	nip11 := &mocrelay.NIP11{
-		Name:        "mocrelay",
-		Description: "moctane's nostr relay",
-		Software:    "https://github.com/high-moctane/mocrelay",
-	}
-
+	// Use NIP-11 from configuration
 	relayMux := &mocrelay.ServeMux{
 		Relay: relay,
-		NIP11: nip11,
+		NIP11: config.NIP11,
 	}
 
+	// Setup HTTP handlers
 	mux := http.NewServeMux()
 	mux.Handle("/", relayMux)
-	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
+	if config.PrometheusEnabled {
+		mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
+	}
 
+	// Create HTTP server with configured address
 	srv := &http.Server{
-		Addr:        "localhost:8234",
+		Addr:        config.ServerAddr,
 		Handler:     mux,
 		BaseContext: func(_ net.Listener) context.Context { return ctx },
 	}
