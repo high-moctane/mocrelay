@@ -76,16 +76,30 @@ func main() {
 	go func() {
 		<-ctx.Done()
 
-		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		// まずHTTPサーバーをシャットダウン（新規接続を受け付けなくする）
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
 
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.ErrorContext(ctx, "server shutdown failed", "err", err)
+		}
+
+		// 既存接続が終わるのを待つ（タイムアウト付き）
+		waitDone := make(chan struct{})
 		go func() {
 			relay.Wait()
-			cancel()
+			close(waitDone)
 		}()
 
-		<-c.Done()
-		srv.Shutdown(c)
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer waitCancel()
+
+		select {
+		case <-waitDone:
+			slog.InfoContext(ctx, "all connections closed gracefully")
+		case <-waitCtx.Done():
+			slog.WarnContext(ctx, "shutdown timeout: some connections may not have closed gracefully")
+		}
 	}()
 
 	err = srv.ListenAndServe()

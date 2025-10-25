@@ -92,7 +92,9 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errs <- fmt.Errorf("serveWriteLoop terminated: %w", err)
 	}()
 
-	func() {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		defer cancel()
 		err := relay.Handler.ServeNostr(ctx, send, recv)
 		errs <- fmt.Errorf("handler terminated: %w", err)
