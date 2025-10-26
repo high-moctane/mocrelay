@@ -29,6 +29,97 @@ The project uses lefthook for pre-commit hooks (configured in lefthook.yml):
 - Automatically runs `make fmt` and `make check` before commits
 - Run `go tool lefthook install` after setup to enable hooks
 
+## Configuration
+
+mocrelay uses a three-layer configuration system (config.go:46-161):
+
+1. **Default values** - Hard-coded sensible defaults
+2. **YAML file** - Optional NIP-11 configuration file
+3. **Environment variables** - Override any setting
+
+**Configuration Priority**: Environment variables > YAML file > Defaults
+
+### Configuration File
+
+Create a `nip11.yaml` file to configure relay metadata and limitations:
+
+```bash
+# Use the example as a starting point
+cp nip11.example.yaml nip11.yaml
+# Edit nip11.yaml with your settings
+```
+
+**File Location**:
+- Default: `./nip11.yaml` in the current directory
+- Override via `MOCRELAY_NIP11_FILE` environment variable
+
+**What Goes in nip11.yaml**:
+- Relay metadata (name, description, contact, pubkey)
+- Supported NIPs list
+- Rate limits and message size limits (under `limitation:`)
+- Optional: retention policy, fees, relay countries
+
+See nip11.example.yaml for a fully-commented example.
+
+### Environment Variables
+
+All environment variables use the `MOCRELAY_` prefix. Key variables:
+
+**Server Settings**:
+- `MOCRELAY_SERVER_ADDR` - Listen address (default: `0.0.0.0:8234`)
+- `MOCRELAY_SERVER_SEND_TIMEOUT` - WebSocket send timeout (default: `10s`)
+- `MOCRELAY_SERVER_PING_DURATION` - WebSocket ping interval (default: `1m`)
+
+**Relay Settings**:
+- `MOCRELAY_RELAY_MAX_MESSAGE_LENGTH` - Max incoming message size in bytes (default: `100000`)
+- `MOCRELAY_RELAY_RECV_RATE_LIMIT_RATE` - Messages per second (default: `10.0`)
+- `MOCRELAY_RELAY_RECV_RATE_LIMIT_BURST` - Burst capacity (default: `10`)
+
+**Handler Settings**:
+- `MOCRELAY_CACHE_SIZE` - In-memory cache size (default: `100`)
+- `MOCRELAY_ROUTER_SIZE` - Router handler capacity (default: `100`)
+
+**SQLite Settings**:
+- `MOCRELAY_SQLITE_ENABLED` - Enable SQLite storage (default: `true`)
+- `MOCRELAY_SQLITE_PATH` - Database file path (default: `./mocrelay.db`)
+- `MOCRELAY_SQLITE_BULK_INSERT_NUM` - Events per bulk insert (default: `1000`)
+- `MOCRELAY_SQLITE_BULK_INSERT_DURATION` - Bulk insert interval (default: `2m`)
+- `MOCRELAY_SQLITE_MAX_LIMIT` - Max query limit (default: `5000`)
+
+**Prometheus Settings**:
+- `MOCRELAY_PROMETHEUS_ENABLED` - Enable /metrics endpoint (default: `true`)
+
+**NIP-11 Limitation Overrides** (override values from YAML):
+- `MOCRELAY_LIMITATION_MAX_MESSAGE_LENGTH`
+- `MOCRELAY_LIMITATION_MAX_SUBSCRIPTIONS`
+- `MOCRELAY_LIMITATION_MAX_FILTERS`
+- `MOCRELAY_LIMITATION_MAX_LIMIT`
+- `MOCRELAY_LIMITATION_MAX_EVENT_TAGS`
+- `MOCRELAY_LIMITATION_MAX_CONTENT_LENGTH`
+- `MOCRELAY_LIMITATION_CREATED_AT_LOWER_LIMIT` - Unix timestamp
+- `MOCRELAY_LIMITATION_CREATED_AT_UPPER_LIMIT` - Unix timestamp (0 = no limit)
+- `MOCRELAY_LIMITATION_AUTH_REQUIRED` - Boolean
+- `MOCRELAY_LIMITATION_PAYMENT_REQUIRED` - Boolean
+
+### Configuration in Code
+
+Load configuration in your application (cmd/mocrelay/main.go:28-32):
+
+```go
+config, err := mocrelay.LoadConfig()
+if err != nil {
+    panic(err)
+}
+
+// Use config values
+relay := mocrelay.NewRelay(handler, &mocrelay.RelayOption{
+    MaxMessageLength: config.RelayMaxMessageLength,
+    // ... other options
+})
+```
+
+The `Config` struct (config.go:13-40) holds all configuration values and can be inspected to see available options and their defaults.
+
 ## Core Architecture
 
 ### The Handler System
@@ -234,6 +325,7 @@ The prometheus middleware (middleware/prometheus/prometheus.go) exports metrics:
   - `event_cache.go` - In-memory event cache with indexes
   - `event_matcher.go` - Event filtering logic
   - `nip11.go` - NIP-11 relay information document
+  - `config.go` - Configuration loading (YAML + environment variables)
   - `server.go` - ServeMux for routing relay vs NIP-11 requests
 
 - **handler/sqlite** - SQLite storage backend
