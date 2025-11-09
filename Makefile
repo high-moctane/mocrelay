@@ -25,7 +25,8 @@ run: $(TARGET)
 .PHONY: check
 check:
 	go vet ./...
-	test -z "$$(gofmt -l . 2>&1 | tee /dev/stderr)"
+	test -z "$$(go tool goimports -l -local github.com/high-moctane/mocrelay .)"
+	test -z "$$(go tool gofumpt -l .)"
 
 
 .PHONY: test
@@ -45,8 +46,8 @@ clean:
 
 .PHONY: fmt
 fmt:
-	go tool goimports -w -l -local github.com/high-moctane/mocrelay .
 	command -v modernize >/dev/null 2>&1 && modernize -fix -test ./... || true
+	go tool goimports -w -l -local github.com/high-moctane/mocrelay .
 	go tool gofumpt -w -l .
 
 
