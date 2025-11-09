@@ -61,7 +61,7 @@ func TestLoadConfigWithEnvOverride(t *testing.T) {
 
 func TestLoadNIP11FromYAML(t *testing.T) {
 	// Test loading from test YAML file
-	nip11, err := LoadNIP11FromYAML("nip11.test.yaml")
+	nip11, err := LoadNIP11FromYAML("nip11.example.yaml")
 	if err != nil {
 		t.Fatalf("LoadNIP11FromYAML failed: %v", err)
 	}
