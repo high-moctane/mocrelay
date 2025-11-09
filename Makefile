@@ -51,5 +51,4 @@ fmt:
 
 .PHONY: setup
 setup:
-	go install tool
 	go tool lefthook install
