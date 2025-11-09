@@ -46,6 +46,7 @@ clean:
 .PHONY: fmt
 fmt:
 	go tool goimports -w -l -local github.com/high-moctane/mocrelay .
+	command -v modernize >/dev/null 2>&1 && modernize -fix -test ./... || true
 	go tool gofumpt -w -l .
 
 

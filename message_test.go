@@ -226,8 +226,7 @@ func BenchmarkParseClientMsg_All(b *testing.B) {
 	jsons = append(jsons, bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSONL), []byte("\n"))...)
 	jsons = append(jsons, bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSONL), []byte("\n"))...)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
@@ -235,8 +234,7 @@ func BenchmarkParseClientMsg_All(b *testing.B) {
 func BenchmarkParseClientMsg_Event(b *testing.B) {
 	jsons := bytes.Split(bytes.TrimSpace(clientEventMsgsValidJSONL), []byte("\n"))
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
@@ -244,8 +242,7 @@ func BenchmarkParseClientMsg_Event(b *testing.B) {
 func BenchmarkParseClientMsg_Req(b *testing.B) {
 	jsons := bytes.Split(bytes.TrimSpace(clientReqMsgsValidJSONL), []byte("\n"))
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
@@ -253,8 +250,7 @@ func BenchmarkParseClientMsg_Req(b *testing.B) {
 func BenchmarkParseClientMsg_Close(b *testing.B) {
 	jsons := bytes.Split(bytes.TrimSpace(clientCloseMsgsValidJSONL), []byte("\n"))
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
@@ -262,8 +258,7 @@ func BenchmarkParseClientMsg_Close(b *testing.B) {
 func BenchmarkParseClientMsg_Auth(b *testing.B) {
 	jsons := bytes.Split(bytes.TrimSpace(clientAuthMsgsValidJSONL), []byte("\n"))
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
@@ -271,8 +266,7 @@ func BenchmarkParseClientMsg_Auth(b *testing.B) {
 func BenchmarkParseClientMsg_Count(b *testing.B) {
 	jsons := bytes.Split(bytes.TrimSpace(clientCountMsgsValidJSONL), []byte("\n"))
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		ParseClientMsg(jsons[i%len(jsons)])
 	}
 }
@@ -1825,7 +1819,7 @@ func TestServerClosedMsg_UnmarshalJSON(t *testing.T) {
 
 func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 	var msgs []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n")) {
 		var msg ServerEOSEMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1833,7 +1827,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		}
 		msgs = append(msgs, &msg)
 	}
-	for _, b := range bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n")) {
 		var msg ServerEventMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1841,7 +1835,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		}
 		msgs = append(msgs, &msg)
 	}
-	for _, b := range bytes.Split(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n")) {
 		var msg ServerNoticeMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1849,7 +1843,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		}
 		msgs = append(msgs, &msg)
 	}
-	for _, b := range bytes.Split(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n")) {
 		var msg ServerOKMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1857,7 +1851,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		}
 		msgs = append(msgs, &msg)
 	}
-	for _, b := range bytes.Split(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n")) {
 		var msg ServerAuthMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1865,7 +1859,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		}
 		msgs = append(msgs, &msg)
 	}
-	for _, b := range bytes.Split(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n")) {
 		var msg ServerCountMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1873,7 +1867,7 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		}
 		msgs = append(msgs, &msg)
 	}
-	for _, b := range bytes.Split(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n")) {
 		var msg ServerClosedMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1882,15 +1876,14 @@ func BenchmarkServerMsg_Marshal_All(b *testing.B) {
 		msgs = append(msgs, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(msgs[i%len(msgs)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_EOSE(b *testing.B) {
 	var eose []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverEOSEMsgsValidJSONL), []byte("\n")) {
 		var msg ServerEOSEMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1899,15 +1892,14 @@ func BenchmarkServerMsg_Marshal_EOSE(b *testing.B) {
 		eose = append(eose, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(eose[i%len(eose)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Event(b *testing.B) {
 	var event []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverEventMsgsValidJSONL), []byte("\n")) {
 		var msg ServerEventMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1916,15 +1908,14 @@ func BenchmarkServerMsg_Marshal_Event(b *testing.B) {
 		event = append(event, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(event[i%len(event)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Notice(b *testing.B) {
 	var notice []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverNoticeMsgsValidJSONL), []byte("\n")) {
 		var msg ServerNoticeMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1933,15 +1924,14 @@ func BenchmarkServerMsg_Marshal_Notice(b *testing.B) {
 		notice = append(notice, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(notice[i%len(notice)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_OK(b *testing.B) {
 	var ok []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverOKMsgsValidJSONL), []byte("\n")) {
 		var msg ServerOKMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1950,15 +1940,14 @@ func BenchmarkServerMsg_Marshal_OK(b *testing.B) {
 		ok = append(ok, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(ok[i%len(ok)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Auth(b *testing.B) {
 	var auth []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverAuthMsgsValidJSONL), []byte("\n")) {
 		var msg ServerAuthMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1967,15 +1956,14 @@ func BenchmarkServerMsg_Marshal_Auth(b *testing.B) {
 		auth = append(auth, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(auth[i%len(auth)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
 	var count []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverCountMsgsValidJSONL), []byte("\n")) {
 		var msg ServerCountMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -1984,15 +1972,14 @@ func BenchmarkServerMsg_Marshal_Count(b *testing.B) {
 		count = append(count, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(count[i%len(count)])
 	}
 }
 
 func BenchmarkServerMsg_Marshal_Closed(b *testing.B) {
 	var closed []ServerMsg
-	for _, b := range bytes.Split(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n")) {
+	for b := range bytes.SplitSeq(bytes.TrimSpace(serverClosedMsgsValidJSONL), []byte("\n")) {
 		var msg ServerClosedMsg
 		err := json.Unmarshal(b, &msg)
 		if err != nil {
@@ -2001,8 +1988,7 @@ func BenchmarkServerMsg_Marshal_Closed(b *testing.B) {
 		closed = append(closed, &msg)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		json.Marshal(closed[i%len(closed)])
 	}
 }
@@ -2011,8 +1997,8 @@ func BenchmarkParseEvent(b *testing.B) {
 	jsons := bytes.Split(bytes.TrimSpace(eventsValidJSONL), []byte("\n"))
 
 	var event Event
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		event.UnmarshalJSON(jsons[i%len(jsons)])
 	}
 }
@@ -2423,9 +2409,7 @@ func BenchmarkEvent_Verify(b *testing.B) {
 		Sig:     "695e51656e8b863805c41b3a6e1195ed63bf8c5df1fc3a4078cd45aaf0d8838f2dc57b802819443364e8e38c0f35c97e409181680bfff83e58949500f5a8f0c8",
 	}
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		event.Verify()
 	}
 }

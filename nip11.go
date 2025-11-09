@@ -121,7 +121,7 @@ func (k *Nip11Kind) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (k Nip11Kind) MarshalYAML() (interface{}, error) {
+func (k Nip11Kind) MarshalYAML() (any, error) {
 	if k.From == k.To {
 		return k.From, nil
 	}

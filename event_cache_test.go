@@ -10,7 +10,7 @@ import (
 func TestEventCache_Add(t *testing.T) {
 	regularEvents := func() []*Event {
 		var ret []*Event
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			ret = append(ret, &Event{
 				ID:        fmt.Sprintf("event-%d", i),
 				Pubkey:    "regular",
@@ -27,7 +27,7 @@ func TestEventCache_Add(t *testing.T) {
 		for _, pubkey := range pubkeys {
 			ret[pubkey] = make(map[int64][]*Event)
 			for _, kind := range kinds {
-				for i := 0; i < 10; i++ {
+				for i := range 10 {
 					ret[pubkey][kind] = append(ret[pubkey][kind], &Event{
 						ID:        fmt.Sprintf("event-%s-%d-%d", pubkey, kind, i),
 						Pubkey:    pubkey,
@@ -49,7 +49,7 @@ func TestEventCache_Add(t *testing.T) {
 			for _, kind := range kinds {
 				ret[pubkey][kind] = make(map[string][]*Event)
 				for _, param := range params {
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						ret[pubkey][kind][param] = append(ret[pubkey][kind][param], &Event{
 							ID:        fmt.Sprintf("event-%s-%d-%s-%d", pubkey, kind, param, i),
 							Pubkey:    pubkey,
@@ -1395,7 +1395,7 @@ func BenchmarkEventCache_Add(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		events := func() []*Event {
 			ret := make([]*Event, 0, 10000)
-			for i := 0; i < 10000; i++ {
+			for i := range 10000 {
 				ret = append(ret, &Event{
 					ID:        fmt.Sprintf("event-%d", i),
 					Pubkey:    "pubkey01",
@@ -1465,7 +1465,7 @@ func BenchmarkEventCache_AddFind(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		events := func() []*Event {
 			ret := make([]*Event, 0, 10000)
-			for i := 0; i < 10000; i++ {
+			for i := range 10000 {
 				ret = append(ret, &Event{
 					ID:        fmt.Sprintf("event-%d", i),
 					Pubkey:    "pubkey01",

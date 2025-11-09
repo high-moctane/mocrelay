@@ -43,7 +43,7 @@ func helperTestHandler(t *testing.T, h Handler, in []ClientMsg, out []ServerMsg)
 	}
 
 Loop:
-	for i := 0; i < len(out); i++ {
+	for range out {
 		select {
 		case <-ctx.Done():
 			break Loop

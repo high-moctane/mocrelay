@@ -219,7 +219,7 @@ func (h *simpleSQLiteHandler) bulkInsertWithRetry(
 	ctx context.Context,
 	events []*mocrelay.Event,
 ) error {
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := insertEvents(ctx, h.db, h.seed, events); err != nil {
 			errorLog(ctx, h.opt.Logger, "failed to insert events", "err", err, "retry", i+1)
 			select {

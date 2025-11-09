@@ -75,30 +75,24 @@ func (relay *Relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer cancel()
 		defer close(recv)
 		err := relay.serveReadLoop(ctx, conn, recv, send)
 		errs <- fmt.Errorf("serveReadLoop terminated: %w", err)
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer cancel()
 		err := relay.serveWriteLoop(ctx, conn, send)
 		errs <- fmt.Errorf("serveWriteLoop terminated: %w", err)
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer cancel()
 		err := relay.Handler.ServeNostr(ctx, send, recv)
 		errs <- fmt.Errorf("handler terminated: %w", err)
-	}()
+	})
 
 	<-ctx.Done()
 
