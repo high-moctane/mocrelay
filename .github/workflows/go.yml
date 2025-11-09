@@ -15,7 +15,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "stable"
+          go-version-file: go.mod
 
       - name: Setup repo
         run: make setup
