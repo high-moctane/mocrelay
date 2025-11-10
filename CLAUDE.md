@@ -29,6 +29,34 @@ The project uses lefthook for pre-commit hooks (configured in lefthook.yml):
 - Automatically runs `make fmt` and `make check` before commits
 - Run `go tool lefthook install` after setup to enable hooks
 
+## Automated Dependency Management
+
+The project uses Dependabot for automated dependency updates:
+
+### Monitored Dependencies
+- **Go modules** (`go.mod`) - Weekly checks for Go dependencies
+- **GitHub Actions** (`.github/workflows/*.yml`) - Weekly checks for action versions
+- **Docker** (`Dockerfile`) - Weekly checks for base image updates
+
+### Auto-Merge Policy
+Dependabot PRs are automatically merged when CI passes, based on update type:
+
+| Ecosystem | Patch (x.x.X) | Minor (x.X.0) | Major (X.0.0) |
+|-----------|---------------|---------------|---------------|
+| GitHub Actions | ✅ Auto-merge | ✅ Auto-merge | ⏸️ Manual review |
+| Go modules | ✅ Auto-merge | ⏸️ Manual review | ⏸️ Manual review |
+| Docker | ✅ Auto-merge | ⏸️ Manual review | ⏸️ Manual review |
+
+**How it works**:
+1. Dependabot creates a PR for dependency updates
+2. CI runs (`make check`, `make test`)
+3. If CI passes and the update type matches the policy, the PR is automatically merged
+4. Updates requiring manual review will wait for human approval
+
+**Configuration files**:
+- `.github/dependabot.yml` - Dependabot configuration
+- `.github/workflows/dependabot-automerge.yml` - Auto-merge workflow
+
 ## Configuration
 
 mocrelay uses a three-layer configuration system (config.go:46-161):
