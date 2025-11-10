@@ -57,6 +57,37 @@ Dependabot PRs are automatically merged when CI passes, based on update type:
 - `.github/dependabot.yml` - Dependabot configuration
 - `.github/workflows/dependabot-automerge.yml` - Auto-merge workflow
 
+## Security Scanning
+
+The project uses CodeQL for automated security analysis:
+
+### What is CodeQL?
+CodeQL is GitHub's code analysis engine that treats code as data. It can detect:
+- Security vulnerabilities (SQL injection, command injection, etc.)
+- Code quality issues
+- Best practice violations
+
+### Scanning Schedule
+- **Every push** to `main` branch
+- **Every pull request** to `main` branch
+- **Weekly** (Mondays at 00:00 UTC) for continuous monitoring
+
+### How it works
+1. CodeQL converts your code into a queryable database
+2. Runs security queries against the database
+3. Reports findings in the Security tab
+4. Automatically comments on PRs if issues are found
+
+### Viewing Results
+- Go to the **Security** tab in the GitHub repository
+- Navigate to **Code scanning alerts**
+- Review and dismiss false positives as needed
+
+**Free for public repositories!** 🎉
+
+**Configuration file**:
+- `.github/workflows/codeql.yml` - CodeQL workflow
+
 ## Configuration
 
 mocrelay uses a three-layer configuration system (config.go:46-161):
