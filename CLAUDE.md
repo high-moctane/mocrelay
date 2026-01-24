@@ -176,18 +176,18 @@ mocrelay では exact match を採用（DB インデックスの効率を考慮�
 NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Middleware を提供する。
 これが mocrelay の主要な提供価値。
 
-#### Tier 1: 基本的な制限（NIP-01 のみで実装可能）
+#### Tier 1: 基本的な制限（NIP-01 のみで実装可能） ✅ 完了
 
 | Middleware | NIP-11 フィールド | 概要 |
 |------------|------------------|------|
 | `MaxSubscriptions` ✅ | `limitation.max_subscriptions` | 接続あたりのサブスクリプション数制限 |
-| `MaxSubidLength` | `limitation.max_subid_length` | サブスクリプションID長制限 |
-| `MaxLimit` | `limitation.max_limit`, `default_limit` | limit値クランプ + デフォルト値 |
-| `MaxEventTags` | `limitation.max_event_tags` | タグ数制限 |
-| `MaxContentLength` | `limitation.max_content_length` | content文字数制限（Unicode） |
-| `CreatedAtLimits` | `limitation.created_at_lower/upper_limit` | created_at範囲チェック |
-| `KindBlacklist` | `retention` (time=0) | 特定kindの拒否（DM関連など） |
-| `RestrictedWrites` | `limitation.restricted_writes` | pubkeyホワイトリスト/ブラックリスト |
+| `MaxSubidLength` ✅ | `limitation.max_subid_length` | サブスクリプションID長制限 |
+| `MaxLimit` ✅ | `limitation.max_limit`, `default_limit` | limit値クランプ + デフォルト値 |
+| `MaxEventTags` ✅ | `limitation.max_event_tags` | タグ数制限 |
+| `MaxContentLength` ✅ | `limitation.max_content_length` | content文字数制限（Unicode） |
+| `CreatedAtLimits` ✅ | `limitation.created_at_lower/upper_limit` | created_at範囲チェック |
+| `KindBlacklist` ✅ | `retention` (time=0) | 特定kindの拒否（DM関連など） |
+| `RestrictedWrites` ✅ | `limitation.restricted_writes` | pubkeyホワイトリスト/ブラックリスト |
 
 #### Tier 2: WebSocket/HTTP レベル
 
