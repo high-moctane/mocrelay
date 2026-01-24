@@ -203,6 +203,13 @@ NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Mid
 | `MinPowDifficulty` ✅ | `limitation.min_pow_difficulty` | NIP-13 |
 | `AuthRequired` ✅ | `limitation.auth_required` | NIP-42 |
 
+#### その他の NIP 対応 ✅
+
+| Middleware | NIP | 概要 |
+|------------|-----|------|
+| `ExpirationMiddleware` ✅ | NIP-40 | `expiration` タグで期限切れイベントを拒否・配信停止 |
+| `ProtectedEventsMiddleware` ✅ | NIP-70 | `["-"]` タグの再公開防止（NIP-42 AUTH 前提） |
+
 #### 有料リレーについて
 
 `payment_required` は mocrelay の middleware としては提供しない。
