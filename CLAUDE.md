@@ -180,7 +180,7 @@ NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Mid
 
 | Middleware | NIP-11 フィールド | 概要 |
 |------------|------------------|------|
-| `MaxSubscriptions` | `limitation.max_subscriptions` | 接続あたりのサブスクリプション数制限 |
+| `MaxSubscriptions` ✅ | `limitation.max_subscriptions` | 接続あたりのサブスクリプション数制限 |
 | `MaxSubidLength` | `limitation.max_subid_length` | サブスクリプションID長制限 |
 | `MaxLimit` | `limitation.max_limit`, `default_limit` | limit値クランプ + デフォルト値 |
 | `MaxEventTags` | `limitation.max_event_tags` | タグ数制限 |
