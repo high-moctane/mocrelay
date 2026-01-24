@@ -21,7 +21,8 @@ func main() {
 		Level: slog.LevelDebug,
 	}))
 
-	handler := mocrelay.NewNopHandler()
+	router := mocrelay.NewRouter()
+	handler := mocrelay.NewRouterHandler(router)
 	relay := mocrelay.NewRelay(handler)
 	relay.Logger = logger
 
