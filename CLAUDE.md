@@ -156,6 +156,50 @@ mocrelay では exact match を採用（DB インデックスの効率を考慮�
 | `NopHandler` | 虚無リレー。EVENT→OK、REQ→EOSE を返すだけ |
 | `RouterHandler` | クライアント間でイベントをルーティング。中央集権 Router で購読管理 |
 
+### 実装予定の Handler/Middleware（NIP-11 ベース）
+
+NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Middleware を提供する。
+これが mocrelay の主要な提供価値。
+
+#### Tier 1: 基本的な制限（NIP-01 のみで実装可能）
+
+| Middleware | NIP-11 フィールド | 概要 |
+|------------|------------------|------|
+| `MaxSubscriptions` | `limitation.max_subscriptions` | 接続あたりのサブスクリプション数制限 |
+| `MaxSubidLength` | `limitation.max_subid_length` | サブスクリプションID長制限 |
+| `MaxLimit` | `limitation.max_limit`, `default_limit` | limit値クランプ + デフォルト値 |
+| `MaxEventTags` | `limitation.max_event_tags` | タグ数制限 |
+| `MaxContentLength` | `limitation.max_content_length` | content文字数制限（Unicode） |
+| `CreatedAtLimits` | `limitation.created_at_lower/upper_limit` | created_at範囲チェック |
+| `KindBlacklist` | `retention` (time=0) | 特定kindの拒否（DM関連など） |
+| `RestrictedWrites` | `limitation.restricted_writes` | pubkeyホワイトリスト/ブラックリスト |
+
+#### Tier 2: WebSocket/HTTP レベル
+
+| 機能 | NIP-11 フィールド | 概要 |
+|------|------------------|------|
+| `MaxMessageLength` | `limitation.max_message_length` | WebSocketメッセージサイズ制限（Relay層） |
+| `NIP11Handler` | - | NIP-11 JSON を返す HTTP ハンドラ |
+
+#### Tier 3: 他のNIPが必要
+
+| Middleware | NIP-11 フィールド | 依存NIP |
+|------------|------------------|---------|
+| `MinPowDifficulty` | `limitation.min_pow_difficulty` | NIP-13 |
+| `AuthRequired` | `limitation.auth_required` | NIP-42 |
+| `PaymentRequired` | `limitation.payment_required` | NIP-?? |
+
+#### 日本の電気通信事業法対応
+
+`KindBlacklist` で以下の DM 関連 kind を弾く：
+- kind 4（旧 DM）
+- kind 13（Seal wrapper）
+- kind 14（Chat Messages）
+- kind 1059（Gift Wrap）
+- kind 10050（DM relay list）
+
+NIP-11 の `retention` で `time: 0` として公開すると、クライアントに事前通知できる。
+
 ### Router の設計
 
 - **中央集権方式**：全接続・全購読を Router が管理
@@ -205,3 +249,4 @@ synctest.Test(t, func(t *testing.T) {
 ## NIP Support
 
 - NIP-01: Basic protocol (in progress)
+- NIP-11: Relay Information Document (planned)
