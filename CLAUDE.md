@@ -151,6 +151,11 @@ mocrelay では exact match を採用（DB インデックスの効率を考慮�
 
 (To be documented as we build)
 
+## Documentation
+
+- **docs/nips/**: リレーが実装すべき NIP 一覧（MUST/SHOULD/MAY に分類済み）
+- **docs/encoding-json-v2.md**: Go 1.25 の `encoding/json/v2` 調査メモ（`GOEXPERIMENT=jsonv2` が必要）
+
 ## NIP Support
 
 - NIP-01: Basic protocol (in progress)
