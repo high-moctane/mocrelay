@@ -210,6 +210,26 @@ NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Mid
 | `ExpirationMiddleware` ✅ | NIP-40 | `expiration` タグで期限切れイベントを拒否・配信停止 |
 | `ProtectedEventsMiddleware` ✅ | NIP-70 | `["-"]` タグの再公開防止（NIP-42 AUTH 前提） |
 
+#### 今後の NIP 実装優先度
+
+**ストレージ統合後**：
+- NIP-09: Deletion Request（削除処理が必要）
+- NIP-45: COUNT（集計が必要）
+
+**検索エンジン統合後**：
+- NIP-50: Search（全文検索）
+
+**特殊機能（必要に応じて）**：
+- NIP-29: Groups（複雑、グループ管理・モデレーション）
+- NIP-77: Negentropy（リレー間同期）
+- NIP-86: Management API（JSON-RPC over HTTP、運用向け）
+
+**保存するだけ（特殊処理不要）**：
+- NIP-22: Comment（kind 1111）
+- NIP-28: Public Chat（kind 40-44、kind 41 の replaceable-like 挙動だけ注意）
+
+詳細は `docs/nips/` に各 NIP の調査結果あり。
+
 #### 有料リレーについて
 
 `payment_required` は mocrelay の middleware としては提供しない。
