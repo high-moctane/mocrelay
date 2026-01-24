@@ -260,6 +260,7 @@ synctest.Test(t, func(t *testing.T) {
 
 - **docs/nips/**: リレーが実装すべき NIP 一覧（MUST/SHOULD/MAY に分類済み）
 - **docs/encoding-json-v2.md**: Go 1.25 の `encoding/json/v2` 調査メモ（`GOEXPERIMENT=jsonv2` が必要）
+- **最新 NIP 仕様**: `~/ghq/github.com/nostr-protocol/nips/` に clone 済み
 
 ## NIP Support
 
