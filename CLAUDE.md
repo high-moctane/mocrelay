@@ -32,6 +32,21 @@ go tool lefthook install  # Install git hooks
   - Prometheus metrics
   - Dockerfile
 
+### Development Workflow
+
+**Handler/Middleware の開発ループ**：
+
+```
+実装 → テスト → CLAUDE.md 完了チェック → commit
+```
+
+1つずつ確実に進める。
+
+**実装方針**：
+- 可能な限り `SimpleHandlerBase` / `SimpleMiddlewareBase` をベースに実装
+- テストが書きやすく、非同期処理の複雑さを隠蔽できる
+- 1:N 変換が必要な特殊ケースのみ `Handler` を直接実装
+
 ### Design Decisions
 
 #### Handler Interface
@@ -249,4 +264,4 @@ synctest.Test(t, func(t *testing.T) {
 ## NIP Support
 
 - NIP-01: Basic protocol (in progress)
-- NIP-11: Relay Information Document (planned)
+- NIP-11: Relay Information Document ✅
