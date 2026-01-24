@@ -189,12 +189,12 @@ NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Mid
 | `KindBlacklist` ✅ | `retention` (time=0) | 特定kindの拒否（DM関連など） |
 | `RestrictedWrites` ✅ | `limitation.restricted_writes` | pubkeyホワイトリスト/ブラックリスト |
 
-#### Tier 2: WebSocket/HTTP レベル
+#### Tier 2: WebSocket/HTTP レベル ✅ 完了
 
 | 機能 | NIP-11 フィールド | 概要 |
 |------|------------------|------|
-| `MaxMessageLength` | `limitation.max_message_length` | WebSocketメッセージサイズ制限（Relay層） |
-| `NIP11Handler` | - | NIP-11 JSON を返す HTTP ハンドラ |
+| `MaxMessageLength` ✅ | `limitation.max_message_length` | WebSocketメッセージサイズ制限（`relay.go:78-79`） |
+| `NIP11Handler` ✅ | - | NIP-11 JSON を返す HTTP ハンドラ（`relay.go:244-272`） |
 
 #### Tier 3: 他のNIPが必要
 
