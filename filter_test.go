@@ -139,13 +139,23 @@ func TestReqFilter_Valid(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "valid ids",
-			filter: &ReqFilter{IDs: []string{"abc"}, Tags: map[string][]string{}},
+			name:   "valid ids (64-char lowercase hex)",
+			filter: &ReqFilter{IDs: []string{"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"}, Tags: map[string][]string{}},
 			want:   true,
 		},
 		{
 			name:   "invalid ids (non-hex)",
-			filter: &ReqFilter{IDs: []string{"xyz!"}, Tags: map[string][]string{}},
+			filter: &ReqFilter{IDs: []string{"xyz!def1234567890abcdef1234567890abcdef1234567890abcdef1234567890"}, Tags: map[string][]string{}},
+			want:   false,
+		},
+		{
+			name:   "invalid ids (uppercase)",
+			filter: &ReqFilter{IDs: []string{"ABCDEF1234567890abcdef1234567890abcdef1234567890abcdef1234567890"}, Tags: map[string][]string{}},
+			want:   false,
+		},
+		{
+			name:   "invalid ids (wrong length)",
+			filter: &ReqFilter{IDs: []string{"abcdef"}, Tags: map[string][]string{}},
 			want:   false,
 		},
 		{
@@ -195,12 +205,18 @@ func TestReqFilter_Valid(t *testing.T) {
 }
 
 func TestReqFilter_Match(t *testing.T) {
+	// Use 64-char lowercase hex for all IDs/pubkeys
+	eventID := "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+	pubkey := "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+	refEventID := "eeeeee1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+	refPubkey := "aaaaaa1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+
 	ev := &Event{
-		ID:        "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-		Pubkey:    "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		ID:        eventID,
+		Pubkey:    pubkey,
 		CreatedAt: time.Unix(1000, 0),
 		Kind:      1,
-		Tags:      []Tag{{"e", "event123"}, {"p", "pubkey456"}},
+		Tags:      []Tag{{"e", refEventID}, {"p", refPubkey}},
 		Content:   "hello",
 	}
 
@@ -215,18 +231,18 @@ func TestReqFilter_Match(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "id prefix match",
-			filter: &ReqFilter{IDs: []string{"abcdef"}, Tags: map[string][]string{}},
+			name:   "id exact match",
+			filter: &ReqFilter{IDs: []string{eventID}, Tags: map[string][]string{}},
 			want:   true,
 		},
 		{
 			name:   "id no match",
-			filter: &ReqFilter{IDs: []string{"ffffff"}, Tags: map[string][]string{}},
+			filter: &ReqFilter{IDs: []string{"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0000"}, Tags: map[string][]string{}},
 			want:   false,
 		},
 		{
-			name:   "author prefix match",
-			filter: &ReqFilter{Authors: []string{"1234"}, Tags: map[string][]string{}},
+			name:   "author exact match",
+			filter: &ReqFilter{Authors: []string{pubkey}, Tags: map[string][]string{}},
 			want:   true,
 		},
 		{
@@ -240,13 +256,13 @@ func TestReqFilter_Match(t *testing.T) {
 			want:   false,
 		},
 		{
-			name:   "tag match",
-			filter: &ReqFilter{Tags: map[string][]string{"e": {"event123"}}},
+			name:   "tag #e match",
+			filter: &ReqFilter{Tags: map[string][]string{"e": {refEventID}}},
 			want:   true,
 		},
 		{
-			name:   "tag no match",
-			filter: &ReqFilter{Tags: map[string][]string{"e": {"other"}}},
+			name:   "tag #e no match",
+			filter: &ReqFilter{Tags: map[string][]string{"e": {"0000001234567890abcdef1234567890abcdef1234567890abcdef1234567890"}}},
 			want:   false,
 		},
 		{
@@ -273,8 +289,8 @@ func TestReqFilter_Match(t *testing.T) {
 			name: "combined filters",
 			filter: &ReqFilter{
 				Kinds:   []int64{1},
-				Authors: []string{"1234"},
-				Tags:    map[string][]string{"p": {"pubkey456"}},
+				Authors: []string{pubkey},
+				Tags:    map[string][]string{"p": {refPubkey}},
 			},
 			want: true,
 		},
@@ -289,23 +305,25 @@ func TestReqFilter_Match(t *testing.T) {
 	}
 }
 
-func TestIsValidHexPrefix(t *testing.T) {
+func TestIsValidLowercaseHex(t *testing.T) {
 	tests := []struct {
 		s      string
-		maxLen int
+		length int
 		want   bool
 	}{
-		{"abc", 64, true},
-		{"ABC", 64, true},
-		{"123", 64, true},
-		{"", 64, false},
-		{"xyz!", 64, false},
+		{"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", 64, true},
+		{"0000000000000000000000000000000000000000000000000000000000000000", 64, true},
+		{"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 64, true},
+		{"ABCDEF1234567890abcdef1234567890abcdef1234567890abcdef1234567890", 64, false}, // uppercase
+		{"abcdef", 64, false}, // too short
+		{"", 64, false},       // empty
+		{"xyz!def1234567890abcdef1234567890abcdef1234567890abcdef1234567890", 64, false}, // non-hex
 		{"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcde", 64, false}, // 65 chars
 	}
 
 	for _, tt := range tests {
-		if got := isValidHexPrefix(tt.s, tt.maxLen); got != tt.want {
-			t.Errorf("isValidHexPrefix(%q, %d) = %v, want %v", tt.s, tt.maxLen, got, tt.want)
+		if got := isValidLowercaseHex(tt.s, tt.length); got != tt.want {
+			t.Errorf("isValidLowercaseHex(%q, %d) = %v, want %v", tt.s, tt.length, got, tt.want)
 		}
 	}
 }

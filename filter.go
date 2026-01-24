@@ -130,22 +130,23 @@ func (f *ReqFilter) Valid() bool {
 		return false
 	}
 
-	// IDs: must be nil or non-empty (NIP-01: "one or more values")
+	// IDs: must be nil or non-empty, and each must be exact 64-char lowercase hex
+	// NIP-01: "The ids ... filter lists MUST contain exact 64-character lowercase hex values"
 	if f.IDs != nil && len(f.IDs) == 0 {
 		return false
 	}
 	for _, id := range f.IDs {
-		if !isValidHexPrefix(id, 64) {
+		if !isValidLowercaseHex(id, 64) {
 			return false
 		}
 	}
 
-	// Authors: must be nil or non-empty
+	// Authors: must be nil or non-empty, and each must be exact 64-char lowercase hex
 	if f.Authors != nil && len(f.Authors) == 0 {
 		return false
 	}
 	for _, author := range f.Authors {
-		if !isValidHexPrefix(author, 64) {
+		if !isValidLowercaseHex(author, 64) {
 			return false
 		}
 	}
@@ -161,6 +162,7 @@ func (f *ReqFilter) Valid() bool {
 	}
 
 	// Tags: must have single-letter keys and non-empty values
+	// NIP-01: "The ... #e and #p filter lists MUST contain exact 64-character lowercase hex values"
 	for k, v := range f.Tags {
 		if len(k) != 1 || !isTagLetter(k[0]) {
 			return false
@@ -168,6 +170,14 @@ func (f *ReqFilter) Valid() bool {
 		// Tag filter values must be non-empty (NIP-01: "one or more values")
 		if len(v) == 0 {
 			return false
+		}
+		// #e and #p must be exact 64-char lowercase hex
+		if k == "e" || k == "p" {
+			for _, val := range v {
+				if !isValidLowercaseHex(val, 64) {
+					return false
+				}
+			}
 		}
 	}
 
@@ -198,11 +208,11 @@ func (f *ReqFilter) Match(ev *Event) bool {
 		return false
 	}
 
-	// IDs: prefix match
+	// IDs: exact match
 	if len(f.IDs) > 0 {
 		matched := false
 		for _, id := range f.IDs {
-			if hasPrefix(ev.ID, id) {
+			if ev.ID == id {
 				matched = true
 				break
 			}
@@ -212,11 +222,11 @@ func (f *ReqFilter) Match(ev *Event) bool {
 		}
 	}
 
-	// Authors: prefix match
+	// Authors: exact match
 	if len(f.Authors) > 0 {
 		matched := false
 		for _, author := range f.Authors {
-			if hasPrefix(ev.Pubkey, author) {
+			if ev.Pubkey == author {
 				matched = true
 				break
 			}
@@ -286,35 +296,17 @@ func isTagLetter(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
-// isValidHexPrefix checks if a string is a valid hex prefix (up to maxLen).
-func isValidHexPrefix(s string, maxLen int) bool {
-	if len(s) == 0 || len(s) > maxLen {
+// isValidLowercaseHex checks if a string is exactly length chars of lowercase hex.
+// NIP-01 requires "exact 64-character lowercase hex values" for ids, authors, #e, #p.
+func isValidLowercaseHex(s string, length int) bool {
+	if len(s) != length {
 		return false
 	}
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
 			return false
 		}
 	}
 	return true
-}
-
-// hasPrefix checks if s has prefix p (case-insensitive for hex).
-func hasPrefix(s, p string) bool {
-	if len(p) > len(s) {
-		return false
-	}
-	for i := 0; i < len(p); i++ {
-		if toLower(s[i]) != toLower(p[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func toLower(b byte) byte {
-	if b >= 'A' && b <= 'Z' {
-		return b + ('a' - 'A')
-	}
-	return b
 }
