@@ -124,35 +124,49 @@ func (f *ReqFilter) MarshalJSON() ([]byte, error) {
 }
 
 // Valid checks if the filter has valid format.
+// Per NIP-01: list fields must have "one or more values" - empty arrays are invalid.
 func (f *ReqFilter) Valid() bool {
 	if f == nil {
 		return false
 	}
 
-	// IDs should be valid hex (prefix match allowed)
+	// IDs: must be nil or non-empty (NIP-01: "one or more values")
+	if f.IDs != nil && len(f.IDs) == 0 {
+		return false
+	}
 	for _, id := range f.IDs {
 		if !isValidHexPrefix(id, 64) {
 			return false
 		}
 	}
 
-	// Authors should be valid hex (prefix match allowed)
+	// Authors: must be nil or non-empty
+	if f.Authors != nil && len(f.Authors) == 0 {
+		return false
+	}
 	for _, author := range f.Authors {
 		if !isValidHexPrefix(author, 64) {
 			return false
 		}
 	}
 
-	// Kinds should be non-negative
+	// Kinds: must be nil or non-empty
+	if f.Kinds != nil && len(f.Kinds) == 0 {
+		return false
+	}
 	for _, kind := range f.Kinds {
 		if kind < 0 {
 			return false
 		}
 	}
 
-	// Tags should have single-letter keys
-	for k := range f.Tags {
+	// Tags: must have single-letter keys and non-empty values
+	for k, v := range f.Tags {
 		if len(k) != 1 || !isTagLetter(k[0]) {
+			return false
+		}
+		// Tag filter values must be non-empty (NIP-01: "one or more values")
+		if len(v) == 0 {
 			return false
 		}
 	}

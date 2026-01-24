@@ -149,6 +149,26 @@ func TestReqFilter_Valid(t *testing.T) {
 			want:   false,
 		},
 		{
+			name:   "empty ids array (NIP-01: one or more values)",
+			filter: &ReqFilter{IDs: []string{}, Tags: map[string][]string{}},
+			want:   false,
+		},
+		{
+			name:   "empty authors array (NIP-01: one or more values)",
+			filter: &ReqFilter{Authors: []string{}, Tags: map[string][]string{}},
+			want:   false,
+		},
+		{
+			name:   "empty kinds array (NIP-01: one or more values)",
+			filter: &ReqFilter{Kinds: []int64{}, Tags: map[string][]string{}},
+			want:   false,
+		},
+		{
+			name:   "empty tag values (NIP-01: one or more values)",
+			filter: &ReqFilter{Tags: map[string][]string{"e": {}}},
+			want:   false,
+		},
+		{
 			name:   "negative kind",
 			filter: &ReqFilter{Kinds: []int64{-1}, Tags: map[string][]string{}},
 			want:   false,
