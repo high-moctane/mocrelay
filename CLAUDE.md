@@ -112,6 +112,41 @@ go tool lefthook install  # Install git hooks
 
 `duplicate`, `pow`, `blocked`, `rate-limited`, `invalid`, `restricted`, `mute`, `error`
 
+## LLM が間違えやすいポイント（学習データとの差分）
+
+⚠️ 以下は 2025年1月頃までの学習データと現在の NIP-01 で混乱しやすい点です。
+
+### Filter は exact match（prefix match ではない）
+
+❌ 間違い：`{"ids": ["abcdef"]}` で prefix match できる
+✅ 正解：**64文字の lowercase hex のみ**
+
+> "The `ids`, `authors`, `#e` and `#p` filter lists MUST contain exact 64-character lowercase hex values."
+
+mocrelay では exact match を採用（DB インデックスの効率を考慮）。
+
+### limit の適用範囲
+
+- **initial query にのみ適用**（リアルタイム更新には適用されない）
+- ソート順：`created_at DESC`、同値なら `id ASC`（lexical order）
+
+### e タグの 4番目のフィールド
+
+`["e", <event_id>, <relay_url>, <author_pubkey>]`
+
+4番目に author の pubkey を追加可能（optional）。
+
+### a タグの末尾コロン
+
+- addressable: `30023:pubkey:identifier`
+- replaceable: `10000:pubkey:` ← **末尾コロン必須**
+
+### タグは最初の値のみインデックス
+
+> "Only the first value in any given tag is indexed."
+
+`["e", "id1", "relay", "author"]` → `id1` のみがフィルタ対象。
+
 ## Architecture
 
 (To be documented as we build)
