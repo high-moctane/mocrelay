@@ -149,7 +149,53 @@ mocrelay では exact match を採用（DB インデックスの効率を考慮�
 
 ## Architecture
 
-(To be documented as we build)
+### Handler 一覧
+
+| Handler | 概要 |
+|---------|------|
+| `NopHandler` | 虚無リレー。EVENT→OK、REQ→EOSE を返すだけ |
+| `RouterHandler` | クライアント間でイベントをルーティング。中央集権 Router で購読管理 |
+
+### Router の設計
+
+- **中央集権方式**：全接続・全購読を Router が管理
+- **階層構造**：接続ID（サーバー生成）→ 購読ID（クライアント提供）
+- **ベストエフォート送信**：channel が詰まったら drop（デッドロック防止）
+
+```go
+// 送信時は必ずこのパターン
+select {
+case ch <- msg:
+    // 送れた
+default:
+    // 詰まってるから drop
+}
+```
+
+### テストの書き方
+
+**非同期処理のテストには `testing/synctest` を使う**（Go 1.25+）
+
+```go
+synctest.Test(t, func(t *testing.T) {
+    // この中は "bubble" という隔離環境
+    // - fake clock（時間が自動で進む）
+    // - synctest.Wait() で「全 goroutine がブロックするまで待つ」
+
+    router := NewRouter()
+    sendCh := make(chan *ServerMsg, 10)
+    connID := router.Register(sendCh)
+
+    router.Subscribe(connID, "sub1", filters)
+    router.Broadcast(event)
+
+    synctest.Wait() // 全部の goroutine が落ち着くまで待つ
+
+    // ここでアサーション
+})
+```
+
+**注意**：ネットワーク I/O でブロックしてる goroutine は synctest の対象外。channel ベースのテストに使う。
 
 ## Documentation
 
