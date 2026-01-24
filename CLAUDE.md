@@ -268,6 +268,58 @@ default:
 }
 ```
 
+### MergeHandler の設計（TODO）
+
+複数の Handler を並列実行して、レスポンスを統合する。
+
+**典型的な使い方**：
+```go
+handler := NewMergeHandler(
+    NewStorageHandler(storage),  // 過去イベント取得
+    NewRouterHandler(router),    // リアルタイム配信
+)
+```
+
+**統合ルール**：
+- **OK**: 全 handler の応答を待ってマージ（1つでも拒否なら拒否）
+- **EOSE**: 全 handler の EOSE を待ってから送信
+- **EVENT**: 重複排除（同じ eventID は1回だけ）
+- **COUNT**: 全 handler の最大値を取る
+
+**main branch との違い**：
+- `sync.Mutex` を使う（チャネルでの mutex はやめる）
+- セッション状態を小さな関数で管理
+
+**考慮点**：
+- EOSE を返さない handler がいると session 内の map が肥大化する
+- 対策：タイムアウト、CLOSE 時のクリーンアップ、購読数制限
+
+### Storage インターフェース（TODO）
+
+```go
+type Storage interface {
+    Store(ctx context.Context, event *Event) (stored bool, err error)
+    Query(ctx context.Context, filters []*ReqFilter) ([]*Event, error)
+    Delete(ctx context.Context, eventID string, pubkey string) error
+    DeleteByAddr(ctx context.Context, kind int64, pubkey, dTag string) error
+}
+```
+
+**StorageHandler の役割**：
+- EVENT → Store して OK 返す
+- REQ → Query して EVENT 列 + EOSE 返す
+- **購読管理はしない**（それは RouterHandler の仕事）
+- EOSE を返したら、その REQ についての役割は終了
+
+**永続化の選択肢**（未定）：
+- PostgreSQL が有力（パーティショニング、スケーラビリティ）
+- DuckDB: VPS では非力、Parquet bloom filter が list 型非対応
+- SQLite: パーティショニングが難しい
+
+**InMemoryStorage の用途**：
+- キャッシュとして使用（DB アクセスが遅いので応答高速化）
+- テスト用
+
 ### テストの書き方
 
 **非同期処理のテストには `testing/synctest` を使う**（Go 1.25+）
