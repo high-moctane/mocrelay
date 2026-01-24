@@ -36,12 +36,12 @@ func NewRestrictedWritesMiddleware(mode RestrictedWritesMode, pubkeys []string) 
 	})
 }
 
-func (m *RestrictedWritesMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *RestrictedWritesMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *RestrictedWritesMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *RestrictedWritesMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *RestrictedWritesMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {

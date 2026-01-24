@@ -32,12 +32,12 @@ func NewCreatedAtLimitsMiddleware(lowerLimit, upperLimit int64) Middleware {
 	})
 }
 
-func (m *CreatedAtLimitsMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *CreatedAtLimitsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *CreatedAtLimitsMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *CreatedAtLimitsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *CreatedAtLimitsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {

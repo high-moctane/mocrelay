@@ -22,12 +22,12 @@ func NewMaxContentLengthMiddleware(maxLen int) Middleware {
 	return NewSimpleMiddleware(&MaxContentLengthMiddleware{maxLen: maxLen})
 }
 
-func (m *MaxContentLengthMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *MaxContentLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *MaxContentLengthMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *MaxContentLengthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *MaxContentLengthMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {

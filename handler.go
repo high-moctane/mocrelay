@@ -38,13 +38,15 @@ func (f HandlerFunc) ServeNostr(ctx context.Context, send chan<- *ServerMsg, rec
 type SimpleHandlerBase interface {
 	// OnStart is called when a new connection is established.
 	// The returned context is passed to subsequent calls.
+	// The returned ServerMsg (if non-nil) is sent to the client (e.g., AUTH challenge).
 	// Return an error to reject the connection.
-	OnStart(ctx context.Context) (context.Context, error)
+	OnStart(ctx context.Context) (context.Context, *ServerMsg, error)
 
 	// OnEnd is called when the connection is closing.
 	// This is always called, even if HandleMsg returned an error.
+	// The returned ServerMsg (if non-nil) is sent to the client.
 	// Use this for cleanup (e.g., removing subscriptions).
-	OnEnd(ctx context.Context) error
+	OnEnd(ctx context.Context) (*ServerMsg, error)
 
 	// HandleMsg is called for each client message.
 	// Return a channel of server messages to send back.
@@ -65,11 +67,29 @@ func NewSimpleHandler(base SimpleHandlerBase) *SimpleHandler {
 
 // ServeNostr implements Handler.
 func (h *SimpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
-	ctx, err := h.base.OnStart(ctx)
+	ctx, startMsg, err := h.base.OnStart(ctx)
 	if err != nil {
 		return err
 	}
-	defer h.base.OnEnd(ctx)
+	defer func() {
+		endMsg, _ := h.base.OnEnd(ctx)
+		if endMsg != nil {
+			select {
+			case send <- endMsg:
+			default:
+				// send channel might be full or closed, best effort
+			}
+		}
+	}()
+
+	// Send OnStart message if provided
+	if startMsg != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case send <- startMsg:
+		}
+	}
 
 	for {
 		select {

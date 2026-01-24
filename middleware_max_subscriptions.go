@@ -28,15 +28,15 @@ type maxSubsState struct {
 	subs map[string]struct{} // set of subscription IDs
 }
 
-func (m *MaxSubscriptionsMiddleware) OnStart(ctx context.Context) (context.Context, error) {
+func (m *MaxSubscriptionsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	state := &maxSubsState{
 		subs: make(map[string]struct{}),
 	}
-	return context.WithValue(ctx, maxSubsCtxKey{}, state), nil
+	return context.WithValue(ctx, maxSubsCtxKey{}, state), nil, nil
 }
 
-func (m *MaxSubscriptionsMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *MaxSubscriptionsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *MaxSubscriptionsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {

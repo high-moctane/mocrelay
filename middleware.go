@@ -30,13 +30,15 @@ type Middleware func(Handler) Handler
 type SimpleMiddlewareBase interface {
 	// OnStart is called when a new connection is established.
 	// The returned context is passed to subsequent calls.
+	// The returned ServerMsg (if non-nil) is sent to the client (e.g., AUTH challenge).
 	// Return an error to reject the connection.
-	OnStart(ctx context.Context) (context.Context, error)
+	OnStart(ctx context.Context) (context.Context, *ServerMsg, error)
 
 	// OnEnd is called when the connection is closing.
 	// This is always called, even if Handle* returned an error.
+	// The returned ServerMsg (if non-nil) is sent to the client.
 	// Use this for cleanup.
-	OnEnd(ctx context.Context) error
+	OnEnd(ctx context.Context) (*ServerMsg, error)
 
 	// HandleClientMsg processes a client message.
 	// Returns:
@@ -58,11 +60,29 @@ type SimpleMiddlewareBase interface {
 func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
 	return func(next Handler) Handler {
 		return HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
-			ctx, err := base.OnStart(ctx)
+			ctx, startMsg, err := base.OnStart(ctx)
 			if err != nil {
 				return err
 			}
-			defer base.OnEnd(ctx)
+			defer func() {
+				endMsg, _ := base.OnEnd(ctx)
+				if endMsg != nil {
+					select {
+					case send <- endMsg:
+					default:
+						// send channel might be full or closed, best effort
+					}
+				}
+			}()
+
+			// Send OnStart message if provided
+			if startMsg != nil {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case send <- startMsg:
+				}
+			}
 
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()

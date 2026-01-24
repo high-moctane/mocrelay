@@ -11,8 +11,8 @@ import (
 
 // mockSimpleHandlerBase is a test helper for SimpleHandlerBase.
 type mockSimpleHandlerBase struct {
-	onStartFunc   func(context.Context) (context.Context, error)
-	onEndFunc     func(context.Context) error
+	onStartFunc   func(context.Context) (context.Context, *ServerMsg, error)
+	onEndFunc     func(context.Context) (*ServerMsg, error)
 	handleMsgFunc func(context.Context, *ClientMsg) (<-chan *ServerMsg, error)
 
 	onStartCalled bool
@@ -20,20 +20,20 @@ type mockSimpleHandlerBase struct {
 	msgsReceived  []*ClientMsg
 }
 
-func (m *mockSimpleHandlerBase) OnStart(ctx context.Context) (context.Context, error) {
+func (m *mockSimpleHandlerBase) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	m.onStartCalled = true
 	if m.onStartFunc != nil {
 		return m.onStartFunc(ctx)
 	}
-	return ctx, nil
+	return ctx, nil, nil
 }
 
-func (m *mockSimpleHandlerBase) OnEnd(ctx context.Context) error {
+func (m *mockSimpleHandlerBase) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	m.onEndCalled = true
 	if m.onEndFunc != nil {
 		return m.onEndFunc(ctx)
 	}
-	return nil
+	return nil, nil
 }
 
 func (m *mockSimpleHandlerBase) HandleMsg(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
@@ -87,8 +87,8 @@ func TestSimpleHandler_OnStartError(t *testing.T) {
 	// Test that OnStart error terminates the handler
 	expectedErr := errors.New("onstart error")
 	mock := &mockSimpleHandlerBase{
-		onStartFunc: func(ctx context.Context) (context.Context, error) {
-			return ctx, expectedErr
+		onStartFunc: func(ctx context.Context) (context.Context, *ServerMsg, error) {
+			return ctx, nil, expectedErr
 		},
 	}
 

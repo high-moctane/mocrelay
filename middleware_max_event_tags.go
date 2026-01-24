@@ -20,12 +20,12 @@ func NewMaxEventTagsMiddleware(maxTags int) Middleware {
 	return NewSimpleMiddleware(&MaxEventTagsMiddleware{maxTags: maxTags})
 }
 
-func (m *MaxEventTagsMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *MaxEventTagsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *MaxEventTagsMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *MaxEventTagsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *MaxEventTagsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {

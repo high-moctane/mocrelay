@@ -11,12 +11,12 @@ import (
 // testPassthroughMiddleware passes all messages through unchanged.
 type testPassthroughMiddleware struct{}
 
-func (m *testPassthroughMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *testPassthroughMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *testPassthroughMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *testPassthroughMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *testPassthroughMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
@@ -30,12 +30,12 @@ func (m *testPassthroughMiddleware) HandleServerMsg(ctx context.Context, msg *Se
 // testBlockingMiddleware blocks all EVENT messages.
 type testBlockingMiddleware struct{}
 
-func (m *testBlockingMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *testBlockingMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *testBlockingMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *testBlockingMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *testBlockingMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
@@ -186,12 +186,12 @@ func TestSimpleMiddleware_DropServerMsg(t *testing.T) {
 // testDropEOSEMiddleware drops all EOSE messages.
 type testDropEOSEMiddleware struct{}
 
-func (m *testDropEOSEMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *testDropEOSEMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *testDropEOSEMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *testDropEOSEMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *testDropEOSEMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {

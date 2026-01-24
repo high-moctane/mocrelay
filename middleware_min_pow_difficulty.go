@@ -20,12 +20,12 @@ type MinPowDifficultyMiddleware struct {
 	CheckCommitment bool
 }
 
-func (m *MinPowDifficultyMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *MinPowDifficultyMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *MinPowDifficultyMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *MinPowDifficultyMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *MinPowDifficultyMiddleware) HandleClientMsg(

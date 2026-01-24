@@ -20,12 +20,12 @@ func NewMaxSubidLengthMiddleware(maxLen int) Middleware {
 	return NewSimpleMiddleware(&MaxSubidLengthMiddleware{maxLen: maxLen})
 }
 
-func (m *MaxSubidLengthMiddleware) OnStart(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (m *MaxSubidLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+	return ctx, nil, nil
 }
 
-func (m *MaxSubidLengthMiddleware) OnEnd(ctx context.Context) error {
-	return nil
+func (m *MaxSubidLengthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	return nil, nil
 }
 
 func (m *MaxSubidLengthMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
