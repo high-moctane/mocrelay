@@ -26,6 +26,11 @@ type Relay struct {
 	// Default: 100KB
 	MaxMessageLength int64
 
+	// Info is the NIP-11 Relay Information Document.
+	// If set, the relay will respond to HTTP requests with
+	// Accept: application/nostr+json header.
+	Info *RelayInfo
+
 	wg sync.WaitGroup
 }
 
@@ -44,6 +49,12 @@ func (r *Relay) Wait() {
 
 // ServeHTTP implements http.Handler.
 func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// NIP-11: Respond with relay info if Accept header is application/nostr+json
+	if r.Info != nil && req.Header.Get("Accept") == "application/nostr+json" {
+		r.serveNIP11(w, req)
+		return
+	}
+
 	r.wg.Add(1)
 	defer r.wg.Done()
 
@@ -227,4 +238,35 @@ func (r *Relay) logWarn(ctx context.Context, msg string, args ...any) {
 	if r.Logger != nil {
 		r.Logger.WarnContext(ctx, msg, args...)
 	}
+}
+
+// serveNIP11 responds with the NIP-11 Relay Information Document.
+func (r *Relay) serveNIP11(w http.ResponseWriter, req *http.Request) {
+	// CORS headers (required by NIP-11)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+
+	// Handle preflight request
+	if req.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Only GET is allowed for NIP-11
+	if req.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/nostr+json")
+
+	data, err := json.Marshal(r.Info)
+	if err != nil {
+		r.logWarn(req.Context(), "failed to marshal relay info", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
 }

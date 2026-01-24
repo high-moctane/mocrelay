@@ -25,6 +25,17 @@ func main() {
 	handler := mocrelay.NewRouterHandler(router)
 	relay := mocrelay.NewRelay(handler)
 	relay.Logger = logger
+	relay.Info = &mocrelay.RelayInfo{
+		Name:          "mocrelay-example",
+		Description:   "A minimal Nostr relay for testing",
+		Software:      "https://github.com/high-moctane/mocrelay",
+		Version:       "rewrite-dev",
+		SupportedNIPs: []int{1, 11},
+		Limitation: &mocrelay.RelayLimitation{
+			MaxMessageLength: 100_000,
+			MaxSubscriptions: 100,
+		},
+	}
 
 	logger.Info("starting relay", "addr", addr)
 	if err := http.ListenAndServe(addr, relay); err != nil {
