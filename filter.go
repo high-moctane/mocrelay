@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"slices"
 )
 
 // ReqFilter represents a filter in REQ/COUNT messages.
@@ -210,13 +211,7 @@ func (f *ReqFilter) Match(ev *Event) bool {
 
 	// IDs: exact match
 	if len(f.IDs) > 0 {
-		matched := false
-		for _, id := range f.IDs {
-			if ev.ID == id {
-				matched = true
-				break
-			}
-		}
+		matched := slices.Contains(f.IDs, ev.ID)
 		if !matched {
 			return false
 		}
@@ -224,13 +219,7 @@ func (f *ReqFilter) Match(ev *Event) bool {
 
 	// Authors: exact match
 	if len(f.Authors) > 0 {
-		matched := false
-		for _, author := range f.Authors {
-			if ev.Pubkey == author {
-				matched = true
-				break
-			}
-		}
+		matched := slices.Contains(f.Authors, ev.Pubkey)
 		if !matched {
 			return false
 		}
@@ -238,13 +227,7 @@ func (f *ReqFilter) Match(ev *Event) bool {
 
 	// Kinds: exact match
 	if len(f.Kinds) > 0 {
-		matched := false
-		for _, kind := range f.Kinds {
-			if ev.Kind == kind {
-				matched = true
-				break
-			}
-		}
+		matched := slices.Contains(f.Kinds, ev.Kind)
 		if !matched {
 			return false
 		}
@@ -258,11 +241,8 @@ func (f *ReqFilter) Match(ev *Event) bool {
 		matched := false
 		for _, tag := range ev.Tags {
 			if len(tag) >= 2 && tag[0] == tagKey {
-				for _, fv := range filterValues {
-					if tag[1] == fv {
-						matched = true
-						break
-					}
+				if slices.Contains(filterValues, tag[1]) {
+					matched = true
 				}
 			}
 			if matched {
