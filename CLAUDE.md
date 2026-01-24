@@ -196,13 +196,23 @@ NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Mid
 | `MaxMessageLength` ✅ | `limitation.max_message_length` | WebSocketメッセージサイズ制限（`relay.go:78-79`） |
 | `NIP11Handler` ✅ | - | NIP-11 JSON を返す HTTP ハンドラ（`relay.go:244-272`） |
 
-#### Tier 3: 他のNIPが必要
+#### Tier 3: 他のNIPが必要 ✅ 完了
 
 | Middleware | NIP-11 フィールド | 依存NIP |
 |------------|------------------|---------|
 | `MinPowDifficulty` ✅ | `limitation.min_pow_difficulty` | NIP-13 |
 | `AuthRequired` ✅ | `limitation.auth_required` | NIP-42 |
-| `PaymentRequired` | `limitation.payment_required` | NIP-?? |
+
+#### 有料リレーについて
+
+`payment_required` は mocrelay の middleware としては提供しない。
+
+**理由**：NIP-11 は料金を公開する仕様のみで、実際の支払いプロトコルは標準化されていない。
+
+**有料リレーの実現方法**：
+- `RestrictedWrites` で支払い済み pubkey をホワイトリスト管理
+- 外部の支払いシステム（Lightning、Stripe 等）と連携
+- NIP-11 の `fees` で料金を公開
 
 #### 日本の電気通信事業法対応
 
