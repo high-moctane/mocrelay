@@ -201,7 +201,7 @@ NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Mid
 | Middleware | NIP-11 フィールド | 依存NIP |
 |------------|------------------|---------|
 | `MinPowDifficulty` ✅ | `limitation.min_pow_difficulty` | NIP-13 |
-| `AuthRequired` | `limitation.auth_required` | NIP-42 |
+| `AuthRequired` ✅ | `limitation.auth_required` | NIP-42 |
 | `PaymentRequired` | `limitation.payment_required` | NIP-?? |
 
 #### 日本の電気通信事業法対応
