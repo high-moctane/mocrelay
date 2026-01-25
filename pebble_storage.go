@@ -229,9 +229,6 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 		return nil, nil
 	}
 
-	// For now, simple implementation: scan all events and filter in memory
-	// TODO: Use indexes for efficient querying
-
 	seen := make(map[string]bool)
 	var result []*Event
 
@@ -242,10 +239,12 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 			limit = *filter.Limit
 		}
 
-		// Scan all events using created_at index (for proper ordering)
+		// Select the best index based on filter conditions
+		selection := s.selectIndex(filter)
+
 		iter, err := s.db.NewIter(&pebble.IterOptions{
-			LowerBound: []byte{prefixCreatedAt},
-			UpperBound: []byte{prefixCreatedAt + 1},
+			LowerBound: selection.lowerBound,
+			UpperBound: selection.upperBound,
 		})
 		if err != nil {
 			return nil, err
@@ -258,7 +257,7 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 
 			// Extract event ID from key
 			key := iter.Key()
-			eventID := key[9:41] // [prefix:1][inverted_ts:8][event_id:32]
+			eventID := key[selection.eventIDOffset : selection.eventIDOffset+32]
 
 			// Skip if already seen
 			eventIDHex := bytesToHex(eventID)
@@ -290,6 +289,43 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 	}
 
 	return result, nil
+}
+
+// indexSelection holds information about which index to use for a query.
+type indexSelection struct {
+	lowerBound    []byte
+	upperBound    []byte
+	eventIDOffset int // position of event ID in the key
+}
+
+// selectIndex chooses the best index based on filter conditions.
+// Priority: kinds (single) > created_at (fallback)
+func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
+	// Single kind: use kind index
+	if len(filter.Kinds) == 1 {
+		kind := filter.Kinds[0]
+		// Key format: [0x04][kind:8][inverted_ts:8][id:32]
+		lower := make([]byte, 9)
+		lower[0] = prefixKind
+		binary.BigEndian.PutUint64(lower[1:9], uint64(kind))
+
+		upper := make([]byte, 9)
+		upper[0] = prefixKind
+		binary.BigEndian.PutUint64(upper[1:9], uint64(kind+1))
+
+		return &indexSelection{
+			lowerBound:    lower,
+			upperBound:    upper,
+			eventIDOffset: 17, // 1 + 8 + 8
+		}
+	}
+
+	// Fallback: created_at index (full scan)
+	return &indexSelection{
+		lowerBound:    []byte{prefixCreatedAt},
+		upperBound:    []byte{prefixCreatedAt + 1},
+		eventIDOffset: 9, // 1 + 8
+	}
 }
 
 // Delete implements Storage.Delete.
