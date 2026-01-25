@@ -289,13 +289,14 @@ handler := NewMergeHandler(
 | **OK** | 全 handler の応答を待ってマージ（1つでも拒否なら拒否 = 障害発生中） |
 | **EOSE** | 全 handler の EOSE を待ってから送信 |
 | **EVENT (EOSE前)** | 重複排除 + ソートを乱す event は drop |
-| **EVENT (EOSE後)** | そのまま流す（重複排除不要、プロトコル的に合法） |
+| **EVENT (handler EOSE後)** | その handler からの EVENT は pass through（リアルタイムイベント） |
 | **COUNT** | 全 handler の最大値を取る |
 
 **limit の扱い**：
 - **最初の filter の limit を使用**（mocrelay の態度として）
 - REQ につき最大 limit 件だけ返して EOSE
 - 子 handler にも同じ limit を渡す
+- **limit 到達後の EVENT は drop**（リアルタイムイベントも含む）
 
 **ソートの drop ルール**：
 - 子 handler がソート済みの応答を返す前提
