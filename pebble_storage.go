@@ -299,7 +299,7 @@ type indexSelection struct {
 }
 
 // selectIndex chooses the best index based on filter conditions.
-// Priority: authors (single) > kinds (single) > created_at (fallback)
+// Priority: authors (single) > tags (single) > kinds (single) > created_at (fallback)
 func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
 	// Single author: use pubkey index (most selective)
 	if len(filter.Authors) == 1 {
@@ -315,6 +315,24 @@ func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
 			lowerBound:    lower,
 			upperBound:    upper,
 			eventIDOffset: 41, // 1 + 32 + 8
+		}
+	}
+
+	// Single tag value: use tag index
+	if tagName, tagValue := getSingleTagFilter(filter); tagName != 0 {
+		tagHash := hashTagValue(tagValue)
+		// Key format: [0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32]
+		lower := make([]byte, 34)
+		lower[0] = prefixTag
+		lower[1] = tagName
+		copy(lower[2:34], tagHash)
+
+		upper := incrementBytes(lower)
+
+		return &indexSelection{
+			lowerBound:    lower,
+			upperBound:    upper,
+			eventIDOffset: 42, // 1 + 1 + 32 + 8
 		}
 	}
 
@@ -343,6 +361,20 @@ func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
 		upperBound:    []byte{prefixCreatedAt + 1},
 		eventIDOffset: 9, // 1 + 8
 	}
+}
+
+// getSingleTagFilter returns the tag name and value if the filter has exactly one tag condition
+// with exactly one value. Returns (0, "") if no single tag filter is found.
+func getSingleTagFilter(filter *ReqFilter) (byte, string) {
+	if len(filter.Tags) != 1 {
+		return 0, ""
+	}
+	for tagName, values := range filter.Tags {
+		if len(tagName) == 1 && len(values) == 1 {
+			return tagName[0], values[0]
+		}
+	}
+	return 0, ""
 }
 
 // incrementBytes returns a byte slice that is lexicographically
