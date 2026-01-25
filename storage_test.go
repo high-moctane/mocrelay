@@ -265,17 +265,55 @@ func TestInMemoryStorage_Store_Kind5_DeleteKind5(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, stored)
 
-	// Second kind 5 that deletes the first
+	// Second kind 5 that tries to delete the first
 	delReq2 := makeEvent("kind5-2", "pubkey01", 5, 200, Tag{"e", "kind5-1"})
 	stored, err = s.Store(ctx, delReq2)
 	require.NoError(t, err)
 	assert.True(t, stored)
 
-	// Only the second kind 5 should remain
+	// NIP-09: "deletion request event against a deletion request has no effect"
+	// Both kind 5 events should remain
 	events, err := s.Query(ctx, []*ReqFilter{{}})
 	require.NoError(t, err)
-	require.Len(t, events, 1)
+	require.Len(t, events, 2)
 	assert.Equal(t, "kind5-2", events[0].ID)
+	assert.Equal(t, "kind5-1", events[1].ID)
+}
+
+func TestInMemoryStorage_Store_Kind5_DeleteByAddress_Timestamp(t *testing.T) {
+	ctx := context.Background()
+	s := NewInMemoryStorage()
+
+	// Delete request at timestamp 200
+	delReq := makeEvent("kind5-1", "pubkey01", 5, 200, Tag{"a", "30000:pubkey01:param"})
+	stored, err := s.Store(ctx, delReq)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Event created BEFORE the deletion (timestamp 100) -> should be rejected
+	evBefore := makeEvent("event-before", "pubkey01", 30000, 100, Tag{"d", "param"})
+	stored, err = s.Store(ctx, evBefore)
+	require.NoError(t, err)
+	assert.False(t, stored, "event created before deletion should be rejected")
+
+	// Event created AT the same time as deletion (timestamp 200) -> should be rejected
+	evSame := makeEvent("event-same", "pubkey01", 30000, 200, Tag{"d", "param"})
+	stored, err = s.Store(ctx, evSame)
+	require.NoError(t, err)
+	assert.False(t, stored, "event created at same time as deletion should be rejected")
+
+	// Event created AFTER the deletion (timestamp 300) -> should be stored!
+	evAfter := makeEvent("event-after", "pubkey01", 30000, 300, Tag{"d", "param"})
+	stored, err = s.Store(ctx, evAfter)
+	require.NoError(t, err)
+	assert.True(t, stored, "event created after deletion should be stored")
+
+	// Query should return kind5 and the event created after
+	events, err := s.Query(ctx, []*ReqFilter{{}})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, "event-after", events[0].ID)
+	assert.Equal(t, "kind5-1", events[1].ID)
 }
 
 func TestInMemoryStorage_Query_Empty(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"slices"
 	"sync"
+	"time"
 )
 
 // Storage defines the interface for event storage.
@@ -28,6 +29,12 @@ type Storage interface {
 	DeleteByAddr(ctx context.Context, kind int64, pubkey, dTag string) error
 }
 
+// deletionRecord holds information about a deletion request.
+type deletionRecord struct {
+	Pubkey    string
+	CreatedAt time.Time
+}
+
 // InMemoryStorage is a simple in-memory implementation of Storage.
 // This is a "brute force" implementation: O(n) for most operations.
 // Suitable for testing and small datasets.
@@ -37,21 +44,22 @@ type InMemoryStorage struct {
 	// All events stored
 	events []*Event
 
-	// Deleted event IDs: eventID -> pubkey (who deleted it)
+	// Deleted event IDs: eventID -> deletion record
 	// Used to reject events that were already deleted
-	deletedIDs map[string]string
+	deletedIDs map[string]*deletionRecord
 
-	// Deleted addresses: address -> pubkey (who deleted it)
+	// Deleted addresses: address -> deletion record
 	// Used to reject replaceable/addressable events that were already deleted
-	deletedAddrs map[string]string
+	// NIP-09: only delete versions up to the deletion request's created_at
+	deletedAddrs map[string]*deletionRecord
 }
 
 // NewInMemoryStorage creates a new in-memory storage.
 func NewInMemoryStorage() *InMemoryStorage {
 	return &InMemoryStorage{
 		events:       make([]*Event, 0),
-		deletedIDs:   make(map[string]string),
-		deletedAddrs: make(map[string]string),
+		deletedIDs:   make(map[string]*deletionRecord),
+		deletedAddrs: make(map[string]*deletionRecord),
 	}
 }
 
@@ -65,15 +73,19 @@ func (s *InMemoryStorage) Store(ctx context.Context, event *Event) (bool, error)
 	defer s.mu.Unlock()
 
 	// Check if already deleted (by same pubkey)
-	if deleter, ok := s.deletedIDs[event.ID]; ok && deleter == event.Pubkey {
+	if rec, ok := s.deletedIDs[event.ID]; ok && rec.Pubkey == event.Pubkey {
 		return false, nil
 	}
 
 	// Check if address was deleted (for replaceable/addressable)
+	// NIP-09: only reject if event was created before or at the deletion request time
 	addr := event.Address()
 	if addr != "" {
-		if deleter, ok := s.deletedAddrs[addr]; ok && deleter == event.Pubkey {
-			return false, nil
+		if rec, ok := s.deletedAddrs[addr]; ok && rec.Pubkey == event.Pubkey {
+			// Only reject if event.CreatedAt <= deletion request's CreatedAt
+			if !event.CreatedAt.After(rec.CreatedAt) {
+				return false, nil
+			}
 		}
 	}
 
@@ -89,7 +101,7 @@ func (s *InMemoryStorage) Store(ctx context.Context, event *Event) (bool, error)
 		s.processKind5(event)
 
 		// Check if this kind 5 deleted itself
-		if deleter, ok := s.deletedIDs[event.ID]; ok && deleter == event.Pubkey {
+		if rec, ok := s.deletedIDs[event.ID]; ok && rec.Pubkey == event.Pubkey {
 			// Processed but not stored (deleted itself)
 			return true, nil
 		}
@@ -132,6 +144,11 @@ func (s *InMemoryStorage) Store(ctx context.Context, event *Event) (bool, error)
 // processKind5 handles deletion requests.
 // Caller must hold the lock.
 func (s *InMemoryStorage) processKind5(event *Event) {
+	rec := &deletionRecord{
+		Pubkey:    event.Pubkey,
+		CreatedAt: event.CreatedAt,
+	}
+
 	for _, tag := range event.Tags {
 		if len(tag) < 2 {
 			continue
@@ -142,22 +159,29 @@ func (s *InMemoryStorage) processKind5(event *Event) {
 			// Delete by event ID
 			eventID := tag[1]
 			// Record the deletion (for rejecting future events)
-			s.deletedIDs[eventID] = event.Pubkey
+			s.deletedIDs[eventID] = rec
 
 			// Remove from storage if it exists and belongs to the same pubkey
+			// NIP-09: "deletion request event against a deletion request has no effect"
 			s.events = slices.DeleteFunc(s.events, func(e *Event) bool {
+				if e.Kind == 5 {
+					return false // Don't delete kind 5 events
+				}
 				return e.ID == eventID && e.Pubkey == event.Pubkey
 			})
 
 		case "a":
 			// Delete by address (for replaceable/addressable)
 			addr := tag[1]
-			// Record the deletion
-			s.deletedAddrs[addr] = event.Pubkey
+			// Record the deletion with timestamp
+			s.deletedAddrs[addr] = rec
 
-			// Remove from storage if it exists and belongs to the same pubkey
+			// Remove from storage if it exists, belongs to the same pubkey,
+			// and was created before or at the deletion request time
 			s.events = slices.DeleteFunc(s.events, func(e *Event) bool {
-				return e.Address() == addr && e.Pubkey == event.Pubkey
+				return e.Address() == addr &&
+					e.Pubkey == event.Pubkey &&
+					!e.CreatedAt.After(event.CreatedAt)
 			})
 		}
 	}
@@ -242,8 +266,11 @@ func (s *InMemoryStorage) Delete(ctx context.Context, eventID string, pubkey str
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Record the deletion
-	s.deletedIDs[eventID] = pubkey
+	// Record the deletion with far-future timestamp to block any version
+	s.deletedIDs[eventID] = &deletionRecord{
+		Pubkey:    pubkey,
+		CreatedAt: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC),
+	}
 
 	// Remove from storage if it exists and belongs to the same pubkey
 	s.events = slices.DeleteFunc(s.events, func(e *Event) bool {
@@ -271,8 +298,11 @@ func (s *InMemoryStorage) DeleteByAddr(ctx context.Context, kind int64, pubkey, 
 		return nil
 	}
 
-	// Record the deletion
-	s.deletedAddrs[addr] = pubkey
+	// Record the deletion with far-future timestamp to block any version
+	s.deletedAddrs[addr] = &deletionRecord{
+		Pubkey:    pubkey,
+		CreatedAt: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC),
+	}
 
 	// Remove from storage
 	s.events = slices.DeleteFunc(s.events, func(e *Event) bool {
