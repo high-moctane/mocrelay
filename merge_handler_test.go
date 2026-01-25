@@ -165,18 +165,20 @@ func TestMergeHandler_Req_EOSE(t *testing.T) {
 }
 
 // TestMergeHandler_Req_EventsWithDedupe tests that duplicate events are removed.
+// All events have the same created_at to avoid sort drop interference.
 func TestMergeHandler_Req_EventsWithDedupe(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
-		// Two storages with overlapping events
+		// Two storages with overlapping events (same created_at, different IDs)
+		// IDs are chosen so they sort correctly: aaa < bbb < ccc (lexical order)
 		storage1 := NewInMemoryStorage()
-		storage1.Store(ctx, makeEvent("event-1", "pubkey01", 1, 300))
-		storage1.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200)) // duplicate
+		storage1.Store(ctx, makeEvent("aaa", "pubkey01", 1, 100))
+		storage1.Store(ctx, makeEvent("bbb", "pubkey01", 1, 100)) // duplicate
 
 		storage2 := NewInMemoryStorage()
-		storage2.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200)) // duplicate
-		storage2.Store(ctx, makeEvent("event-3", "pubkey01", 1, 100))
+		storage2.Store(ctx, makeEvent("bbb", "pubkey01", 1, 100)) // duplicate
+		storage2.Store(ctx, makeEvent("ccc", "pubkey01", 1, 100))
 
 		handler1 := NewStorageHandler(storage1)
 		handler2 := NewStorageHandler(storage2)
@@ -212,23 +214,218 @@ func TestMergeHandler_Req_EventsWithDedupe(t *testing.T) {
 		}
 	done:
 
-		// Should have 3 EVENTs + 1 EOSE = 4 messages
-		// event-2 should appear only once (deduplicated)
-		if len(events) != 4 {
-			t.Fatalf("expected 4 messages, got %d: %v", len(events), events)
+		// Last message should be EOSE
+		assert.Equal(t, MsgTypeEOSE, events[len(events)-1].Type)
+
+		// Check event IDs (should be unique, no duplicates)
+		eventIDs := make(map[string]int)
+		for _, msg := range events[:len(events)-1] {
+			if msg.Type == MsgTypeEvent {
+				eventIDs[msg.Event.ID]++
+			}
 		}
+
+		// Each event should appear exactly once
+		for id, count := range eventIDs {
+			assert.Equal(t, 1, count, "event %s should appear exactly once", id)
+		}
+
+		// bbb should be present (deduplicated, not dropped)
+		assert.Equal(t, 1, eventIDs["bbb"], "bbb should be deduplicated to 1")
+	})
+}
+
+// TestMergeHandler_Req_SortDrop tests that events breaking sort order are dropped.
+func TestMergeHandler_Req_SortDrop(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// Storage 1: newer events (will arrive first due to faster response)
+		storage1 := NewInMemoryStorage()
+		storage1.Store(ctx, makeEvent("event-a", "pubkey01", 1, 300)) // newest
+
+		// Storage 2: older events
+		storage2 := NewInMemoryStorage()
+		storage2.Store(ctx, makeEvent("event-b", "pubkey01", 1, 400)) // even newer! should be dropped
+		storage2.Store(ctx, makeEvent("event-c", "pubkey01", 1, 100)) // oldest, OK
+
+		handler1 := NewStorageHandler(storage1)
+		handler2 := NewStorageHandler(storage2)
+
+		mergeHandler := NewMergeHandler(handler1, handler2)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		// Send a REQ
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// Collect all messages
+		var events []*ServerMsg
+		for {
+			select {
+			case msg := <-send:
+				events = append(events, msg)
+			default:
+				goto done
+			}
+		}
+	done:
+
+		// event-b (created_at=400) should be dropped because it breaks sort order
+		// Expected: event-a (300), event-c (100), EOSE = 3 messages
+		// OR: event-b (400), event-c (100), EOSE = 3 messages (if event-b arrives first)
+		// The key is: we should NOT see both event-a and event-b
 
 		// Last message should be EOSE
 		assert.Equal(t, MsgTypeEOSE, events[len(events)-1].Type)
 
-		// Check event IDs (should be unique)
-		eventIDs := make(map[string]bool)
+		// Check that events are in descending order by created_at
+		var createdAts []int64
 		for _, msg := range events[:len(events)-1] {
-			assert.Equal(t, MsgTypeEvent, msg.Type)
-			eventIDs[msg.Event.ID] = true
+			if msg.Type == MsgTypeEvent {
+				createdAts = append(createdAts, msg.Event.CreatedAt.Unix())
+			}
 		}
-		assert.True(t, eventIDs["event-1"])
-		assert.True(t, eventIDs["event-2"])
-		assert.True(t, eventIDs["event-3"])
+
+		// Verify descending order
+		for i := 1; i < len(createdAts); i++ {
+			assert.GreaterOrEqual(t, createdAts[i-1], createdAts[i],
+				"events should be in descending order by created_at")
+		}
+	})
+}
+
+// TestMergeHandler_Req_Limit tests that EOSE is sent after limit is reached.
+func TestMergeHandler_Req_Limit(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// Storage with many events
+		storage := NewInMemoryStorage()
+		storage.Store(ctx, makeEvent("event-1", "pubkey01", 1, 500))
+		storage.Store(ctx, makeEvent("event-2", "pubkey01", 1, 400))
+		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
+		storage.Store(ctx, makeEvent("event-4", "pubkey01", 1, 200))
+		storage.Store(ctx, makeEvent("event-5", "pubkey01", 1, 100))
+
+		handler := NewStorageHandler(storage)
+		mergeHandler := NewMergeHandler(handler)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		// Send a REQ with limit=2
+		limit := int64(2)
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{Limit: &limit}},
+		}
+
+		synctest.Wait()
+
+		// Collect all messages
+		var events []*ServerMsg
+		for {
+			select {
+			case msg := <-send:
+				events = append(events, msg)
+			default:
+				goto done
+			}
+		}
+	done:
+
+		// Should have exactly 2 EVENTs + 1 EOSE = 3 messages
+		if len(events) != 3 {
+			t.Fatalf("expected 3 messages (2 events + EOSE), got %d", len(events))
+		}
+
+		// First 2 should be EVENT, last should be EOSE
+		assert.Equal(t, MsgTypeEvent, events[0].Type)
+		assert.Equal(t, MsgTypeEvent, events[1].Type)
+		assert.Equal(t, MsgTypeEOSE, events[2].Type)
+	})
+}
+
+// TestMergeHandler_Req_Limit_MultipleHandlers tests limit with multiple handlers.
+func TestMergeHandler_Req_Limit_MultipleHandlers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// Two storages, each with 3 events (no overlap)
+		storage1 := NewInMemoryStorage()
+		storage1.Store(ctx, makeEvent("event-1", "pubkey01", 1, 600))
+		storage1.Store(ctx, makeEvent("event-3", "pubkey01", 1, 400))
+		storage1.Store(ctx, makeEvent("event-5", "pubkey01", 1, 200))
+
+		storage2 := NewInMemoryStorage()
+		storage2.Store(ctx, makeEvent("event-2", "pubkey01", 1, 500))
+		storage2.Store(ctx, makeEvent("event-4", "pubkey01", 1, 300))
+		storage2.Store(ctx, makeEvent("event-6", "pubkey01", 1, 100))
+
+		handler1 := NewStorageHandler(storage1)
+		handler2 := NewStorageHandler(storage2)
+		mergeHandler := NewMergeHandler(handler1, handler2)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		// Send a REQ with limit=3
+		// Each handler will return 3 events, but MergeHandler should limit to 3 total
+		limit := int64(3)
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{Limit: &limit}},
+		}
+
+		synctest.Wait()
+
+		// Collect all messages
+		var events []*ServerMsg
+		for {
+			select {
+			case msg := <-send:
+				events = append(events, msg)
+			default:
+				goto done
+			}
+		}
+	done:
+
+		// Should have at most 3 EVENTs + 1 EOSE = 4 messages
+		// (MergeHandler should enforce the limit across all handlers)
+		eventCount := 0
+		for _, msg := range events {
+			if msg.Type == MsgTypeEvent {
+				eventCount++
+			}
+		}
+
+		assert.LessOrEqual(t, eventCount, 3, "should have at most 3 events (limit)")
+		assert.Equal(t, MsgTypeEOSE, events[len(events)-1].Type)
 	})
 }

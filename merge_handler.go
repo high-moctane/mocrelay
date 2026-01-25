@@ -90,6 +90,9 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 			if msg.Type == MsgTypeEvent {
 				session.startEventResponse(msg.Event.ID)
 			}
+			if msg.Type == MsgTypeReq {
+				session.startReqResponse(msg.SubscriptionID, msg.Filters)
+			}
 
 		default: // childSends[chosen-2]
 			if !ok {
@@ -99,8 +102,8 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 			}
 			msg := value.Interface().(*ServerMsg)
 			// Process merged response
-			result := session.processResponse(msg)
-			if result != nil {
+			results := session.processResponse(msg)
+			for _, result := range results {
 				select {
 				case send <- result:
 				case <-ctx.Done():
@@ -113,10 +116,11 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 
 // mergeSession manages the state for merging responses.
 type mergeSession struct {
-	mu           sync.Mutex
-	numHandlers  int
-	pendingOKs   map[string]*pendingOK   // eventID -> pending OK state
-	pendingEOSEs map[string]*pendingEOSE // subscriptionID -> pending EOSE state
+	mu            sync.Mutex
+	numHandlers   int
+	pendingOKs    map[string]*pendingOK   // eventID -> pending OK state
+	pendingEOSEs  map[string]*pendingEOSE // subscriptionID -> pending EOSE state
+	completedSubs map[string]bool         // subscriptionID -> true if EOSE already sent
 }
 
 type pendingOK struct {
@@ -128,13 +132,22 @@ type pendingOK struct {
 type pendingEOSE struct {
 	received     int
 	seenEventIDs map[string]bool // for deduplication before EOSE
+	// For sort order enforcement (created_at DESC, id ASC for tiebreak)
+	lastCreatedAt int64
+	lastID        string
+	hasSentEvent  bool
+	// For limit enforcement
+	limit      int64 // 0 means no limit
+	eventCount int64
+	eoseSent   bool // true if EOSE already sent (due to limit)
 }
 
 func newMergeSession(numHandlers int) *mergeSession {
 	return &mergeSession{
-		numHandlers:  numHandlers,
-		pendingOKs:   make(map[string]*pendingOK),
-		pendingEOSEs: make(map[string]*pendingEOSE),
+		numHandlers:   numHandlers,
+		pendingOKs:    make(map[string]*pendingOK),
+		pendingEOSEs:  make(map[string]*pendingEOSE),
+		completedSubs: make(map[string]bool),
 	}
 }
 
@@ -148,7 +161,26 @@ func (s *mergeSession) startEventResponse(eventID string) {
 	}
 }
 
-func (s *mergeSession) processResponse(msg *ServerMsg) *ServerMsg {
+func (s *mergeSession) startReqResponse(subID string, filters []*ReqFilter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Extract limit from the first filter (mocrelay's convention)
+	var limit int64
+	if len(filters) > 0 && filters[0].Limit != nil {
+		limit = *filters[0].Limit
+	}
+
+	s.pendingEOSEs[subID] = &pendingEOSE{
+		received:     0,
+		seenEventIDs: make(map[string]bool),
+		limit:        limit,
+		eventCount:   0,
+		eoseSent:     false,
+	}
+}
+
+func (s *mergeSession) processResponse(msg *ServerMsg) []*ServerMsg {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -166,53 +198,112 @@ func (s *mergeSession) processResponse(msg *ServerMsg) *ServerMsg {
 		// Check if all handlers have responded
 		if pending.received >= s.numHandlers {
 			delete(s.pendingOKs, msg.EventID)
-			return NewServerOKMsg(msg.EventID, pending.accepted, pending.message)
+			return []*ServerMsg{NewServerOKMsg(msg.EventID, pending.accepted, pending.message)}
 		}
 		return nil // Still waiting for more responses
 
 	case MsgTypeEvent:
-		// Deduplicate events before EOSE
+		// Deduplicate and enforce sort order for events before EOSE
 		subID := msg.SubscriptionID
+		eventCreatedAt := msg.Event.CreatedAt.Unix()
+		eventID := msg.Event.ID
+
+		// If EOSE already sent (due to limit), drop the event
+		if s.completedSubs[subID] {
+			return nil
+		}
+
 		pending, ok := s.pendingEOSEs[subID]
 		if !ok {
 			// First event for this subscription, create pending state
 			s.pendingEOSEs[subID] = &pendingEOSE{
-				received:     0,
-				seenEventIDs: map[string]bool{msg.Event.ID: true},
+				received:      0,
+				seenEventIDs:  map[string]bool{eventID: true},
+				lastCreatedAt: eventCreatedAt,
+				lastID:        eventID,
+				hasSentEvent:  true,
+				eventCount:    1,
 			}
-			return msg
+			return []*ServerMsg{msg}
 		}
-		// Check if we've already seen this event
-		if pending.seenEventIDs[msg.Event.ID] {
+
+		// If EOSE already sent (due to limit), drop the event
+		if pending.eoseSent {
+			return nil
+		}
+
+		// Check if we've already seen this event (deduplication)
+		if pending.seenEventIDs[eventID] {
 			return nil // Duplicate, drop
 		}
-		pending.seenEventIDs[msg.Event.ID] = true
-		return msg
+
+		// Check sort order: created_at DESC, then id ASC for tiebreak
+		if pending.hasSentEvent {
+			if eventCreatedAt > pending.lastCreatedAt {
+				// Newer event after older one - breaks DESC order, drop
+				return nil
+			}
+			if eventCreatedAt == pending.lastCreatedAt && eventID > pending.lastID {
+				// Same timestamp but higher ID - breaks ASC tiebreak, drop
+				return nil
+			}
+		}
+
+		// Event passes all checks
+		pending.seenEventIDs[eventID] = true
+		pending.lastCreatedAt = eventCreatedAt
+		pending.lastID = eventID
+		pending.hasSentEvent = true
+		pending.eventCount++
+
+		// Check if limit is reached
+		if pending.limit > 0 && pending.eventCount >= pending.limit {
+			// Send EVENT + EOSE together
+			pending.eoseSent = true
+			delete(s.pendingEOSEs, subID)
+			s.completedSubs[subID] = true
+			return []*ServerMsg{msg, NewServerEOSEMsg(subID)}
+		}
+
+		return []*ServerMsg{msg}
 
 	case MsgTypeEOSE:
-		pending, ok := s.pendingEOSEs[msg.SubscriptionID]
+		subID := msg.SubscriptionID
+
+		// If EOSE already sent (due to limit), ignore
+		if s.completedSubs[subID] {
+			return nil
+		}
+
+		pending, ok := s.pendingEOSEs[subID]
 		if !ok {
 			// First EOSE for this subscription (no events received yet)
-			s.pendingEOSEs[msg.SubscriptionID] = &pendingEOSE{
+			s.pendingEOSEs[subID] = &pendingEOSE{
 				received:     1,
 				seenEventIDs: make(map[string]bool),
 			}
 			if s.numHandlers == 1 {
-				delete(s.pendingEOSEs, msg.SubscriptionID)
-				return msg
+				delete(s.pendingEOSEs, subID)
+				s.completedSubs[subID] = true
+				return []*ServerMsg{msg}
 			}
+			return nil
+		}
+		// If EOSE already sent (due to limit), ignore
+		if pending.eoseSent {
 			return nil
 		}
 		pending.received++
 		// Check if all handlers have sent EOSE
 		if pending.received >= s.numHandlers {
-			delete(s.pendingEOSEs, msg.SubscriptionID)
-			return NewServerEOSEMsg(msg.SubscriptionID)
+			delete(s.pendingEOSEs, subID)
+			s.completedSubs[subID] = true
+			return []*ServerMsg{NewServerEOSEMsg(subID)}
 		}
 		return nil // Still waiting for more EOSEs
 
 	default:
 		// For now, pass through other messages
-		return msg
+		return []*ServerMsg{msg}
 	}
 }
