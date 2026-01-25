@@ -365,7 +365,16 @@ type Storage interface {
 [0x03][pubkey:32][inverted_ts:8][id:32]               (73 bytes)
 [0x04][kind:8][inverted_ts:8][id:32]                  (49 bytes)
 [0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32] (74 bytes)
+
+Replaceable/Addressable 専用（Value は event_id:32）:
+[0x06][addr_hash:32]  → [event_id:32]  (33 bytes key)
+
+削除マーカー:
+[0x08][event_id:32]   → [pubkey:32][created_at:8]  (33 bytes key, 40 bytes value)
+[0x09][addr_hash:32]  → [pubkey:32][created_at:8]  (33 bytes key, 40 bytes value)
 ```
+
+- **addr_hash**: `SHA256("kind:pubkey:d-tag")` で統一（replaceable は d-tag 空）
 
 - **バイナリ固定長**: parse がシンプル、Key 長が予測可能
 - **inverted_ts**: `math.MaxInt64 - created_at`（辞書順で降順になる）
