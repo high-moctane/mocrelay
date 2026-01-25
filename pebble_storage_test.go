@@ -562,3 +562,79 @@ func TestPebbleStorage_Store_Kind5_DeleteKind5(t *testing.T) {
 	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
 	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", events[1].ID)
 }
+
+// Step 4: Multiple filters (OR search)
+
+func TestPebbleStorage_Query_MultipleFilters(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Store events with different kinds
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 2, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 3, 300))
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
+	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey, 2, 500))
+
+	// Query with two filters: kind=1 OR kind=3
+	// This is [filter1, filter2] style OR, not {"kinds": [1, 3]}
+	events, err := s.Query(ctx, []*ReqFilter{
+		{Kinds: []int64{1}},
+		{Kinds: []int64{3}},
+	})
+	require.NoError(t, err)
+	require.Len(t, events, 3)
+
+	// Should be sorted by created_at DESC across all filters
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID) // kind=1, 400
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[1].ID) // kind=3, 300
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[2].ID) // kind=1, 100
+}
+
+func TestPebbleStorage_Query_MultipleFilters_WithLimit(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 2, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 3, 300))
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
+	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey, 2, 500))
+
+	// NIP-01: "only return events from the first filter's limit"
+	// filter1 has limit=2, filter2 has no limit
+	events, err := s.Query(ctx, []*ReqFilter{
+		{Kinds: []int64{1}, Limit: toPtr[int64](2)},
+		{Kinds: []int64{3}},
+	})
+	require.NoError(t, err)
+	require.Len(t, events, 2, "should respect first filter's limit")
+
+	// Should be the 2 newest events across all filters
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID) // kind=1, 400
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[1].ID) // kind=3, 300
+}
+
+func TestPebbleStorage_Query_MultipleFilters_Dedup(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Event that matches BOTH filters
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+
+	// Query with two filters that both match the same event
+	events, err := s.Query(ctx, []*ReqFilter{
+		{Kinds: []int64{1}},
+		{Authors: []string{pubkey}},
+	})
+	require.NoError(t, err)
+	require.Len(t, events, 1, "should deduplicate events that match multiple filters")
+
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[0].ID)
+}

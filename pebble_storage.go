@@ -230,32 +230,33 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 		return nil, nil
 	}
 
+	// NIP-01: "only return events from the first filter's limit"
+	limit := int64(-1)
+	if filters[0].Limit != nil {
+		limit = *filters[0].Limit
+	}
+
 	seen := make(map[string]bool)
 	var result []*Event
+	count := int64(0)
 
+	// Create a single heap for all filters
+	h := &cursorHeap{}
+	heap.Init(h)
+
+	// Collect all iterators for cleanup
+	var iterators []*pebble.Iterator
+
+	// Open iterators for ALL filters and add to the same heap
 	for _, filter := range filters {
-		count := int64(0)
-		limit := int64(-1)
-		if filter.Limit != nil {
-			limit = *filter.Limit
-		}
-
-		// Get all index selections for this filter (multi-cursor)
 		selections := s.selectIndexes(filter)
 
-		// Create cursors and initialize heap
-		h := &cursorHeap{}
-		heap.Init(h)
-
-		// Open iterators and add initial entries to heap
-		var iterators []*pebble.Iterator
 		for _, sel := range selections {
 			iter, err := s.db.NewIter(&pebble.IterOptions{
 				LowerBound: sel.lowerBound,
 				UpperBound: sel.upperBound,
 			})
 			if err != nil {
-				// Close already opened iterators
 				for _, it := range iterators {
 					it.Close()
 				}
@@ -265,51 +266,52 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 
 			// Position at first entry and add to heap
 			if iter.First() {
-				entry := s.makeCursorEntry(iter, sel)
+				entry := s.makeCursorEntry(iter, sel, filter)
 				heap.Push(h, entry)
 			}
 		}
+	}
 
-		// Merge cursors using heap
-		for h.Len() > 0 {
-			if limit >= 0 && count >= limit {
-				break
+	// Merge cursors using heap (across all filters)
+	for h.Len() > 0 {
+		if limit >= 0 && count >= limit {
+			break
+		}
+
+		// Pop the entry with smallest invertedTS (= newest event)
+		entry := heap.Pop(h).(*cursorEntry)
+
+		// Skip if already seen
+		eventIDHex := bytesToHex(entry.eventID)
+		if !seen[eventIDHex] {
+			// Get the event
+			event, err := s.getEventByID(entry.eventID)
+			if err != nil {
+				for _, it := range iterators {
+					it.Close()
+				}
+				return nil, err
 			}
 
-			// Pop the entry with smallest invertedTS (= newest event)
-			entry := heap.Pop(h).(*cursorEntry)
-
-			// Skip if already seen
-			eventIDHex := bytesToHex(entry.eventID)
-			if !seen[eventIDHex] {
-				// Get the event
-				event, err := s.getEventByID(entry.eventID)
-				if err != nil {
-					for _, it := range iterators {
-						it.Close()
-					}
-					return nil, err
-				}
-
-				if event != nil && filter.Match(event) {
-					seen[eventIDHex] = true
-					result = append(result, event)
-					count++
-				}
-			}
-
-			// Advance this cursor and re-add to heap if valid
-			if entry.iter.Next() {
-				newEntry := s.makeCursorEntry(entry.iter, entry.selection)
-				heap.Push(h, newEntry)
+			// Use the filter associated with this cursor for Match check
+			if event != nil && entry.filter.Match(event) {
+				seen[eventIDHex] = true
+				result = append(result, event)
+				count++
 			}
 		}
 
-		// Close all iterators
-		for _, iter := range iterators {
-			if err := iter.Close(); err != nil {
-				return nil, err
-			}
+		// Advance this cursor and re-add to heap if valid
+		if entry.iter.Next() {
+			newEntry := s.makeCursorEntry(entry.iter, entry.selection, entry.filter)
+			heap.Push(h, newEntry)
+		}
+	}
+
+	// Close all iterators
+	for _, iter := range iterators {
+		if err := iter.Close(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -317,7 +319,7 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 }
 
 // makeCursorEntry creates a cursorEntry from the current iterator position.
-func (s *PebbleStorage) makeCursorEntry(iter *pebble.Iterator, sel *indexSelection) *cursorEntry {
+func (s *PebbleStorage) makeCursorEntry(iter *pebble.Iterator, sel *indexSelection, filter *ReqFilter) *cursorEntry {
 	key := iter.Key()
 	eventID := make([]byte, 32)
 	copy(eventID, key[sel.eventIDOffset:sel.eventIDOffset+32])
@@ -328,6 +330,7 @@ func (s *PebbleStorage) makeCursorEntry(iter *pebble.Iterator, sel *indexSelecti
 		eventID:    eventID,
 		invertedTS: invertedTS,
 		selection:  sel,
+		filter:     filter,
 	}
 }
 
@@ -509,6 +512,7 @@ type cursorEntry struct {
 	eventID    []byte // current event ID (32 bytes)
 	invertedTS uint64 // for comparison (lower = newer)
 	selection  *indexSelection
+	filter     *ReqFilter // The filter this cursor belongs to (for Match check)
 }
 
 // cursorHeap implements heap.Interface for merging multiple cursors.
