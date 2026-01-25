@@ -365,6 +365,112 @@ func TestMergeHandler_Req_Limit(t *testing.T) {
 	})
 }
 
+// TestMergeHandler_Req_EventAfterHandlerEOSE tests that events sent by a handler
+// after its own EOSE are passed through (not dropped by sort order).
+// This is important for RouterHandler integration where real-time events
+// arrive after EOSE but before all handlers have sent their EOSE.
+func TestMergeHandler_Req_EventAfterHandlerEOSE(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// Storage with one event (will send EOSE quickly)
+		storage := NewInMemoryStorage()
+		storage.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
+
+		// A handler that sends events after EOSE (simulating RouterHandler)
+		// event-2 has higher created_at than event-1, which would normally be
+		// dropped by sort order enforcement. But since it comes after the
+		// handler's EOSE, it should be passed through.
+		lateEventHandler := &lateEventHandler{
+			event: makeEvent("event-2", "pubkey01", 1, 200),
+		}
+
+		mergeHandler := NewMergeHandler(NewStorageHandler(storage), lateEventHandler)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		// Send a REQ
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// Collect all messages
+		var messages []*ServerMsg
+		for {
+			select {
+			case msg := <-send:
+				messages = append(messages, msg)
+			default:
+				goto done
+			}
+		}
+	done:
+
+		// Should have: event-2, event-1, EOSE (order may vary, but all should be present)
+		assert.GreaterOrEqual(t, len(messages), 3, "should have at least 3 messages")
+
+		// event-2 should be delivered (not dropped by sort order)
+		// This is the key assertion: event-2 (created_at=200) comes after the
+		// lateEventHandler's EOSE, so it should pass through even though it
+		// has a higher created_at than event-1 (created_at=100).
+		foundEvent2 := false
+		for _, msg := range messages {
+			if msg.Type == MsgTypeEvent && msg.Event.ID == "event-2" {
+				foundEvent2 = true
+				break
+			}
+		}
+		assert.True(t, foundEvent2, "event-2 should be delivered (not dropped by sort order)")
+
+		// Should have exactly one EOSE
+		eoseCount := 0
+		for _, msg := range messages {
+			if msg.Type == MsgTypeEOSE {
+				eoseCount++
+			}
+		}
+		assert.Equal(t, 1, eoseCount, "should have exactly one EOSE")
+	})
+}
+
+// lateEventHandler sends an event after receiving EOSE from storage.
+// It simulates RouterHandler behavior (sending events after EOSE).
+type lateEventHandler struct {
+	event *Event
+}
+
+func (h *lateEventHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-recv:
+			if !ok {
+				return nil
+			}
+			if msg.Type == MsgTypeReq {
+				// Send EOSE first, then send the late event
+				send <- NewServerEOSEMsg(msg.SubscriptionID)
+				send <- &ServerMsg{
+					Type:           MsgTypeEvent,
+					SubscriptionID: msg.SubscriptionID,
+					Event:          h.event,
+				}
+			}
+		}
+	}
+}
+
 // TestMergeHandler_Req_Limit_MultipleHandlers tests limit with multiple handlers.
 func TestMergeHandler_Req_Limit_MultipleHandlers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
