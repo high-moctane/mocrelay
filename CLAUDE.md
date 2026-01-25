@@ -170,6 +170,7 @@ mocrelay では exact match を採用（DB インデックスの効率を考慮�
 |---------|------|
 | `NopHandler` | 虚無リレー。EVENT→OK、REQ→EOSE を返すだけ |
 | `RouterHandler` | クライアント間でイベントをルーティング。中央集権 Router で購読管理 |
+| `StorageHandler` ✅ | Storage を wrap。EVENT→Store→OK、REQ→Query→EVENT列+EOSE |
 
 ### 実装予定の Handler/Middleware（NIP-11 ベース）
 
@@ -268,7 +269,7 @@ default:
 }
 ```
 
-### MergeHandler の設計（TODO）
+### MergeHandler の設計
 
 複数の Handler を並列実行して、レスポンスを統合する。
 
@@ -281,20 +282,45 @@ handler := NewMergeHandler(
 ```
 
 **統合ルール**：
-- **OK**: 全 handler の応答を待ってマージ（1つでも拒否なら拒否）
-- **EOSE**: 全 handler の EOSE を待ってから送信
-- **EVENT**: 重複排除（同じ eventID は1回だけ）
-- **COUNT**: 全 handler の最大値を取る
 
-**main branch との違い**：
+| メッセージ | ルール |
+|-----------|--------|
+| **OK** | 全 handler の応答を待ってマージ（1つでも拒否なら拒否 = 障害発生中） |
+| **EOSE** | 全 handler の EOSE を待ってから送信 |
+| **EVENT (EOSE前)** | 重複排除 + ソートを乱す event は drop |
+| **EVENT (EOSE後)** | そのまま流す（重複排除不要、プロトコル的に合法） |
+| **COUNT** | 全 handler の最大値を取る |
+
+**limit の扱い**：
+- **最初の filter の limit を使用**（mocrelay の態度として）
+- REQ につき最大 limit 件だけ返して EOSE
+- 子 handler にも同じ limit を渡す
+
+**ソートの drop ルール**：
+- 子 handler がソート済みの応答を返す前提
+- 到着順に流して、ソートを乱す event は drop
+- ソート順：`created_at DESC`、タイブレーク `id ASC`（lexical order）
+
+```go
+// ソートを乱すかどうかの判定
+if newEvent.CreatedAt > lastSentCreatedAt {
+    // drop
+} else if newEvent.CreatedAt == lastSentCreatedAt && newEvent.ID > lastSentID {
+    // drop
+} else {
+    // 送信
+}
+```
+
+**設計方針**：
 - `sync.Mutex` を使う（チャネルでの mutex はやめる）
-- セッション状態を小さな関数で管理
+- SimpleHandlerBase は使えない（1:N 変換が必要）
 
 **考慮点**：
 - EOSE を返さない handler がいると session 内の map が肥大化する
 - 対策：タイムアウト、CLOSE 時のクリーンアップ、購読数制限
 
-### Storage インターフェース（TODO）
+### Storage インターフェース ✅
 
 ```go
 type Storage interface {
@@ -308,17 +334,19 @@ type Storage interface {
 **StorageHandler の役割**：
 - EVENT → Store して OK 返す
 - REQ → Query して EVENT 列 + EOSE 返す
+- COUNT → Query して件数を返す
 - **購読管理はしない**（それは RouterHandler の仕事）
 - EOSE を返したら、その REQ についての役割は終了
+
+**InMemoryStorage**：
+- slice + 全件走査の O(n) 脳筋実装
+- テストがしっかりしているので後で最適化しても安心
+- NIP-09 対応（timestamp チェック、kind 5 削除無効）
 
 **永続化の選択肢**（未定）：
 - PostgreSQL が有力（パーティショニング、スケーラビリティ）
 - DuckDB: VPS では非力、Parquet bloom filter が list 型非対応
 - SQLite: パーティショニングが難しい
-
-**InMemoryStorage の用途**：
-- キャッシュとして使用（DB アクセスが遅いので応答高速化）
-- テスト用
 
 ### テストの書き方
 
