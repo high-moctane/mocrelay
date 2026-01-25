@@ -322,21 +322,66 @@ if newEvent.CreatedAt > lastSentCreatedAt {
 - EOSE を返さない handler がいると session 内の map が肥大化する
 - 対策：タイムアウト、CLOSE 時のクリーンアップ、購読数制限
 
-### Storage インターフェース ✅
+### Storage インターフェース（再設計中）
+
+**現状**：`[]*Event` を返す実装が完了。これから EventCursor パターンに移行予定。
+
+**新設計（TODO）**：database/sql の `*sql.Rows` パターンを採用
 
 ```go
+// EventCursor は Query 結果のイテレータ（database/sql の *Rows と同じパターン）
+type EventCursor interface {
+    Next() bool       // 次の event があるか
+    Event() *Event    // 現在の event を取得
+    Err() error       // イテレーション中のエラー
+    Close() error     // リソース解放
+}
+
 type Storage interface {
-    Store(ctx context.Context, event *Event) (stored bool, err error)
-    Query(ctx context.Context, filters []*ReqFilter) ([]*Event, error)
-    Delete(ctx context.Context, eventID string, pubkey string) error
-    DeleteByAddr(ctx context.Context, kind int64, pubkey, dTag string) error
+    Store(ctx context.Context, event *Event) (bool, error)
+    Query(ctx context.Context, filters []*ReqFilter) (EventCursor, error)
+    // Delete / DeleteByAddr は削除（Kind 5 は Store 内で処理）
+}
+
+// Optional: Count をサポートする Storage（NIP-45）
+type CountableStorage interface {
+    Storage
+    Count(ctx context.Context, filters []*ReqFilter) (int64, error)
 }
 ```
 
+**使用側**：
+```go
+cursor, err := storage.Query(ctx, filters)
+if err != nil {
+    return err
+}
+defer cursor.Close()
+
+for cursor.Next() {
+    event := cursor.Event()
+    ch <- NewServerEventMsg(subID, event)
+}
+
+if err := cursor.Err(); err != nil {
+    return err
+}
+```
+
+**メリット**：
+- **ストリーミング応答**：全件揃う前にクライアントに返せる
+- **Go 開発者に馴染みのあるパターン**
+- **`defer cursor.Close()` でクリーンアップ保証**
+
+**Delete / DeleteByAddr を削除した理由**：
+- Kind 5 の処理は `Store` 内で完結している
+- NIP-86（管理 API）にも特定 event の削除 API はない
+- 外部 API としては不要
+
 **StorageHandler の役割**：
 - EVENT → Store して OK 返す
-- REQ → Query して EVENT 列 + EOSE 返す
-- COUNT → Query して件数を返す
+- REQ → Query して EVENT 列 + EOSE 返す（ストリーミング）
+- COUNT → Count があれば使う、なければ Query で代替
 - **購読管理はしない**（それは RouterHandler の仕事）
 - EOSE を返したら、その REQ についての役割は終了
 
@@ -348,6 +393,7 @@ type Storage interface {
 **永続化**: Pebble（決定）
 - **github.com/cockroachdb/pebble**: CockroachDB 製の LSM-tree ベース KV ストア
 - Pure Go（cgo なし）、組み込み、デプロイがシンプル
+- **Snapshot** で読み取り時のロック不要（MVCC）
 
 **選定理由**：
 - PostgreSQL: 全文検索（pgroonga）は魅力だが、外部プロセス管理が必要
