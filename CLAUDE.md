@@ -345,10 +345,32 @@ type Storage interface {
 - テストがしっかりしているので後で最適化しても安心
 - NIP-09 対応（timestamp チェック、kind 5 削除無効）
 
-**永続化の選択肢**（未定）：
-- PostgreSQL が有力（パーティショニング、スケーラビリティ）
-- DuckDB: VPS では非力、Parquet bloom filter が list 型非対応
-- SQLite: パーティショニングが難しい
+**永続化**: Pebble（決定）
+- **github.com/cockroachdb/pebble**: CockroachDB 製の LSM-tree ベース KV ストア
+- Pure Go（cgo なし）、組み込み、デプロイがシンプル
+
+**選定理由**：
+- PostgreSQL: 全文検索（pgroonga）は魅力だが、外部プロセス管理が必要
+- DuckDB: OLAP 向き、リアルタイム書き込みが苦手
+- SQLite: cgo 問題、パーティショニングが難しい
+- **Pebble**: Pure Go、ストリーミング取得◎、Nostr の追記ワークロードと相性◎
+
+**Key スキーマ（strfry 式）**：
+```
+主データ:     events/{event_id} → event_json
+インデックス: idx/created/{inverted_ts}/{id} → (empty)
+             idx/pubkey/{pubkey}/{inverted_ts}/{id} → (empty)
+             idx/kind/{kind_be}/{inverted_ts}/{id} → (empty)
+             idx/tag/{tag_value}/{inverted_ts}/{id} → (empty)
+```
+
+- **inverted_ts**: `math.MaxInt64 - created_at`（辞書順で降順になる）
+- **Index の Value は空**（Key に event_id が含まれている）
+- **複数 filter の OR**: Multi-Cursor Merge（filter ごとに cursor を作成、ソート順にマージ）
+
+**全文検索（NIP-50）**：
+- Pebble では対応しない
+- 必要なら別の検索エンジン（Bleve, Meilisearch 等）を MergeHandler で統合
 
 ### テストの書き方
 
