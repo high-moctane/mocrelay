@@ -443,6 +443,62 @@ func TestMergeHandler_Req_EventAfterHandlerEOSE(t *testing.T) {
 	})
 }
 
+// TestMergeHandler_Count tests that COUNT responses are merged by taking max.
+func TestMergeHandler_Count(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// Two storages with different event counts
+		storage1 := NewInMemoryStorage()
+		storage1.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
+		storage1.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
+		storage1.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
+
+		storage2 := NewInMemoryStorage()
+		storage2.Store(ctx, makeEvent("event-4", "pubkey01", 1, 400))
+		storage2.Store(ctx, makeEvent("event-5", "pubkey01", 1, 500))
+
+		handler1 := NewStorageHandler(storage1) // 3 events
+		handler2 := NewStorageHandler(storage2) // 2 events
+		mergeHandler := NewMergeHandler(handler1, handler2)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		// Send a COUNT request
+		recv <- &ClientMsg{
+			Type:           MsgTypeCount,
+			SubscriptionID: "count1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// Should receive exactly one COUNT (merged, max of 3 and 2 = 3)
+		select {
+		case msg := <-send:
+			assert.Equal(t, MsgTypeCount, msg.Type)
+			assert.Equal(t, "count1", msg.SubscriptionID)
+			assert.Equal(t, uint64(3), msg.Count, "should be max of 3 and 2")
+		default:
+			t.Fatal("expected COUNT message")
+		}
+
+		// Should not receive any more messages
+		select {
+		case msg := <-send:
+			t.Fatalf("unexpected message: %v", msg)
+		default:
+			// Expected
+		}
+	})
+}
+
 // lateEventHandler sends an event after receiving EOSE from storage.
 // It simulates RouterHandler behavior (sending events after EOSE).
 type lateEventHandler struct {

@@ -93,6 +93,9 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 			if msg.Type == MsgTypeReq {
 				session.startReqResponse(msg.SubscriptionID, msg.Filters)
 			}
+			if msg.Type == MsgTypeCount {
+				session.startCountResponse(msg.SubscriptionID)
+			}
 
 		default: // childSends[chosen-2]
 			if !ok {
@@ -119,16 +122,22 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 type mergeSession struct {
 	mu              sync.Mutex
 	numHandlers     int
-	pendingOKs      map[string]*pendingOK   // eventID -> pending OK state
-	pendingEOSEs    map[string]*pendingEOSE // subscriptionID -> pending EOSE state
-	completedSubs   map[string]bool         // subscriptionID -> true if EOSE already sent
-	limitReachedSub map[string]bool         // subscriptionID -> true if limit reached (drop events)
+	pendingOKs      map[string]*pendingOK    // eventID -> pending OK state
+	pendingEOSEs    map[string]*pendingEOSE  // subscriptionID -> pending EOSE state
+	pendingCounts   map[string]*pendingCount // subscriptionID -> pending COUNT state
+	completedSubs   map[string]bool          // subscriptionID -> true if EOSE already sent
+	limitReachedSub map[string]bool          // subscriptionID -> true if limit reached (drop events)
 }
 
 type pendingOK struct {
 	received int
 	accepted bool
 	message  string
+}
+
+type pendingCount struct {
+	received int
+	maxCount uint64
 }
 
 type pendingEOSE struct {
@@ -151,6 +160,7 @@ func newMergeSession(numHandlers int) *mergeSession {
 		numHandlers:     numHandlers,
 		pendingOKs:      make(map[string]*pendingOK),
 		pendingEOSEs:    make(map[string]*pendingEOSE),
+		pendingCounts:   make(map[string]*pendingCount),
 		completedSubs:   make(map[string]bool),
 		limitReachedSub: make(map[string]bool),
 	}
@@ -163,6 +173,15 @@ func (s *mergeSession) startEventResponse(eventID string) {
 		received: 0,
 		accepted: true, // Start optimistic
 		message:  "",
+	}
+}
+
+func (s *mergeSession) startCountResponse(subID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pendingCounts[subID] = &pendingCount{
+		received: 0,
+		maxCount: 0,
 	}
 }
 
@@ -323,6 +342,33 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 			return []*ServerMsg{NewServerEOSEMsg(subID)}
 		}
 		return nil // Still waiting for more EOSEs
+
+	case MsgTypeCount:
+		subID := msg.SubscriptionID
+		pending, ok := s.pendingCounts[subID]
+		if !ok {
+			// First COUNT for this subscription
+			s.pendingCounts[subID] = &pendingCount{
+				received: 1,
+				maxCount: msg.Count,
+			}
+			if s.numHandlers == 1 {
+				delete(s.pendingCounts, subID)
+				return []*ServerMsg{msg}
+			}
+			return nil
+		}
+		pending.received++
+		if msg.Count > pending.maxCount {
+			pending.maxCount = msg.Count
+		}
+		// Check if all handlers have responded
+		if pending.received >= s.numHandlers {
+			maxCount := pending.maxCount
+			delete(s.pendingCounts, subID)
+			return []*ServerMsg{NewServerCountMsg(subID, maxCount, nil)}
+		}
+		return nil // Still waiting for more responses
 
 	default:
 		// For now, pass through other messages
