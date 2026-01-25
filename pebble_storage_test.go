@@ -128,3 +128,94 @@ func TestPebbleStorage_Query_FilterByKinds(t *testing.T) {
 	assert.Equal(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", events[0].ID)
 	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", events[1].ID)
 }
+
+func TestPebbleStorage_Store_Replaceable(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Replaceable events: kind 10000-19999, also kind 0 and 3
+	// Same (pubkey, kind) -> keep only the newest
+
+	ev1 := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 10000, 100)
+	ev2 := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 10000, 200)
+	ev3 := makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", pubkey, 10000, 50) // Older
+
+	stored, err := s.Store(ctx, ev1)
+	require.NoError(t, err)
+	assert.True(t, stored)
+	assert.Equal(t, 1, s.Len())
+
+	// Newer replaces older
+	stored, err = s.Store(ctx, ev2)
+	require.NoError(t, err)
+	assert.True(t, stored)
+	assert.Equal(t, 1, s.Len())
+
+	// Older should not replace newer
+	stored, err = s.Store(ctx, ev3)
+	require.NoError(t, err)
+	assert.False(t, stored)
+	assert.Equal(t, 1, s.Len())
+
+	// Query should return only the newest
+	events, err := s.Query(ctx, []*ReqFilter{{}})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
+}
+
+func TestPebbleStorage_Store_Replaceable_SameTimestamp(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Same timestamp: keep lexically smaller ID
+	ev1 := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 10000, 100) // "c..." > "a..."
+	ev2 := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 10000, 100) // Same timestamp, smaller ID
+
+	stored, err := s.Store(ctx, ev1)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	stored, err = s.Store(ctx, ev2)
+	require.NoError(t, err)
+	assert.True(t, stored) // Should replace because "a..." < "c..."
+
+	events, err := s.Query(ctx, []*ReqFilter{{}})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", events[0].ID)
+}
+
+func TestPebbleStorage_Store_Addressable(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Addressable events: kind 30000-39999
+	// Same (pubkey, kind, d-tag) -> keep only the newest
+
+	ev1 := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 30000, 100, Tag{"d", "param1"})
+	ev2 := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 30000, 200, Tag{"d", "param1"}) // Same address
+	ev3 := makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", pubkey, 30000, 300, Tag{"d", "param2"}) // Different address
+
+	stored, err := s.Store(ctx, ev1)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Same address, newer -> replaces
+	stored, err = s.Store(ctx, ev2)
+	require.NoError(t, err)
+	assert.True(t, stored)
+	assert.Equal(t, 1, s.Len())
+
+	// Different address -> new entry
+	stored, err = s.Store(ctx, ev3)
+	require.NoError(t, err)
+	assert.True(t, stored)
+	assert.Equal(t, 2, s.Len())
+}

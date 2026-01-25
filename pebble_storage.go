@@ -82,12 +82,42 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 
 	// TODO: Check deletion markers
 	// TODO: Handle kind 5
-	// TODO: Handle replaceable/addressable
 
-	// For now, just store regular events
 	eventType := event.EventType()
 	if eventType == EventTypeEphemeral {
 		return false, nil
+	}
+
+	// Handle replaceable/addressable events
+	var oldEventID []byte
+	if eventType == EventTypeReplaceable || eventType == EventTypeAddressable {
+		addr := event.Address()
+		addrHash := hashAddress(addr)
+		addrKey := makeAddrKey(addrHash)
+
+		// Check if an event with this address already exists
+		existingID, closer, err := s.db.Get(addrKey)
+		if err == nil {
+			defer closer.Close()
+			// Get the existing event to compare timestamps
+			existingEvent, err := s.getEventByID(existingID)
+			if err != nil {
+				return false, err
+			}
+			if existingEvent != nil {
+				// Compare: keep newer, or if same timestamp, keep smaller ID
+				if event.CreatedAt.Before(existingEvent.CreatedAt) {
+					return false, nil // New event is older, reject
+				}
+				if event.CreatedAt.Equal(existingEvent.CreatedAt) && event.ID >= existingEvent.ID {
+					return false, nil // Same timestamp but new ID is not smaller, reject
+				}
+				// New event wins, need to delete the old one
+				oldEventID = existingID
+			}
+		} else if err != pebble.ErrNotFound {
+			return false, err
+		}
 	}
 
 	// Serialize event
@@ -99,6 +129,13 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 	// Create batch for atomic write
 	batch := s.db.NewBatch()
 	defer batch.Close()
+
+	// Delete old event if replacing
+	if oldEventID != nil {
+		if err := s.deleteEventFromBatch(batch, oldEventID); err != nil {
+			return false, err
+		}
+	}
 
 	// Write main event data
 	if err := batch.Set(eventKey, eventJSON, pebble.Sync); err != nil {
@@ -136,6 +173,16 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 		tagHash := hashTagValue(tag[1])
 		tagKey := makeTagKey(tagName, tagHash, invertedTS, eventIDBytes)
 		if err := batch.Set(tagKey, nil, pebble.Sync); err != nil {
+			return false, err
+		}
+	}
+
+	// Address index for replaceable/addressable
+	if eventType == EventTypeReplaceable || eventType == EventTypeAddressable {
+		addr := event.Address()
+		addrHash := hashAddress(addr)
+		addrKey := makeAddrKey(addrHash)
+		if err := batch.Set(addrKey, eventIDBytes, pebble.Sync); err != nil {
 			return false, err
 		}
 	}
@@ -272,6 +319,62 @@ func (s *PebbleStorage) Len() int {
 	return count
 }
 
+// deleteEventFromBatch deletes an event and all its indexes from the batch.
+func (s *PebbleStorage) deleteEventFromBatch(batch *pebble.Batch, eventID []byte) error {
+	// Get the event to know its indexes
+	event, err := s.getEventByID(eventID)
+	if err != nil {
+		return err
+	}
+	if event == nil {
+		return nil // Already deleted
+	}
+
+	invertedTS := invertTimestamp(event.CreatedAt.Unix())
+	pubkeyBytes := hexToBytes32(event.Pubkey)
+
+	// Delete main event data
+	eventKey := makeEventKey(eventID)
+	if err := batch.Delete(eventKey, pebble.Sync); err != nil {
+		return err
+	}
+
+	// Delete created_at index
+	createdAtKey := makeCreatedAtKey(invertedTS, eventID)
+	if err := batch.Delete(createdAtKey, pebble.Sync); err != nil {
+		return err
+	}
+
+	// Delete pubkey index
+	pubkeyKey := makePubkeyKey(pubkeyBytes, invertedTS, eventID)
+	if err := batch.Delete(pubkeyKey, pebble.Sync); err != nil {
+		return err
+	}
+
+	// Delete kind index
+	kindKey := makeKindKey(event.Kind, invertedTS, eventID)
+	if err := batch.Delete(kindKey, pebble.Sync); err != nil {
+		return err
+	}
+
+	// Delete tag indexes
+	for _, tag := range event.Tags {
+		if len(tag) < 2 || len(tag[0]) != 1 {
+			continue
+		}
+		tagName := tag[0][0]
+		tagHash := hashTagValue(tag[1])
+		tagKey := makeTagKey(tagName, tagHash, invertedTS, eventID)
+		if err := batch.Delete(tagKey, pebble.Sync); err != nil {
+			return err
+		}
+	}
+
+	// Note: We don't delete the addr index here because the caller will overwrite it
+
+	return nil
+}
+
 // Helper functions for key construction
 
 func makeEventKey(eventID []byte) []byte {
@@ -323,6 +426,18 @@ func invertTimestamp(ts int64) uint64 {
 
 func hashTagValue(value string) []byte {
 	h := sha256.Sum256([]byte(value))
+	return h[:]
+}
+
+func makeAddrKey(addrHash []byte) []byte {
+	key := make([]byte, 33)
+	key[0] = prefixAddr
+	copy(key[1:], addrHash)
+	return key
+}
+
+func hashAddress(addr string) []byte {
+	h := sha256.Sum256([]byte(addr))
 	return h[:]
 }
 
