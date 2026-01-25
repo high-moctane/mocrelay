@@ -171,6 +171,7 @@ mocrelay では exact match を採用（DB インデックスの効率を考慮�
 | `NopHandler` | 虚無リレー。EVENT→OK、REQ→EOSE を返すだけ |
 | `RouterHandler` | クライアント間でイベントをルーティング。中央集権 Router で購読管理 |
 | `StorageHandler` ✅ | Storage を wrap。EVENT→Store→OK、REQ→Query→EVENT列+EOSE |
+| `MergeHandler` ✅ | 複数 Handler を並列実行してレスポンスを統合 |
 
 ### 実装予定の Handler/Middleware（NIP-11 ベース）
 
@@ -269,7 +270,7 @@ default:
 }
 ```
 
-### MergeHandler の設計
+### MergeHandler の設計 ✅
 
 複数の Handler を並列実行して、レスポンスを統合する。
 
