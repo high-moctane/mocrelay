@@ -293,14 +293,18 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Eve
 
 // indexSelection holds information about which index to use for a query.
 type indexSelection struct {
-	lowerBound    []byte
-	upperBound    []byte
-	eventIDOffset int // position of event ID in the key
+	lowerBound      []byte
+	upperBound      []byte
+	eventIDOffset   int // position of event ID in the key
+	timestampOffset int // position of inverted_ts in the key (for since/until filtering)
 }
 
 // selectIndex chooses the best index based on filter conditions.
 // Priority: authors (single) > tags (single) > kinds (single) > created_at (fallback)
+// Also applies since/until bounds to narrow the time range.
 func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
+	var sel *indexSelection
+
 	// Single author: use pubkey index (most selective)
 	if len(filter.Authors) == 1 {
 		pubkeyBytes := hexToBytes32(filter.Authors[0])
@@ -311,15 +315,14 @@ func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
 
 		upper := incrementBytes(lower)
 
-		return &indexSelection{
-			lowerBound:    lower,
-			upperBound:    upper,
-			eventIDOffset: 41, // 1 + 32 + 8
+		sel = &indexSelection{
+			lowerBound:      lower,
+			upperBound:      upper,
+			eventIDOffset:   41, // 1 + 32 + 8
+			timestampOffset: 33, // 1 + 32
 		}
-	}
-
-	// Single tag value: use tag index
-	if tagName, tagValue := getSingleTagFilter(filter); tagName != 0 {
+	} else if tagName, tagValue := getSingleTagFilter(filter); tagName != 0 {
+		// Single tag value: use tag index
 		tagHash := hashTagValue(tagValue)
 		// Key format: [0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32]
 		lower := make([]byte, 34)
@@ -329,15 +332,14 @@ func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
 
 		upper := incrementBytes(lower)
 
-		return &indexSelection{
-			lowerBound:    lower,
-			upperBound:    upper,
-			eventIDOffset: 42, // 1 + 1 + 32 + 8
+		sel = &indexSelection{
+			lowerBound:      lower,
+			upperBound:      upper,
+			eventIDOffset:   42, // 1 + 1 + 32 + 8
+			timestampOffset: 34, // 1 + 1 + 32
 		}
-	}
-
-	// Single kind: use kind index
-	if len(filter.Kinds) == 1 {
+	} else if len(filter.Kinds) == 1 {
+		// Single kind: use kind index
 		kind := filter.Kinds[0]
 		// Key format: [0x04][kind:8][inverted_ts:8][id:32]
 		lower := make([]byte, 9)
@@ -348,19 +350,72 @@ func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
 		upper[0] = prefixKind
 		binary.BigEndian.PutUint64(upper[1:9], uint64(kind+1))
 
-		return &indexSelection{
-			lowerBound:    lower,
-			upperBound:    upper,
-			eventIDOffset: 17, // 1 + 8 + 8
+		sel = &indexSelection{
+			lowerBound:      lower,
+			upperBound:      upper,
+			eventIDOffset:   17, // 1 + 8 + 8
+			timestampOffset: 9,  // 1 + 8
+		}
+	} else {
+		// Fallback: created_at index (full scan)
+		sel = &indexSelection{
+			lowerBound:      []byte{prefixCreatedAt},
+			upperBound:      []byte{prefixCreatedAt + 1},
+			eventIDOffset:   9, // 1 + 8
+			timestampOffset: 1, // 1
 		}
 	}
 
-	// Fallback: created_at index (full scan)
-	return &indexSelection{
-		lowerBound:    []byte{prefixCreatedAt},
-		upperBound:    []byte{prefixCreatedAt + 1},
-		eventIDOffset: 9, // 1 + 8
+	// Apply since/until bounds
+	// inverted_ts = MaxInt64 - created_at
+	// since: created_at >= since → inverted_ts <= MaxInt64 - since → adjust upper bound
+	// until: created_at <= until → inverted_ts >= MaxInt64 - until → adjust lower bound
+	sel.applyTimeBounds(filter)
+
+	return sel
+}
+
+// applyTimeBounds adjusts lower/upper bounds based on since/until filters.
+func (sel *indexSelection) applyTimeBounds(filter *ReqFilter) {
+	// until: adjust lower bound (inverted_ts >= MaxInt64 - until)
+	if filter.Until != nil {
+		invertedUntil := invertTimestamp(*filter.Until)
+		newLower := make([]byte, sel.timestampOffset+8)
+		copy(newLower, sel.lowerBound[:sel.timestampOffset])
+		binary.BigEndian.PutUint64(newLower[sel.timestampOffset:], invertedUntil)
+
+		// Only use if more restrictive than current lower bound
+		if len(sel.lowerBound) < len(newLower) || bytesLess(sel.lowerBound, newLower) {
+			sel.lowerBound = newLower
+		}
 	}
+
+	// since: adjust upper bound (inverted_ts <= MaxInt64 - since)
+	if filter.Since != nil {
+		invertedSince := invertTimestamp(*filter.Since)
+		newUpper := make([]byte, sel.timestampOffset+8)
+		copy(newUpper, sel.upperBound[:sel.timestampOffset])
+		binary.BigEndian.PutUint64(newUpper[sel.timestampOffset:], invertedSince+1) // +1 for exclusive upper
+
+		// Only use if more restrictive than current upper bound
+		if len(sel.upperBound) > len(newUpper) || bytesLess(newUpper, sel.upperBound) {
+			sel.upperBound = newUpper
+		}
+	}
+}
+
+// bytesLess returns true if a < b lexicographically.
+func bytesLess(a, b []byte) bool {
+	minLen := min(len(b), len(a))
+	for i := 0; i < minLen; i++ {
+		if a[i] < b[i] {
+			return true
+		}
+		if a[i] > b[i] {
+			return false
+		}
+	}
+	return len(a) < len(b)
 }
 
 // getSingleTagFilter returns the tag name and value if the filter has exactly one tag condition

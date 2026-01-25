@@ -170,6 +170,68 @@ func TestPebbleStorage_Query_FilterByTag(t *testing.T) {
 	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[1].ID)
 }
 
+func TestPebbleStorage_Query_FilterBySince(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
+
+	// since=200 means created_at >= 200
+	events, err := s.Query(ctx, []*ReqFilter{{Since: toPtr[int64](200)}})
+	require.NoError(t, err)
+	require.Len(t, events, 3)
+
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID)
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[1].ID)
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[2].ID)
+}
+
+func TestPebbleStorage_Query_FilterByUntil(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
+
+	// until=300 means created_at <= 300
+	events, err := s.Query(ctx, []*ReqFilter{{Until: toPtr[int64](300)}})
+	require.NoError(t, err)
+	require.Len(t, events, 3)
+
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[1].ID)
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[2].ID)
+}
+
+func TestPebbleStorage_Query_FilterBySinceAndUntil(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
+
+	// since=200, until=300 means 200 <= created_at <= 300
+	events, err := s.Query(ctx, []*ReqFilter{{Since: toPtr[int64](200), Until: toPtr[int64](300)}})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[1].ID)
+}
+
 func TestPebbleStorage_Store_Replaceable(t *testing.T) {
 	ctx := context.Background()
 	s := setupPebbleStorage(t)
