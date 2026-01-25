@@ -232,6 +232,80 @@ func TestPebbleStorage_Query_FilterBySinceAndUntil(t *testing.T) {
 	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[1].ID)
 }
 
+func TestPebbleStorage_Query_MultipleKinds(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Store events with different kinds and timestamps
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 2, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 3, 300)) // Not in filter
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
+	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey, 2, 500))
+
+	// Query kinds 1 and 2 (multi-cursor merge!)
+	events, err := s.Query(ctx, []*ReqFilter{{Kinds: []int64{1, 2}}})
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+
+	// Should be sorted by created_at DESC
+	assert.Equal(t, "5555555555555555555555555555555555555555555555555555555555555555", events[0].ID) // 500
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[1].ID) // 400
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[2].ID) // 200
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[3].ID) // 100
+}
+
+func TestPebbleStorage_Query_MultipleAuthors(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pubkey2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	pubkey3 := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey1, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey2, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey3, 1, 300)) // Not in filter
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey1, 1, 400))
+	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey2, 1, 500))
+
+	// Query pubkey1 and pubkey2 (multi-cursor merge!)
+	events, err := s.Query(ctx, []*ReqFilter{{Authors: []string{pubkey1, pubkey2}}})
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+
+	// Should be sorted by created_at DESC
+	assert.Equal(t, "5555555555555555555555555555555555555555555555555555555555555555", events[0].ID) // 500
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[1].ID) // 400
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[2].ID) // 200
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[3].ID) // 100
+}
+
+func TestPebbleStorage_Query_MultipleKindsWithLimit(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 2, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 2, 400))
+	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey, 1, 500))
+
+	// Query kinds 1 and 2 with limit=3
+	events, err := s.Query(ctx, []*ReqFilter{{Kinds: []int64{1, 2}, Limit: toPtr[int64](3)}})
+	require.NoError(t, err)
+	require.Len(t, events, 3)
+
+	// Should be the 3 newest
+	assert.Equal(t, "5555555555555555555555555555555555555555555555555555555555555555", events[0].ID) // 500
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[1].ID) // 400
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[2].ID) // 300
+}
+
 func TestPebbleStorage_Store_Replaceable(t *testing.T) {
 	ctx := context.Background()
 	s := setupPebbleStorage(t)
