@@ -129,6 +129,26 @@ func TestPebbleStorage_Query_FilterByKinds(t *testing.T) {
 	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", events[1].ID)
 }
 
+func TestPebbleStorage_Query_FilterByAuthors(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pubkey2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey1, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey2, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey1, 1, 300))
+
+	events, err := s.Query(ctx, []*ReqFilter{{Authors: []string{pubkey1}}})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+
+	// Should be sorted by created_at DESC
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[1].ID)
+}
+
 func TestPebbleStorage_Store_Replaceable(t *testing.T) {
 	ctx := context.Background()
 	s := setupPebbleStorage(t)

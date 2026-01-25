@@ -299,8 +299,25 @@ type indexSelection struct {
 }
 
 // selectIndex chooses the best index based on filter conditions.
-// Priority: kinds (single) > created_at (fallback)
+// Priority: authors (single) > kinds (single) > created_at (fallback)
 func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
+	// Single author: use pubkey index (most selective)
+	if len(filter.Authors) == 1 {
+		pubkeyBytes := hexToBytes32(filter.Authors[0])
+		// Key format: [0x03][pubkey:32][inverted_ts:8][id:32]
+		lower := make([]byte, 33)
+		lower[0] = prefixPubkey
+		copy(lower[1:33], pubkeyBytes)
+
+		upper := incrementBytes(lower)
+
+		return &indexSelection{
+			lowerBound:    lower,
+			upperBound:    upper,
+			eventIDOffset: 41, // 1 + 32 + 8
+		}
+	}
+
 	// Single kind: use kind index
 	if len(filter.Kinds) == 1 {
 		kind := filter.Kinds[0]
@@ -326,6 +343,22 @@ func (s *PebbleStorage) selectIndex(filter *ReqFilter) *indexSelection {
 		upperBound:    []byte{prefixCreatedAt + 1},
 		eventIDOffset: 9, // 1 + 8
 	}
+}
+
+// incrementBytes returns a byte slice that is lexicographically
+// the next value after b. Used for creating exclusive upper bounds.
+func incrementBytes(b []byte) []byte {
+	result := make([]byte, len(b))
+	copy(result, b)
+	for i := len(result) - 1; i >= 0; i-- {
+		if result[i] < 0xFF {
+			result[i]++
+			return result
+		}
+		result[i] = 0
+	}
+	// All bytes were 0xFF, append 0x00 (overflow case)
+	return append(result, 0)
 }
 
 // Delete implements Storage.Delete.
