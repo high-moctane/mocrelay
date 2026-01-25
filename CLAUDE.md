@@ -355,18 +355,22 @@ type Storage interface {
 - SQLite: cgo 問題、パーティショニングが難しい
 - **Pebble**: Pure Go、ストリーミング取得◎、Nostr の追記ワークロードと相性◎
 
-**Key スキーマ（strfry 式）**：
+**Key スキーマ（バイナリ固定長）**：
 ```
-主データ:     events/{event_id} → event_json
-インデックス: idx/created/{inverted_ts}/{id} → (empty)
-             idx/pubkey/{pubkey}/{inverted_ts}/{id} → (empty)
-             idx/kind/{kind_be}/{inverted_ts}/{id} → (empty)
-             idx/tag/{tag_value}/{inverted_ts}/{id} → (empty)
+主データ:
+[0x01][event_id:32]  →  event_json                    (33 bytes)
+
+インデックス（Value は空）:
+[0x02][inverted_ts:8][id:32]                          (41 bytes)
+[0x03][pubkey:32][inverted_ts:8][id:32]               (73 bytes)
+[0x04][kind:8][inverted_ts:8][id:32]                  (49 bytes)
+[0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32] (74 bytes)
 ```
 
+- **バイナリ固定長**: parse がシンプル、Key 長が予測可能
 - **inverted_ts**: `math.MaxInt64 - created_at`（辞書順で降順になる）
-- **Index の Value は空**（Key に event_id が含まれている）
-- **複数 filter の OR**: Multi-Cursor Merge（filter ごとに cursor を作成、ソート順にマージ）
+- **tag_hash**: SHA256(tag_value) で 32 bytes 固定（collision は無視できる）
+- **複合インデックス**: なし（Multi-Cursor Merge で対応、必要なら後から追加）
 
 **全文検索（NIP-50）**：
 - Pebble では対応しない
