@@ -219,3 +219,169 @@ func TestPebbleStorage_Store_Addressable(t *testing.T) {
 	assert.True(t, stored)
 	assert.Equal(t, 2, s.Len())
 }
+
+func TestPebbleStorage_Store_Kind5_DeleteByEventID(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Store an event
+	ev := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 1, 100)
+	stored, err := s.Store(ctx, ev)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Delete it with kind 5
+	delReq := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 5, 200,
+		Tag{"e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	stored, err = s.Store(ctx, delReq)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Only the kind 5 event should remain
+	events, err := s.Query(ctx, []*ReqFilter{{}})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
+}
+
+func TestPebbleStorage_Store_Kind5_PreventFutureEvent(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Kind 5 arrives first
+	delReq := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 5, 200,
+		Tag{"e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	stored, err := s.Store(ctx, delReq)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Now the deleted event arrives -> should be rejected
+	ev := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 1, 100)
+	stored, err = s.Store(ctx, ev)
+	require.NoError(t, err)
+	assert.False(t, stored)
+
+	assert.Equal(t, 1, s.Len()) // Only kind 5 remains
+}
+
+func TestPebbleStorage_Store_Kind5_DifferentPubkey(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	pubkey2 := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+	// Store an event
+	ev := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey1, 1, 100)
+	stored, err := s.Store(ctx, ev)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Try to delete with different pubkey -> should NOT delete
+	delReq := makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", pubkey2, 5, 200,
+		Tag{"e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	stored, err = s.Store(ctx, delReq)
+	require.NoError(t, err)
+	assert.True(t, stored) // The kind 5 itself is stored
+
+	// Both events should exist
+	assert.Equal(t, 2, s.Len())
+}
+
+func TestPebbleStorage_Store_Kind5_DeleteByAddress(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Store an addressable event
+	ev := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 30000, 100, Tag{"d", "param"})
+	stored, err := s.Store(ctx, ev)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Delete by address
+	delReq := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 5, 200,
+		Tag{"a", "30000:" + pubkey + ":param"})
+	stored, err = s.Store(ctx, delReq)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Only the kind 5 should remain
+	events, err := s.Query(ctx, []*ReqFilter{{}})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
+}
+
+func TestPebbleStorage_Store_Kind5_DeleteByAddress_Timestamp(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// Delete request at timestamp 200
+	delReq := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 5, 200,
+		Tag{"a", "30000:" + pubkey + ":param"})
+	stored, err := s.Store(ctx, delReq)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Event created BEFORE the deletion (timestamp 100) -> should be rejected
+	evBefore := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 30000, 100, Tag{"d", "param"})
+	stored, err = s.Store(ctx, evBefore)
+	require.NoError(t, err)
+	assert.False(t, stored, "event created before deletion should be rejected")
+
+	// Event created AT the same time as deletion (timestamp 200) -> should be rejected
+	evSame := makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", pubkey, 30000, 200, Tag{"d", "param"})
+	stored, err = s.Store(ctx, evSame)
+	require.NoError(t, err)
+	assert.False(t, stored, "event created at same time as deletion should be rejected")
+
+	// Event created AFTER the deletion (timestamp 300) -> should be stored!
+	evAfter := makeEvent("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", pubkey, 30000, 300, Tag{"d", "param"})
+	stored, err = s.Store(ctx, evAfter)
+	require.NoError(t, err)
+	assert.True(t, stored, "event created after deletion should be stored")
+
+	// Query should return kind5 and the event created after
+	events, err := s.Query(ctx, []*ReqFilter{{}})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", events[0].ID)
+	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[1].ID)
+}
+
+func TestPebbleStorage_Store_Kind5_DeleteKind5(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// First kind 5
+	delReq1 := makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", pubkey, 5, 100,
+		Tag{"e", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"})
+	stored, err := s.Store(ctx, delReq1)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// Second kind 5 that tries to delete the first
+	delReq2 := makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", pubkey, 5, 200,
+		Tag{"e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	stored, err = s.Store(ctx, delReq2)
+	require.NoError(t, err)
+	assert.True(t, stored)
+
+	// NIP-09: "deletion request event against a deletion request has no effect"
+	// Both kind 5 events should remain
+	events, err := s.Query(ctx, []*ReqFilter{{}})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
+	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", events[1].ID)
+}

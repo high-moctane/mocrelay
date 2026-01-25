@@ -80,12 +80,37 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 		return false, err
 	}
 
-	// TODO: Check deletion markers
-	// TODO: Handle kind 5
+	// Check if deleted by event ID
+	if rec, err := s.getDeletionRecord(prefixDeletedID, eventIDBytes); err != nil {
+		return false, err
+	} else if rec != nil && rec.pubkey == event.Pubkey {
+		return false, nil // Already deleted
+	}
 
 	eventType := event.EventType()
 	if eventType == EventTypeEphemeral {
 		return false, nil
+	}
+
+	// Check if address was deleted (for replaceable/addressable)
+	addr := event.Address()
+	if addr != "" {
+		addrHash := hashAddress(addr)
+		if rec, err := s.getDeletionRecord(prefixDeletedAddr, addrHash); err != nil {
+			return false, err
+		} else if rec != nil && rec.pubkey == event.Pubkey {
+			// Only reject if event.CreatedAt <= deletion request's CreatedAt
+			if event.CreatedAt.Unix() <= rec.createdAt {
+				return false, nil
+			}
+		}
+	}
+
+	// Handle kind 5 (deletion request)
+	if event.Kind == 5 {
+		if err := s.processKind5(event); err != nil {
+			return false, err
+		}
 	}
 
 	// Handle replaceable/addressable events
@@ -279,6 +304,119 @@ func (s *PebbleStorage) DeleteByAddr(ctx context.Context, kind int64, pubkey, dT
 	return nil
 }
 
+// deletionRecordData holds information about a deletion request.
+type deletionRecordData struct {
+	pubkey    string
+	createdAt int64 // Unix timestamp
+}
+
+// getDeletionRecord retrieves a deletion record by prefix and key.
+func (s *PebbleStorage) getDeletionRecord(prefix byte, keyData []byte) (*deletionRecordData, error) {
+	key := makeDeletionKey(prefix, keyData)
+	value, closer, err := s.db.Get(key)
+	if err == pebble.ErrNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	// Value format: [pubkey:32][created_at:8]
+	if len(value) != 40 {
+		return nil, nil
+	}
+	return &deletionRecordData{
+		pubkey:    bytesToHex(value[:32]),
+		createdAt: int64(binary.BigEndian.Uint64(value[32:40])),
+	}, nil
+}
+
+// processKind5 handles deletion requests.
+func (s *PebbleStorage) processKind5(event *Event) error {
+	batch := s.db.NewBatch()
+	defer batch.Close()
+
+	pubkeyBytes := hexToBytes32(event.Pubkey)
+	createdAtBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(createdAtBytes, uint64(event.CreatedAt.Unix()))
+
+	// Value format: [pubkey:32][created_at:8]
+	value := make([]byte, 40)
+	copy(value[:32], pubkeyBytes)
+	copy(value[32:], createdAtBytes)
+
+	for _, tag := range event.Tags {
+		if len(tag) < 2 {
+			continue
+		}
+
+		switch tag[0] {
+		case "e":
+			// Delete by event ID
+			eventID := tag[1]
+			if len(eventID) != 64 {
+				continue
+			}
+			eventIDBytes := hexToBytes32(eventID)
+
+			// Record the deletion
+			delKey := makeDeletionKey(prefixDeletedID, eventIDBytes)
+			if err := batch.Set(delKey, value, pebble.Sync); err != nil {
+				return err
+			}
+
+			// Get the event to check if it should be deleted
+			targetEvent, err := s.getEventByID(eventIDBytes)
+			if err != nil {
+				return err
+			}
+			if targetEvent != nil && targetEvent.Pubkey == event.Pubkey && targetEvent.Kind != 5 {
+				// Delete the event
+				if err := s.deleteEventFromBatch(batch, eventIDBytes); err != nil {
+					return err
+				}
+			}
+
+		case "a":
+			// Delete by address
+			addr := tag[1]
+			addrHash := hashAddress(addr)
+
+			// Record the deletion
+			delKey := makeDeletionKey(prefixDeletedAddr, addrHash)
+			if err := batch.Set(delKey, value, pebble.Sync); err != nil {
+				return err
+			}
+
+			// Find and delete the event with this address
+			addrKey := makeAddrKey(addrHash)
+			existingID, closer, err := s.db.Get(addrKey)
+			if err == nil {
+				closer.Close()
+				targetEvent, err := s.getEventByID(existingID)
+				if err != nil {
+					return err
+				}
+				if targetEvent != nil && targetEvent.Pubkey == event.Pubkey && !targetEvent.CreatedAt.After(event.CreatedAt) {
+					// Delete the event
+					if err := s.deleteEventFromBatch(batch, existingID); err != nil {
+						return err
+					}
+					// Also delete the addr index
+					if err := batch.Delete(addrKey, pebble.Sync); err != nil {
+						return err
+					}
+				}
+			} else if err != pebble.ErrNotFound {
+				return err
+			}
+		}
+	}
+
+	return batch.Commit(pebble.Sync)
+}
+
 // getEventByID retrieves an event by its ID bytes.
 func (s *PebbleStorage) getEventByID(eventID []byte) (*Event, error) {
 	eventKey := makeEventKey(eventID)
@@ -439,6 +577,13 @@ func makeAddrKey(addrHash []byte) []byte {
 func hashAddress(addr string) []byte {
 	h := sha256.Sum256([]byte(addr))
 	return h[:]
+}
+
+func makeDeletionKey(prefix byte, keyData []byte) []byte {
+	key := make([]byte, 33)
+	key[0] = prefix
+	copy(key[1:], keyData)
+	return key
 }
 
 func hexToBytes32(hex string) []byte {
