@@ -2,5 +2,5 @@
 # https://github.com/tomarrell/wrapcheck
 
 # Ignore context package - Err() is already informative (Canceled, DeadlineExceeded)
-ignorePackageGlobs:
-  - context
+extraignoreSigs:
+  - func (context.Context).Err() error
