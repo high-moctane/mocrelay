@@ -5,6 +5,7 @@ package mocrelay
 import (
 	"cmp"
 	"context"
+	"iter"
 	"slices"
 	"sync"
 	"time"
@@ -16,17 +17,25 @@ type Storage interface {
 	// Returns false for duplicates, older replaceable events, or deleted events.
 	Store(ctx context.Context, event *Event) (stored bool, err error)
 
-	// Query returns events matching any of the filters.
+	// Query returns an iterator over events matching any of the filters.
 	// Results are sorted by created_at DESC, then id ASC (lexical).
-	// Each filter's limit is applied independently, then results are merged.
-	Query(ctx context.Context, filters []*ReqFilter) ([]*Event, error)
-
-	// Delete removes an event by ID. Only the author (pubkey) can delete.
-	Delete(ctx context.Context, eventID string, pubkey string) error
-
-	// DeleteByAddr removes a replaceable/addressable event by its address.
-	// Only the author (pubkey) can delete.
-	DeleteByAddr(ctx context.Context, kind int64, pubkey, dTag string) error
+	// The first filter's limit is applied globally (NIP-01).
+	//
+	// Returns:
+	//   - events: iterator over matching events (use with for-range)
+	//   - err: call after iteration to check for errors
+	//   - close: call to release resources (use with defer)
+	//
+	// Example:
+	//   events, errFn, closeFn := storage.Query(ctx, filters)
+	//   defer closeFn()
+	//   for event := range events {
+	//       // process event
+	//   }
+	//   if err := errFn(); err != nil {
+	//       return err
+	//   }
+	Query(ctx context.Context, filters []*ReqFilter) (events iter.Seq[*Event], err func() error, close func() error)
 }
 
 // deletionRecord holds information about a deletion request.
@@ -188,54 +197,61 @@ func (s *InMemoryStorage) processKind5(event *Event) {
 }
 
 // Query implements Storage.Query.
-func (s *InMemoryStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Event, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if len(filters) == 0 {
-		return nil, nil
+func (s *InMemoryStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.Seq[*Event], func() error, func() error) {
+	// NIP-01: "only return events from the first filter's limit"
+	limit := int64(-1)
+	if len(filters) > 0 && filters[0].Limit != nil {
+		limit = *filters[0].Limit
 	}
 
-	// Collect matching events with deduplication
-	seen := make(map[string]bool)
-	var result []*Event
+	events := func(yield func(*Event) bool) {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
 
-	for _, filter := range filters {
-		// Count for this filter's limit
-		count := int64(0)
-		limit := int64(-1) // -1 means no limit
-		if filter.Limit != nil {
-			limit = *filter.Limit
+		if len(filters) == 0 {
+			return
 		}
 
-		// We need to iterate in sorted order to apply limit correctly
-		// Sort a copy of events first
+		// Collect matching events with deduplication
+		seen := make(map[string]bool)
+		var result []*Event
+
+		// Sort events once
 		sorted := s.sortedEvents()
 
-		for _, e := range sorted {
-			// Check limit
+		// Collect all matching events from all filters
+		for _, filter := range filters {
+			for _, e := range sorted {
+				// Skip if already seen
+				if seen[e.ID] {
+					continue
+				}
+
+				// Check if matches filter
+				if filter.Match(e) {
+					seen[e.ID] = true
+					result = append(result, e)
+				}
+			}
+		}
+
+		// Sort final result (global sort across all filters)
+		slices.SortFunc(result, compareEvents)
+
+		// Apply global limit and yield
+		count := int64(0)
+		for _, e := range result {
 			if limit >= 0 && count >= limit {
-				break
+				return
 			}
-
-			// Skip if already seen
-			if seen[e.ID] {
-				continue
-			}
-
-			// Check if matches filter
-			if filter.Match(e) {
-				seen[e.ID] = true
-				result = append(result, e)
-				count++
+			count++
+			if !yield(e) {
+				return
 			}
 		}
 	}
 
-	// Sort final result
-	slices.SortFunc(result, compareEvents)
-
-	return result, nil
+	return events, func() error { return nil }, func() error { return nil }
 }
 
 // sortedEvents returns a sorted copy of events.
@@ -259,57 +275,6 @@ func compareEvents(a, b *Event) int {
 	}
 	// id ASC (lexical)
 	return cmp.Compare(a.ID, b.ID)
-}
-
-// Delete implements Storage.Delete.
-func (s *InMemoryStorage) Delete(ctx context.Context, eventID string, pubkey string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Record the deletion with far-future timestamp to block any version
-	s.deletedIDs[eventID] = &deletionRecord{
-		Pubkey:    pubkey,
-		CreatedAt: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC),
-	}
-
-	// Remove from storage if it exists and belongs to the same pubkey
-	s.events = slices.DeleteFunc(s.events, func(e *Event) bool {
-		return e.ID == eventID && e.Pubkey == pubkey
-	})
-
-	return nil
-}
-
-// DeleteByAddr implements Storage.DeleteByAddr.
-func (s *InMemoryStorage) DeleteByAddr(ctx context.Context, kind int64, pubkey, dTag string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Build address
-	var addr string
-	if kind >= 30000 && kind < 40000 {
-		// Addressable: kind:pubkey:d-tag
-		addr = formatAddress(kind, pubkey, dTag)
-	} else if kind == 0 || kind == 3 || (kind >= 10000 && kind < 20000) {
-		// Replaceable: kind:pubkey:
-		addr = formatAddress(kind, pubkey, "")
-	} else {
-		// Not replaceable/addressable, nothing to do
-		return nil
-	}
-
-	// Record the deletion with far-future timestamp to block any version
-	s.deletedAddrs[addr] = &deletionRecord{
-		Pubkey:    pubkey,
-		CreatedAt: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC),
-	}
-
-	// Remove from storage
-	s.events = slices.DeleteFunc(s.events, func(e *Event) bool {
-		return e.Address() == addr && e.Pubkey == pubkey
-	})
-
-	return nil
 }
 
 // formatAddress builds an address string for replaceable/addressable events.

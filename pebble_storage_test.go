@@ -21,6 +21,19 @@ func setupPebbleStorage(t *testing.T) *PebbleStorage {
 	return s
 }
 
+// queryPebble is a test helper that collects events from Query into a slice.
+func queryPebble(t *testing.T, s *PebbleStorage, ctx context.Context, filters []*ReqFilter) []*Event {
+	t.Helper()
+	events, errFn, closeFn := s.Query(ctx, filters)
+	defer closeFn()
+	var result []*Event
+	for event := range events {
+		result = append(result, event)
+	}
+	require.NoError(t, errFn())
+	return result
+}
+
 func TestPebbleStorage_Store_Regular(t *testing.T) {
 	ctx := context.Background()
 	s := setupPebbleStorage(t)
@@ -68,8 +81,7 @@ func TestPebbleStorage_Query_Empty(t *testing.T) {
 	ctx := context.Background()
 	s := setupPebbleStorage(t)
 
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	assert.Nil(t, events)
 }
 
@@ -82,8 +94,7 @@ func TestPebbleStorage_Query_Sorted(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, 100))
 	_, _ = s.Store(ctx, makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, 200))
 
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 3)
 
 	// Should be sorted by created_at DESC
@@ -103,8 +114,7 @@ func TestPebbleStorage_Query_WithLimit(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, 400))
 	_, _ = s.Store(ctx, makeEvent("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, 500))
 
-	events, err := s.Query(ctx, []*ReqFilter{{Limit: toPtr[int64](3)}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Limit: toPtr[int64](3)}})
 	require.Len(t, events, 3)
 
 	// Should be the 3 newest
@@ -121,8 +131,7 @@ func TestPebbleStorage_Query_FilterByKinds(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 2, 200))
 	_, _ = s.Store(ctx, makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, 300))
 
-	events, err := s.Query(ctx, []*ReqFilter{{Kinds: []int64{1}}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Kinds: []int64{1}}})
 	require.Len(t, events, 2)
 
 	assert.Equal(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", events[0].ID)
@@ -140,8 +149,7 @@ func TestPebbleStorage_Query_FilterByAuthors(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey2, 1, 200))
 	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey1, 1, 300))
 
-	events, err := s.Query(ctx, []*ReqFilter{{Authors: []string{pubkey1}}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Authors: []string{pubkey1}}})
 	require.Len(t, events, 2)
 
 	// Should be sorted by created_at DESC
@@ -161,8 +169,7 @@ func TestPebbleStorage_Query_FilterByTag(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200)) // No tag
 	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300, Tag{"e", targetID}))
 
-	events, err := s.Query(ctx, []*ReqFilter{{Tags: map[string][]string{"e": {targetID}}}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Tags: map[string][]string{"e": {targetID}}}})
 	require.Len(t, events, 2)
 
 	// Should be sorted by created_at DESC
@@ -182,8 +189,7 @@ func TestPebbleStorage_Query_FilterBySince(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
 
 	// since=200 means created_at >= 200
-	events, err := s.Query(ctx, []*ReqFilter{{Since: toPtr[int64](200)}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Since: toPtr[int64](200)}})
 	require.Len(t, events, 3)
 
 	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID)
@@ -203,8 +209,7 @@ func TestPebbleStorage_Query_FilterByUntil(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
 
 	// until=300 means created_at <= 300
-	events, err := s.Query(ctx, []*ReqFilter{{Until: toPtr[int64](300)}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Until: toPtr[int64](300)}})
 	require.Len(t, events, 3)
 
 	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
@@ -224,8 +229,7 @@ func TestPebbleStorage_Query_FilterBySinceAndUntil(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
 
 	// since=200, until=300 means 200 <= created_at <= 300
-	events, err := s.Query(ctx, []*ReqFilter{{Since: toPtr[int64](200), Until: toPtr[int64](300)}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Since: toPtr[int64](200), Until: toPtr[int64](300)}})
 	require.Len(t, events, 2)
 
 	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
@@ -246,8 +250,7 @@ func TestPebbleStorage_Query_MultipleKinds(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey, 2, 500))
 
 	// Query kinds 1 and 2 (multi-cursor merge!)
-	events, err := s.Query(ctx, []*ReqFilter{{Kinds: []int64{1, 2}}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Kinds: []int64{1, 2}}})
 	require.Len(t, events, 4)
 
 	// Should be sorted by created_at DESC
@@ -272,8 +275,7 @@ func TestPebbleStorage_Query_MultipleAuthors(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey2, 1, 500))
 
 	// Query pubkey1 and pubkey2 (multi-cursor merge!)
-	events, err := s.Query(ctx, []*ReqFilter{{Authors: []string{pubkey1, pubkey2}}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Authors: []string{pubkey1, pubkey2}}})
 	require.Len(t, events, 4)
 
 	// Should be sorted by created_at DESC
@@ -296,8 +298,7 @@ func TestPebbleStorage_Query_MultipleKindsWithLimit(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey, 1, 500))
 
 	// Query kinds 1 and 2 with limit=3
-	events, err := s.Query(ctx, []*ReqFilter{{Kinds: []int64{1, 2}, Limit: toPtr[int64](3)}})
-	require.NoError(t, err)
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Kinds: []int64{1, 2}, Limit: toPtr[int64](3)}})
 	require.Len(t, events, 3)
 
 	// Should be the 3 newest
@@ -337,7 +338,7 @@ func TestPebbleStorage_Store_Replaceable(t *testing.T) {
 	assert.Equal(t, 1, s.Len())
 
 	// Query should return only the newest
-	events, err := s.Query(ctx, []*ReqFilter{{}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
@@ -361,7 +362,7 @@ func TestPebbleStorage_Store_Replaceable_SameTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, stored) // Should replace because "a..." < "c..."
 
-	events, err := s.Query(ctx, []*ReqFilter{{}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", events[0].ID)
@@ -417,7 +418,7 @@ func TestPebbleStorage_Store_Kind5_DeleteByEventID(t *testing.T) {
 	assert.True(t, stored)
 
 	// Only the kind 5 event should remain
-	events, err := s.Query(ctx, []*ReqFilter{{}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
@@ -489,7 +490,7 @@ func TestPebbleStorage_Store_Kind5_DeleteByAddress(t *testing.T) {
 	assert.True(t, stored)
 
 	// Only the kind 5 should remain
-	events, err := s.Query(ctx, []*ReqFilter{{}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
@@ -527,7 +528,7 @@ func TestPebbleStorage_Store_Kind5_DeleteByAddress_Timestamp(t *testing.T) {
 	assert.True(t, stored, "event created after deletion should be stored")
 
 	// Query should return kind5 and the event created after
-	events, err := s.Query(ctx, []*ReqFilter{{}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 	assert.Equal(t, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", events[0].ID)
@@ -556,7 +557,7 @@ func TestPebbleStorage_Store_Kind5_DeleteKind5(t *testing.T) {
 
 	// NIP-09: "deletion request event against a deletion request has no effect"
 	// Both kind 5 events should remain
-	events, err := s.Query(ctx, []*ReqFilter{{}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{}})
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 	assert.Equal(t, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", events[0].ID)
@@ -580,11 +581,10 @@ func TestPebbleStorage_Query_MultipleFilters(t *testing.T) {
 
 	// Query with two filters: kind=1 OR kind=3
 	// This is [filter1, filter2] style OR, not {"kinds": [1, 3]}
-	events, err := s.Query(ctx, []*ReqFilter{
+	events := queryPebble(t, s, ctx, []*ReqFilter{
 		{Kinds: []int64{1}},
 		{Kinds: []int64{3}},
 	})
-	require.NoError(t, err)
 	require.Len(t, events, 3)
 
 	// Should be sorted by created_at DESC across all filters
@@ -607,11 +607,10 @@ func TestPebbleStorage_Query_MultipleFilters_WithLimit(t *testing.T) {
 
 	// NIP-01: "only return events from the first filter's limit"
 	// filter1 has limit=2, filter2 has no limit
-	events, err := s.Query(ctx, []*ReqFilter{
+	events := queryPebble(t, s, ctx, []*ReqFilter{
 		{Kinds: []int64{1}, Limit: toPtr[int64](2)},
 		{Kinds: []int64{3}},
 	})
-	require.NoError(t, err)
 	require.Len(t, events, 2, "should respect first filter's limit")
 
 	// Should be the 2 newest events across all filters
@@ -629,11 +628,10 @@ func TestPebbleStorage_Query_MultipleFilters_Dedup(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
 
 	// Query with two filters that both match the same event
-	events, err := s.Query(ctx, []*ReqFilter{
+	events := queryPebble(t, s, ctx, []*ReqFilter{
 		{Kinds: []int64{1}},
 		{Authors: []string{pubkey}},
 	})
-	require.NoError(t, err)
 	require.Len(t, events, 1, "should deduplicate events that match multiple filters")
 
 	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[0].ID)

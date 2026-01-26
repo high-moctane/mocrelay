@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"iter"
 	"math"
 	"sync"
 
@@ -222,100 +223,110 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 }
 
 // Query implements Storage.Query.
-func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) ([]*Event, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if len(filters) == 0 {
-		return nil, nil
-	}
-
+func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.Seq[*Event], func() error, func() error) {
 	// NIP-01: "only return events from the first filter's limit"
 	limit := int64(-1)
-	if filters[0].Limit != nil {
+	if len(filters) > 0 && filters[0].Limit != nil {
 		limit = *filters[0].Limit
 	}
 
-	seen := make(map[string]bool)
-	var result []*Event
-	count := int64(0)
+	// Use Snapshot for consistent reads without blocking writes
+	snapshot := s.db.NewSnapshot()
 
-	// Create a single heap for all filters
-	h := &cursorHeap{}
-	heap.Init(h)
-
-	// Collect all iterators for cleanup
+	// State captured by closures
 	var iterators []*pebble.Iterator
+	var queryErr error
 
-	// Open iterators for ALL filters and add to the same heap
-	for _, filter := range filters {
-		selections := s.selectIndexes(filter)
+	events := func(yield func(*Event) bool) {
+		if len(filters) == 0 {
+			return
+		}
 
-		for _, sel := range selections {
-			iter, err := s.db.NewIter(&pebble.IterOptions{
-				LowerBound: sel.lowerBound,
-				UpperBound: sel.upperBound,
-			})
-			if err != nil {
-				for _, it := range iterators {
-					it.Close()
+		seen := make(map[string]bool)
+		count := int64(0)
+
+		// Create a single heap for all filters
+		h := &cursorHeap{}
+		heap.Init(h)
+
+		// Open iterators for ALL filters and add to the same heap
+		for _, filter := range filters {
+			selections := s.selectIndexes(filter)
+
+			for _, sel := range selections {
+				iter, err := snapshot.NewIter(&pebble.IterOptions{
+					LowerBound: sel.lowerBound,
+					UpperBound: sel.upperBound,
+				})
+				if err != nil {
+					queryErr = err
+					return
 				}
-				return nil, err
-			}
-			iterators = append(iterators, iter)
+				iterators = append(iterators, iter)
 
-			// Position at first entry and add to heap
-			if iter.First() {
-				entry := s.makeCursorEntry(iter, sel, filter)
-				heap.Push(h, entry)
-			}
-		}
-	}
-
-	// Merge cursors using heap (across all filters)
-	for h.Len() > 0 {
-		if limit >= 0 && count >= limit {
-			break
-		}
-
-		// Pop the entry with smallest invertedTS (= newest event)
-		entry := heap.Pop(h).(*cursorEntry)
-
-		// Skip if already seen
-		eventIDHex := bytesToHex(entry.eventID)
-		if !seen[eventIDHex] {
-			// Get the event
-			event, err := s.getEventByID(entry.eventID)
-			if err != nil {
-				for _, it := range iterators {
-					it.Close()
+				// Position at first entry and add to heap
+				if iter.First() {
+					entry := s.makeCursorEntry(iter, sel, filter)
+					heap.Push(h, entry)
 				}
-				return nil, err
-			}
-
-			// Use the filter associated with this cursor for Match check
-			if event != nil && entry.filter.Match(event) {
-				seen[eventIDHex] = true
-				result = append(result, event)
-				count++
 			}
 		}
 
-		// Advance this cursor and re-add to heap if valid
-		if entry.iter.Next() {
-			newEntry := s.makeCursorEntry(entry.iter, entry.selection, entry.filter)
-			heap.Push(h, newEntry)
+		// Merge cursors using heap (across all filters)
+		for h.Len() > 0 {
+			if limit >= 0 && count >= limit {
+				return
+			}
+
+			// Pop the entry with smallest invertedTS (= newest event)
+			entry := heap.Pop(h).(*cursorEntry)
+
+			// Skip if already seen
+			eventIDHex := bytesToHex(entry.eventID)
+			if !seen[eventIDHex] {
+				// Get the event from snapshot
+				event, err := s.getEventByIDFromSnapshot(snapshot, entry.eventID)
+				if err != nil {
+					queryErr = err
+					return
+				}
+
+				// Use the filter associated with this cursor for Match check
+				if event != nil && entry.filter.Match(event) {
+					seen[eventIDHex] = true
+					count++
+					if !yield(event) {
+						return
+					}
+				}
+			}
+
+			// Advance this cursor and re-add to heap if valid
+			if entry.iter.Next() {
+				newEntry := s.makeCursorEntry(entry.iter, entry.selection, entry.filter)
+				heap.Push(h, newEntry)
+			}
 		}
 	}
 
-	// Close all iterators
-	for _, iter := range iterators {
-		if err := iter.Close(); err != nil {
-			return nil, err
-		}
+	errFn := func() error {
+		return queryErr
 	}
 
-	return result, nil
+	closeFn := func() error {
+		var closeErr error
+		for _, iter := range iterators {
+			if err := iter.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+		}
+		if err := snapshot.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+		return closeErr
+	}
+
+	return events, errFn, closeFn
 }
 
 // makeCursorEntry creates a cursorEntry from the current iterator position.
@@ -543,18 +554,6 @@ func (h *cursorHeap) Pop() any {
 	return x
 }
 
-// Delete implements Storage.Delete.
-func (s *PebbleStorage) Delete(ctx context.Context, eventID string, pubkey string) error {
-	// TODO: Implement
-	return nil
-}
-
-// DeleteByAddr implements Storage.DeleteByAddr.
-func (s *PebbleStorage) DeleteByAddr(ctx context.Context, kind int64, pubkey, dTag string) error {
-	// TODO: Implement
-	return nil
-}
-
 // deletionRecordData holds information about a deletion request.
 type deletionRecordData struct {
 	pubkey    string
@@ -672,6 +671,25 @@ func (s *PebbleStorage) processKind5(event *Event) error {
 func (s *PebbleStorage) getEventByID(eventID []byte) (*Event, error) {
 	eventKey := makeEventKey(eventID)
 	value, closer, err := s.db.Get(eventKey)
+	if err == pebble.ErrNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	var event Event
+	if err := json.Unmarshal(value, &event); err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
+// getEventByIDFromSnapshot retrieves an event from a snapshot by its ID bytes.
+func (s *PebbleStorage) getEventByIDFromSnapshot(snapshot *pebble.Snapshot, eventID []byte) (*Event, error) {
+	eventKey := makeEventKey(eventID)
+	value, closer, err := snapshot.Get(eventKey)
 	if err == pebble.ErrNotFound {
 		return nil, nil
 	}

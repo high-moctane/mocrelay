@@ -90,20 +90,23 @@ func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (<-chan 
 			return
 		}
 
-		events, err := h.storage.Query(ctx, msg.Filters)
-		if err != nil {
-			// On error, just send EOSE and continue
-			ch <- NewServerEOSEMsg(msg.SubscriptionID)
-			return
-		}
+		events, errFn, closeFn := h.storage.Query(ctx, msg.Filters)
+		defer closeFn()
 
-		// Send all events
-		for _, event := range events {
+		// Send all events using for-range over iterator
+		for event := range events {
 			select {
 			case <-ctx.Done():
 				return
 			case ch <- NewServerEventMsg(msg.SubscriptionID, event):
 			}
+		}
+
+		// Check for errors after iteration
+		if err := errFn(); err != nil {
+			// On error, just send EOSE and continue
+			ch <- NewServerEOSEMsg(msg.SubscriptionID)
+			return
 		}
 
 		// Send EOSE to signal end of stored events
@@ -127,13 +130,21 @@ func (h *StorageHandler) handleCount(ctx context.Context, msg *ClientMsg) (<-cha
 			return
 		}
 
-		events, err := h.storage.Query(ctx, msg.Filters)
-		if err != nil {
+		events, errFn, closeFn := h.storage.Query(ctx, msg.Filters)
+		defer closeFn()
+
+		// Count events by iterating
+		count := uint64(0)
+		for range events {
+			count++
+		}
+
+		if err := errFn(); err != nil {
 			ch <- NewServerCountMsg(msg.SubscriptionID, 0, nil)
 			return
 		}
 
-		ch <- NewServerCountMsg(msg.SubscriptionID, uint64(len(events)), nil)
+		ch <- NewServerCountMsg(msg.SubscriptionID, count, nil)
 	}()
 
 	return ch, nil

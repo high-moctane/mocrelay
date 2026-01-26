@@ -27,6 +27,19 @@ func toPtr[T any](v T) *T {
 	return &v
 }
 
+// queryInMemory is a test helper that collects events from Query into a slice.
+func queryInMemory(t *testing.T, s *InMemoryStorage, ctx context.Context, filters []*ReqFilter) []*Event {
+	t.Helper()
+	events, errFn, closeFn := s.Query(ctx, filters)
+	defer closeFn()
+	var result []*Event
+	for event := range events {
+		result = append(result, event)
+	}
+	require.NoError(t, errFn())
+	return result
+}
+
 func TestInMemoryStorage_Store_Regular(t *testing.T) {
 	ctx := context.Background()
 	s := NewInMemoryStorage()
@@ -86,8 +99,7 @@ func TestInMemoryStorage_Store_Replaceable(t *testing.T) {
 	assert.Equal(t, 1, s.Len())
 
 	// Query should return only the newest
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 1)
 	assert.Equal(t, "event-2", events[0].ID)
 }
@@ -108,8 +120,7 @@ func TestInMemoryStorage_Store_Replaceable_SameTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, stored) // Should replace because "event-a" < "event-b"
 
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 1)
 	assert.Equal(t, "event-a", events[0].ID)
 }
@@ -173,8 +184,7 @@ func TestInMemoryStorage_Store_Kind5_DeleteByEventID(t *testing.T) {
 	assert.True(t, stored)
 
 	// Only the kind 5 event should remain
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 1)
 	assert.Equal(t, "kind5-1", events[0].ID)
 }
@@ -235,8 +245,7 @@ func TestInMemoryStorage_Store_Kind5_DeleteByAddress(t *testing.T) {
 	assert.True(t, stored)
 
 	// Only the kind 5 should remain
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 1)
 	assert.Equal(t, "kind5-1", events[0].ID)
 }
@@ -273,8 +282,7 @@ func TestInMemoryStorage_Store_Kind5_DeleteKind5(t *testing.T) {
 
 	// NIP-09: "deletion request event against a deletion request has no effect"
 	// Both kind 5 events should remain
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 2)
 	assert.Equal(t, "kind5-2", events[0].ID)
 	assert.Equal(t, "kind5-1", events[1].ID)
@@ -309,8 +317,7 @@ func TestInMemoryStorage_Store_Kind5_DeleteByAddress_Timestamp(t *testing.T) {
 	assert.True(t, stored, "event created after deletion should be stored")
 
 	// Query should return kind5 and the event created after
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 2)
 	assert.Equal(t, "event-after", events[0].ID)
 	assert.Equal(t, "kind5-1", events[1].ID)
@@ -320,8 +327,7 @@ func TestInMemoryStorage_Query_Empty(t *testing.T) {
 	ctx := context.Background()
 	s := NewInMemoryStorage()
 
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	assert.Nil(t, events)
 }
 
@@ -334,8 +340,7 @@ func TestInMemoryStorage_Query_Sorted(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 3)
 
 	// Should be sorted by created_at DESC
@@ -353,8 +358,7 @@ func TestInMemoryStorage_Query_SortedSameTimestamp(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-a", "pubkey01", 1, 100))
 	_, _ = s.Store(ctx, makeEvent("event-b", "pubkey01", 1, 100))
 
-	events, err := s.Query(ctx, []*ReqFilter{{}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
 	require.Len(t, events, 3)
 
 	// Same timestamp: sorted by ID ASC (lexical)
@@ -371,8 +375,7 @@ func TestInMemoryStorage_Query_WithLimit(t *testing.T) {
 		_, _ = s.Store(ctx, makeEvent(fmt.Sprintf("event-%d", i), "pubkey01", 1, int64(i*100)))
 	}
 
-	events, err := s.Query(ctx, []*ReqFilter{{Limit: toPtr[int64](3)}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{Limit: toPtr[int64](3)}})
 	require.Len(t, events, 3)
 
 	// Should be the 3 newest
@@ -388,8 +391,7 @@ func TestInMemoryStorage_Query_LimitZero(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 
-	events, err := s.Query(ctx, []*ReqFilter{{Limit: toPtr[int64](0)}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{Limit: toPtr[int64](0)}})
 	assert.Nil(t, events)
 }
 
@@ -401,8 +403,7 @@ func TestInMemoryStorage_Query_FilterByIDs(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 	_, _ = s.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-	events, err := s.Query(ctx, []*ReqFilter{{IDs: []string{"event-1", "event-3"}}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{IDs: []string{"event-1", "event-3"}}})
 	require.Len(t, events, 2)
 
 	assert.Equal(t, "event-3", events[0].ID)
@@ -417,8 +418,7 @@ func TestInMemoryStorage_Query_FilterByAuthors(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey02", 1, 200))
 	_, _ = s.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-	events, err := s.Query(ctx, []*ReqFilter{{Authors: []string{"pubkey01"}}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{Authors: []string{"pubkey01"}}})
 	require.Len(t, events, 2)
 
 	assert.Equal(t, "event-3", events[0].ID)
@@ -433,8 +433,7 @@ func TestInMemoryStorage_Query_FilterByKinds(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 2, 200))
 	_, _ = s.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-	events, err := s.Query(ctx, []*ReqFilter{{Kinds: []int64{1}}})
-	require.NoError(t, err)
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{Kinds: []int64{1}}})
 	require.Len(t, events, 2)
 
 	assert.Equal(t, "event-3", events[0].ID)
@@ -450,11 +449,10 @@ func TestInMemoryStorage_Query_MultipleFilters(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
 	// Multiple filters = OR
-	events, err := s.Query(ctx, []*ReqFilter{
+	events := queryInMemory(t, s, ctx, []*ReqFilter{
 		{IDs: []string{"event-1"}},
 		{IDs: []string{"event-2"}},
 	})
-	require.NoError(t, err)
 	require.Len(t, events, 2)
 
 	assert.Equal(t, "event-2", events[0].ID)
@@ -469,11 +467,10 @@ func TestInMemoryStorage_Query_MultipleFiltersDedup(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 
 	// Same event matches both filters -> should appear only once
-	events, err := s.Query(ctx, []*ReqFilter{
+	events := queryInMemory(t, s, ctx, []*ReqFilter{
 		{IDs: []string{"event-1"}},
 		{IDs: []string{"event-1"}},
 	})
-	require.NoError(t, err)
 	require.Len(t, events, 1)
 
 	assert.Equal(t, "event-1", events[0].ID)
@@ -487,67 +484,12 @@ func TestInMemoryStorage_Query_MultipleFiltersWithLimit(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 	_, _ = s.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-	// Each filter has its own limit
-	events, err := s.Query(ctx, []*ReqFilter{
-		{Limit: toPtr[int64](1)}, // Gets event-3
-		{Limit: toPtr[int64](1)}, // Also tries event-3, but deduped, so gets nothing new
+	// NIP-01: "only return events from the first filter's limit"
+	// First filter's limit=1 is applied globally
+	events := queryInMemory(t, s, ctx, []*ReqFilter{
+		{Limit: toPtr[int64](1)},
+		{}, // This filter has no limit, but first filter's limit applies globally
 	})
-	require.NoError(t, err)
-	// Hmm, this depends on implementation. Let's check the result.
-	// With dedup happening during iteration, second filter might get event-2.
-	// Actually, looking at the implementation:
-	// - First filter: count 0, limit 1, sees event-3, count becomes 1, limit reached
-	// - Second filter: count 0, limit 1, sees event-3 (already in seen), skips, sees event-2, count becomes 1
-	// So result should be event-3 and event-2
-	require.Len(t, events, 2)
+	require.Len(t, events, 1)
 	assert.Equal(t, "event-3", events[0].ID)
-	assert.Equal(t, "event-2", events[1].ID)
-}
-
-func TestInMemoryStorage_Delete(t *testing.T) {
-	ctx := context.Background()
-	s := NewInMemoryStorage()
-
-	_, _ = s.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
-	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
-
-	err := s.Delete(ctx, "event-1", "pubkey01")
-	require.NoError(t, err)
-
-	assert.Equal(t, 1, s.Len())
-
-	// Should not be able to re-add the deleted event
-	stored, err := s.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
-	require.NoError(t, err)
-	assert.False(t, stored)
-}
-
-func TestInMemoryStorage_Delete_DifferentPubkey(t *testing.T) {
-	ctx := context.Background()
-	s := NewInMemoryStorage()
-
-	_, _ = s.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
-
-	// Try to delete with different pubkey -> should not delete
-	err := s.Delete(ctx, "event-1", "pubkey02")
-	require.NoError(t, err)
-
-	assert.Equal(t, 1, s.Len()) // Still there
-}
-
-func TestInMemoryStorage_DeleteByAddr(t *testing.T) {
-	ctx := context.Background()
-	s := NewInMemoryStorage()
-
-	_, _ = s.Store(ctx, makeEvent("event-1", "pubkey01", 30000, 100, Tag{"d", "param"}))
-
-	err := s.DeleteByAddr(ctx, 30000, "pubkey01", "param")
-	require.NoError(t, err)
-
-	assert.Equal(t, 0, s.Len())
-
-	// Should not be able to re-add
-	stored, err := s.Store(ctx, makeEvent("event-2", "pubkey01", 30000, 200, Tag{"d", "param"}))
-	require.NoError(t, err)
-	assert.False(t, stored)
 }
