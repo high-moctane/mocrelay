@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // Key prefixes for Pebble storage
@@ -50,6 +51,12 @@ type PebbleStorage struct {
 // NewPebbleStorage creates a new Pebble-backed storage.
 // path is the directory where Pebble will store its data.
 func NewPebbleStorage(path string) (*PebbleStorage, error) {
+	return NewPebbleStorageWithFS(path, vfs.Default)
+}
+
+// NewPebbleStorageWithFS creates a new Pebble-backed storage with a custom filesystem.
+// Use vfs.NewMem() for in-memory storage (useful for testing).
+func NewPebbleStorageWithFS(path string, fs vfs.FS) (*PebbleStorage, error) {
 	// Configure Bloom filter for efficient negative lookups.
 	// 10 bits per key provides ~1% false positive rate.
 	levelOpts := pebble.LevelOptions{
@@ -58,6 +65,7 @@ func NewPebbleStorage(path string) (*PebbleStorage, error) {
 	}
 
 	opts := &pebble.Options{
+		FS: fs,
 		// Apply Bloom filter to all levels (Pebble uses 7 levels by default)
 		Levels: []pebble.LevelOptions{
 			levelOpts, // L0
