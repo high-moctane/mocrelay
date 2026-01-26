@@ -417,6 +417,24 @@ Replaceable/Addressable 専用（Value は event_id:32）:
 - Pebble では対応しない
 - 必要なら別の検索エンジン（Bleve, Meilisearch 等）を MergeHandler で統合
 
+**PebbleStorageOptions**：
+```go
+type PebbleStorageOptions struct {
+    CacheSize int64  // ブロックキャッシュ（デフォルト 8MB、本番は 64-256MB 推奨）
+    FS        vfs.FS // テスト用（vfs.NewMem()）
+}
+```
+
+**固定設定（変更不要）**：
+- Bloom filter: 10 bits/key（~1% false positive）、全レベル Table-level filter
+- MemTableSize: 4MB（約 4000 イベント分、mocvps 規模なら十分）
+- その他の Pebble オプション: デフォルトで良い、必要になったら追加
+
+**Differential Testing**：
+- `storage_differential_test.go` で InMemory と Pebble の挙動一致を検証
+- シードベースのランダムテスト（再現可能）
+- StorageHandler レベルでも検証（EVENT→OK、REQ→EVENT*+EOSE）
+
 ### テストの書き方
 
 **非同期処理のテストには `testing/synctest` を使う**（Go 1.25+）
