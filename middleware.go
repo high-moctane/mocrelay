@@ -59,13 +59,14 @@ type SimpleMiddlewareBase interface {
 // NewSimpleMiddleware creates a Middleware from a SimpleMiddlewareBase.
 func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
 	return func(next Handler) Handler {
-		return HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
-			ctx, startMsg, err := base.OnStart(ctx)
-			if err != nil {
-				return err
+		return HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) (err error) {
+			ctx, startMsg, startErr := base.OnStart(ctx)
+			if startErr != nil {
+				return startErr
 			}
 			defer func() {
-				endMsg, _ := base.OnEnd(ctx)
+				endMsg, endErr := base.OnEnd(ctx)
+				err = errors.Join(err, endErr)
 				if endMsg != nil {
 					select {
 					case send <- endMsg:
@@ -111,7 +112,8 @@ func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
 			cancel()
 			err1, err2 := <-errs, <-errs
 
-			return errors.Join(handlerErr, err1, err2)
+			err = errors.Join(handlerErr, err1, err2)
+			return
 		})
 	}
 }
