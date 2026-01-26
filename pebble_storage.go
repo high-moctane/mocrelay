@@ -44,19 +44,43 @@ const (
 
 // PebbleStorage implements Storage using Pebble (LSM-tree based KV store).
 type PebbleStorage struct {
-	db *pebble.DB
-	mu sync.RWMutex // For atomic operations spanning multiple keys
+	db    *pebble.DB
+	cache *pebble.Cache // Keep reference to close on Close()
+	mu    sync.RWMutex  // For atomic operations spanning multiple keys
 }
 
-// NewPebbleStorage creates a new Pebble-backed storage.
+// PebbleStorageOptions configures PebbleStorage behavior.
+type PebbleStorageOptions struct {
+	// CacheSize is the size of the block cache in bytes.
+	// Larger cache improves read performance by keeping frequently accessed
+	// SSTable blocks in memory.
+	// Default: 8MB (Pebble's default). Recommended: 64MB-256MB for production.
+	CacheSize int64
+
+	// FS provides the interface for persistent file storage.
+	// Use vfs.NewMem() for in-memory storage (useful for testing).
+	// Default: vfs.Default (operating system's file system)
+	FS vfs.FS
+}
+
+// NewPebbleStorage creates a new Pebble-backed storage with default options.
 // path is the directory where Pebble will store its data.
 func NewPebbleStorage(path string) (*PebbleStorage, error) {
-	return NewPebbleStorageWithFS(path, vfs.Default)
+	return NewPebbleStorageWithOptions(path, nil)
 }
 
 // NewPebbleStorageWithFS creates a new Pebble-backed storage with a custom filesystem.
 // Use vfs.NewMem() for in-memory storage (useful for testing).
 func NewPebbleStorageWithFS(path string, fs vfs.FS) (*PebbleStorage, error) {
+	return NewPebbleStorageWithOptions(path, &PebbleStorageOptions{FS: fs})
+}
+
+// NewPebbleStorageWithOptions creates a new Pebble-backed storage with custom options.
+func NewPebbleStorageWithOptions(path string, storageOpts *PebbleStorageOptions) (*PebbleStorage, error) {
+	if storageOpts == nil {
+		storageOpts = &PebbleStorageOptions{}
+	}
+
 	// Configure Bloom filter for efficient negative lookups.
 	// 10 bits per key provides ~1% false positive rate.
 	levelOpts := pebble.LevelOptions{
@@ -65,7 +89,6 @@ func NewPebbleStorageWithFS(path string, fs vfs.FS) (*PebbleStorage, error) {
 	}
 
 	opts := &pebble.Options{
-		FS: fs,
 		// Apply Bloom filter to all levels (Pebble uses 7 levels by default)
 		Levels: []pebble.LevelOptions{
 			levelOpts, // L0
@@ -78,16 +101,35 @@ func NewPebbleStorageWithFS(path string, fs vfs.FS) (*PebbleStorage, error) {
 		},
 	}
 
+	// Apply custom filesystem
+	if storageOpts.FS != nil {
+		opts.FS = storageOpts.FS
+	}
+
+	// Apply custom cache size
+	var cache *pebble.Cache
+	if storageOpts.CacheSize > 0 {
+		cache = pebble.NewCache(storageOpts.CacheSize)
+		opts.Cache = cache
+	}
+
 	db, err := pebble.Open(path, opts)
 	if err != nil {
+		if cache != nil {
+			cache.Unref()
+		}
 		return nil, err
 	}
-	return &PebbleStorage{db: db}, nil
+	return &PebbleStorage{db: db, cache: cache}, nil
 }
 
 // Close closes the Pebble database.
 func (s *PebbleStorage) Close() error {
-	return s.db.Close()
+	err := s.db.Close()
+	if s.cache != nil {
+		s.cache.Unref()
+	}
+	return err
 }
 
 // Store implements Storage.Store.
