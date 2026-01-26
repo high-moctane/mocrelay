@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cockroachdb/pebble/vfs"
@@ -305,4 +306,152 @@ func TestStorageDifferential_Addressable(t *testing.T) {
 
 	assert.Equal(t, idsInMem, idsPebble, "addressable query")
 	assert.Len(t, idsInMem, 2, "should have two addressable events (one per d-tag)")
+}
+
+// =============================================================================
+// StorageHandler-level Differential Testing
+// =============================================================================
+
+// TestStorageHandlerDifferential tests both storages through StorageHandler.
+// This validates the full Nostr protocol flow: EVENT → OK, REQ → EVENT* + EOSE.
+func TestStorageHandlerDifferential(t *testing.T) {
+	seeds := []uint64{0, 1, 42, 12345, 98765}
+	for _, seed := range seeds {
+		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				testStorageHandlerDifferentialWithSeed(t, seed)
+			})
+		})
+	}
+}
+
+func testStorageHandlerDifferentialWithSeed(t *testing.T, seed uint64) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create both storages
+	inMemory := NewInMemoryStorage()
+	pebbleStorage, err := NewPebbleStorageWithFS("test", vfs.NewMem())
+	require.NoError(t, err)
+	defer pebbleStorage.Close()
+
+	// Create handlers
+	handlerInMem := NewStorageHandler(inMemory)
+	handlerPebble := NewStorageHandler(pebbleStorage)
+
+	// Create channels for both handlers
+	sendInMem := make(chan *ServerMsg, 100)
+	recvInMem := make(chan *ClientMsg, 100)
+	sendPebble := make(chan *ServerMsg, 100)
+	recvPebble := make(chan *ClientMsg, 100)
+
+	// Start both handlers
+	go handlerInMem.ServeNostr(ctx, sendInMem, recvInMem)
+	go handlerPebble.ServeNostr(ctx, sendPebble, recvPebble)
+
+	// Use deterministic random generator
+	rng := rand.New(rand.NewPCG(seed, seed))
+
+	// Generate random events
+	numEvents := 50
+	events := generateRandomEvents(rng, numEvents)
+
+	// Send EVENT messages and compare OK responses
+	for i, event := range events {
+		msg := &ClientMsg{Type: MsgTypeEvent, Event: event}
+		recvInMem <- msg
+		recvPebble <- msg
+
+		synctest.Wait()
+
+		// Collect OK responses
+		okInMem := drainOKs(sendInMem)
+		okPebble := drainOKs(sendPebble)
+
+		require.Len(t, okInMem, 1, "event %d: expected 1 OK from inMem", i)
+		require.Len(t, okPebble, 1, "event %d: expected 1 OK from pebble", i)
+
+		assert.Equal(t, okInMem[0].Accepted, okPebble[0].Accepted,
+			"event %d: Accepted mismatch", i)
+		assert.Equal(t, okInMem[0].EventID, okPebble[0].EventID,
+			"event %d: EventID mismatch", i)
+	}
+
+	// Send REQ messages and compare results
+	numQueries := 20
+	for i := range numQueries {
+		filters := generateRandomFilters(rng, events)
+		subID := fmt.Sprintf("sub-%d", i)
+
+		msg := &ClientMsg{Type: MsgTypeReq, SubscriptionID: subID, Filters: filters}
+		recvInMem <- msg
+		recvPebble <- msg
+
+		synctest.Wait()
+
+		// Collect responses until EOSE
+		eventsInMem, eoseInMem := drainEventsUntilEOSE(sendInMem, subID)
+		eventsPebble, eosePebble := drainEventsUntilEOSE(sendPebble, subID)
+
+		require.True(t, eoseInMem, "query %d: expected EOSE from inMem", i)
+		require.True(t, eosePebble, "query %d: expected EOSE from pebble", i)
+
+		// Compare event IDs
+		idsInMem := extractEventIDs(eventsInMem)
+		idsPebble := extractEventIDs(eventsPebble)
+
+		assert.Equal(t, idsInMem, idsPebble,
+			"query %d: results mismatch\nfilters: %+v\ninMem: %v\npebble: %v",
+			i, filters, idsInMem, idsPebble)
+	}
+}
+
+// drainOKs collects all OK messages from a channel.
+func drainOKs(ch <-chan *ServerMsg) []*ServerMsg {
+	var oks []*ServerMsg
+	for {
+		select {
+		case msg := <-ch:
+			if msg.Type == MsgTypeOK {
+				oks = append(oks, msg)
+			}
+		default:
+			return oks
+		}
+	}
+}
+
+// drainEventsUntilEOSE collects EVENT messages until EOSE.
+func drainEventsUntilEOSE(ch <-chan *ServerMsg, subID string) ([]*ServerMsg, bool) {
+	var events []*ServerMsg
+	gotEOSE := false
+	for {
+		select {
+		case msg := <-ch:
+			switch msg.Type {
+			case MsgTypeEvent:
+				if msg.SubscriptionID == subID {
+					events = append(events, msg)
+				}
+			case MsgTypeEOSE:
+				if msg.SubscriptionID == subID {
+					gotEOSE = true
+					return events, gotEOSE
+				}
+			}
+		default:
+			return events, gotEOSE
+		}
+	}
+}
+
+// extractEventIDs extracts event IDs from ServerMsg slice.
+func extractEventIDs(msgs []*ServerMsg) []string {
+	ids := make([]string, len(msgs))
+	for i, m := range msgs {
+		if m.Event != nil {
+			ids[i] = m.Event.ID
+		}
+	}
+	return ids
 }
