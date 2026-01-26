@@ -4,6 +4,8 @@ package mocrelay
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 )
@@ -33,6 +35,9 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 		childSends[i] = make(chan *ServerMsg, 10)
 	}
 
+	// Error channel for collecting child handler errors
+	errs := make(chan error, numHandlers)
+
 	// Start child handlers
 	var wg sync.WaitGroup
 	for i, handler := range h.handlers {
@@ -40,7 +45,9 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 		go func(i int, handler Handler) {
 			defer wg.Done()
 			defer close(childSends[i])
-			handler.ServeNostr(ctx, childSends[i], childRecvs[i])
+			if err := handler.ServeNostr(ctx, childSends[i], childRecvs[i]); err != nil {
+				errs <- fmt.Errorf("handler %d: %w", i, err)
+			}
 		}(i, handler)
 	}
 
@@ -67,16 +74,20 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 		}
 	}
 
+	var loopErr error
+
+loop:
 	for {
 		chosen, value, ok := reflect.Select(cases)
 
 		switch chosen {
 		case 0: // ctx.Done()
-			return ctx.Err()
+			loopErr = ctx.Err()
+			break loop
 
 		case 1: // recv
 			if !ok {
-				return nil
+				break loop
 			}
 			msg := value.Interface().(*ClientMsg)
 			// Broadcast to all children
@@ -111,11 +122,23 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 				select {
 				case send <- result:
 				case <-ctx.Done():
-					return ctx.Err()
+					loopErr = ctx.Err()
+					break loop
 				}
 			}
 		}
 	}
+
+	// Wait for all child handlers to finish and collect their errors
+	wg.Wait()
+	close(errs)
+
+	var handlerErrs error
+	for e := range errs {
+		handlerErrs = errors.Join(handlerErrs, e)
+	}
+
+	return errors.Join(loopErr, handlerErrs)
 }
 
 // mergeSession manages the state for merging responses.

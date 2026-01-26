@@ -4,6 +4,7 @@ package mocrelay
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"testing/synctest"
 
@@ -589,5 +590,97 @@ func TestMergeHandler_Req_Limit_MultipleHandlers(t *testing.T) {
 
 		assert.LessOrEqual(t, eventCount, 3, "should have at most 3 events (limit)")
 		assert.Equal(t, MsgTypeEOSE, events[len(events)-1].Type)
+	})
+}
+
+// errorHandler is a handler that returns an error.
+type errorHandler struct {
+	err error
+}
+
+func (h *errorHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+	<-ctx.Done()
+	return h.err
+}
+
+// TestMergeHandler_Error_Propagation tests that child handler errors are collected and returned.
+func TestMergeHandler_Error_Propagation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		errHandler1 := errors.New("handler 1 failed")
+		errHandler2 := errors.New("handler 2 failed")
+
+		handler1 := &errorHandler{err: errHandler1}
+		handler2 := &errorHandler{err: errHandler2}
+
+		mergeHandler := NewMergeHandler(handler1, handler2)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- mergeHandler.ServeNostr(ctx, send, recv)
+		}()
+
+		synctest.Wait()
+
+		// Cancel context to trigger handler termination
+		cancel()
+
+		synctest.Wait()
+
+		// Close recv to let MergeHandler exit
+		close(recv)
+
+		synctest.Wait()
+
+		// Get the error
+		err := <-errCh
+
+		// Both handler errors should be collected
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, errHandler1), "should contain handler 1 error")
+		assert.True(t, errors.Is(err, errHandler2), "should contain handler 2 error")
+	})
+}
+
+// TestMergeHandler_Error_OneHandlerFails tests that error is propagated even if only one handler fails.
+func TestMergeHandler_Error_OneHandlerFails(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		errHandler := errors.New("handler failed")
+
+		handler1 := NewNopHandler()                // returns nil
+		handler2 := &errorHandler{err: errHandler} // returns error
+
+		mergeHandler := NewMergeHandler(handler1, handler2)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- mergeHandler.ServeNostr(ctx, send, recv)
+		}()
+
+		synctest.Wait()
+
+		// Cancel context
+		cancel()
+
+		synctest.Wait()
+
+		close(recv)
+
+		synctest.Wait()
+
+		err := <-errCh
+
+		// Should contain the error from handler 2 and context.Canceled from loop
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, errHandler), "should contain handler error")
 	})
 }
