@@ -322,25 +322,14 @@ if newEvent.CreatedAt > lastSentCreatedAt {
 - EOSE を返さない handler がいると session 内の map が肥大化する
 - 対策：タイムアウト、CLOSE 時のクリーンアップ、購読数制限
 
-### Storage インターフェース（再設計中）
+### Storage インターフェース ✅
 
-**現状**：`[]*Event` を返す実装が完了。これから EventCursor パターンに移行予定。
-
-**新設計（TODO）**：database/sql の `*sql.Rows` パターンを採用
+**iter.Seq パターン**（Go 1.23+）を採用：
 
 ```go
-// EventCursor は Query 結果のイテレータ（database/sql の *Rows と同じパターン）
-type EventCursor interface {
-    Next() bool       // 次の event があるか
-    Event() *Event    // 現在の event を取得
-    Err() error       // イテレーション中のエラー
-    Close() error     // リソース解放
-}
-
 type Storage interface {
     Store(ctx context.Context, event *Event) (bool, error)
-    Query(ctx context.Context, filters []*ReqFilter) (EventCursor, error)
-    // Delete / DeleteByAddr は削除（Kind 5 は Store 内で処理）
+    Query(ctx context.Context, filters []*ReqFilter) (events iter.Seq[*Event], err func() error, close func() error)
 }
 
 // Optional: Count をサポートする Storage（NIP-45）
@@ -352,26 +341,23 @@ type CountableStorage interface {
 
 **使用側**：
 ```go
-cursor, err := storage.Query(ctx, filters)
-if err != nil {
-    return err
-}
-defer cursor.Close()
+events, errFn, closeFn := storage.Query(ctx, filters)
+defer closeFn()
 
-for cursor.Next() {
-    event := cursor.Event()
+for event := range events {
     ch <- NewServerEventMsg(subID, event)
 }
 
-if err := cursor.Err(); err != nil {
+if err := errFn(); err != nil {
     return err
 }
 ```
 
 **メリット**：
+- **for-range で直感的**：`for event := range events` でスッキリ
 - **ストリーミング応答**：全件揃う前にクライアントに返せる
-- **Go 開発者に馴染みのあるパターン**
-- **`defer cursor.Close()` でクリーンアップ保証**
+- **PebbleStorage で Snapshot 使用**：Query 中も Write をブロックしない（MVCC）
+- **シンプルなインターフェース**：Store と Query の 2 メソッドのみ
 
 **Delete / DeleteByAddr を削除した理由**：
 - Kind 5 の処理は `Store` 内で完結している
