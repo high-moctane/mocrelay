@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 )
 
 // Key prefixes for Pebble storage
@@ -49,7 +50,27 @@ type PebbleStorage struct {
 // NewPebbleStorage creates a new Pebble-backed storage.
 // path is the directory where Pebble will store its data.
 func NewPebbleStorage(path string) (*PebbleStorage, error) {
-	db, err := pebble.Open(path, &pebble.Options{})
+	// Configure Bloom filter for efficient negative lookups.
+	// 10 bits per key provides ~1% false positive rate.
+	levelOpts := pebble.LevelOptions{
+		FilterPolicy: bloom.FilterPolicy(10),
+		FilterType:   pebble.TableFilter, // Table-level filter (faster than block-level)
+	}
+
+	opts := &pebble.Options{
+		// Apply Bloom filter to all levels (Pebble uses 7 levels by default)
+		Levels: []pebble.LevelOptions{
+			levelOpts, // L0
+			levelOpts, // L1
+			levelOpts, // L2
+			levelOpts, // L3
+			levelOpts, // L4
+			levelOpts, // L5
+			levelOpts, // L6
+		},
+	}
+
+	db, err := pebble.Open(path, opts)
 	if err != nil {
 		return nil, err
 	}
