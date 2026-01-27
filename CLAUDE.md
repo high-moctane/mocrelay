@@ -93,6 +93,32 @@ default:
 - 通常はミリ秒単位で完了するので許容
 - 長時間ブロックする場合は、より大きな問題がある状況
 
+### メモリリーク防止（状態管理）
+
+**問題**：Handler が subscription ごとに状態を持つ場合、CLOSE を受け取らずに接続が切断されると状態が残り続ける可能性がある。
+
+**対策**：
+
+1. **接続終了時のクリーンアップ**：
+   - `ServeNostr()` が終了すると、その Handler の状態は GC される
+   - ぶち切りされても問題なし
+
+2. **CLOSE メッセージでのクリーンアップ**：
+   - 長時間の接続で、大量の subscription を作成→放置するケースに対応
+   - MergeHandler: `closeSubscription(subID)` で状態を削除
+   - Router: `Unsubscribe(connID, subID)` で購読を削除
+
+**状態を持つ Handler の例**：
+
+| Handler | 状態 | クリーンアップ |
+|---------|------|--------------|
+| **MergeHandler** | `pendingEOSEs`, `completedSubs`, `limitReachedSub` | CLOSE で削除 |
+| **Router** | `connections[connID].subscriptions` | CLOSE で削除、切断時は Unregister で接続ごと削除 |
+
+**状態を持たない Handler**（心配不要）：
+- `StorageHandler`: REQ ごとに処理完結、状態なし
+- `NopHandler`: 状態なし
+
 ### Design Decisions
 
 #### Handler Interface
