@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -41,6 +42,10 @@ type Relay struct {
 	// If set, the relay will respond to HTTP requests with
 	// Accept: application/nostr+json header.
 	Info *RelayInfo
+
+	// Metrics is the Prometheus metrics collector.
+	// If set, the relay will collect connection and message metrics.
+	Metrics *RelayMetrics
 
 	mu      sync.Mutex
 	wg      sync.WaitGroup
@@ -133,6 +138,13 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	connID := r.registerConn(cancel)
 	defer r.unregisterConn(connID)
+
+	// Metrics: connection tracking
+	if r.Metrics != nil {
+		r.Metrics.ConnectionsTotal.Inc()
+		r.Metrics.ConnectionsCurrent.Inc()
+		defer r.Metrics.ConnectionsCurrent.Dec()
+	}
 
 	r.logInfo(ctx, "connection start")
 
@@ -263,6 +275,15 @@ func (r *Relay) readLoop(
 			}
 		}
 
+		// Metrics: message received
+		if r.Metrics != nil {
+			r.Metrics.MessagesReceived.WithLabelValues(string(msg.Type)).Inc()
+			if msg.Type == MsgTypeEvent && msg.Event != nil {
+				kindStr := strconv.FormatInt(msg.Event.Kind, 10)
+				r.Metrics.EventsReceived.WithLabelValues(kindStr).Inc()
+			}
+		}
+
 		// Send to handler
 		select {
 		case <-ctx.Done():
@@ -296,6 +317,11 @@ func (r *Relay) writeLoop(
 
 			if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
 				return err
+			}
+
+			// Metrics: message sent
+			if r.Metrics != nil {
+				r.Metrics.MessagesSent.WithLabelValues(string(msg.Type)).Inc()
 			}
 		}
 	}
