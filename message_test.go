@@ -174,7 +174,7 @@ func TestServerMsg_MarshalJSON(t *testing.T) {
 		{
 			name: "COUNT with approximate",
 			msg:  NewServerCountMsg("sub1", 100, ptr(true)),
-			want: `["COUNT","sub1",{"count":100,"approximate":true}]`,
+			want: `["COUNT","sub1",{"approximate":true,"count":100}]`,
 		},
 	}
 
@@ -184,10 +184,48 @@ func TestServerMsg_MarshalJSON(t *testing.T) {
 			if err != nil {
 				t.Fatalf("MarshalJSON() error = %v", err)
 			}
-			if string(got) != tt.want {
+			// Compare as JSON to avoid field ordering issues
+			var gotJSON, wantJSON any
+			if err := json.Unmarshal(got, &gotJSON); err != nil {
+				t.Fatalf("failed to unmarshal got: %v", err)
+			}
+			if err := json.Unmarshal([]byte(tt.want), &wantJSON); err != nil {
+				t.Fatalf("failed to unmarshal want: %v", err)
+			}
+			if !jsonEqual(gotJSON, wantJSON) {
 				t.Errorf("MarshalJSON() = %s, want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+// jsonEqual compares two JSON values for equality, ignoring map key order.
+func jsonEqual(a, b any) bool {
+	switch av := a.(type) {
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for k, v := range av {
+			if !jsonEqual(v, bv[k]) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !jsonEqual(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return a == b
 	}
 }
 
