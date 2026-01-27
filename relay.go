@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/coder/websocket"
@@ -25,6 +26,16 @@ type Relay struct {
 	// MaxMessageLength is the maximum size of a WebSocket message.
 	// Default: 100KB
 	MaxMessageLength int64
+
+	// PingInterval is the interval between WebSocket pings.
+	// Set to 0 to disable pings.
+	// Default: 30 seconds
+	PingInterval time.Duration
+
+	// PingTimeout is the timeout for WebSocket ping responses.
+	// If a pong is not received within this duration, the connection is closed.
+	// Default: 10 seconds
+	PingTimeout time.Duration
 
 	// Info is the NIP-11 Relay Information Document.
 	// If set, the relay will respond to HTTP requests with
@@ -143,7 +154,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	recv := make(chan *ClientMsg)
 	send := make(chan *ServerMsg)
 
-	errs := make(chan error, 3)
+	errs := make(chan error, 4)
 	var wg sync.WaitGroup
 
 	// Read loop: WebSocket -> recv channel
@@ -159,6 +170,15 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		defer cancel()
 		err := r.writeLoop(ctx, conn, send)
 		errs <- fmt.Errorf("writeLoop: %w", err)
+	})
+
+	// Ping loop: keep-alive and detect dead connections
+	wg.Go(func() {
+		defer cancel()
+		err := r.pingLoop(ctx, conn)
+		if err != nil {
+			errs <- fmt.Errorf("pingLoop: %w", err)
+		}
 	})
 
 	// Handler
@@ -276,6 +296,43 @@ func (r *Relay) writeLoop(
 
 			if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
 				return err
+			}
+		}
+	}
+}
+
+// pingLoop sends periodic pings to detect dead connections.
+// It returns nil if pings are disabled (PingInterval == 0) or context is canceled.
+// It returns an error if a ping times out (connection is dead).
+func (r *Relay) pingLoop(ctx context.Context, conn *websocket.Conn) error {
+	interval := r.PingInterval
+	if interval == 0 {
+		interval = 30 * time.Second
+	}
+	if interval < 0 {
+		// Negative interval disables pings
+		<-ctx.Done()
+		return nil
+	}
+
+	timeout := r.PingTimeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			pingCtx, cancel := context.WithTimeout(ctx, timeout)
+			err := conn.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				return fmt.Errorf("ping timeout: %w", err)
 			}
 		}
 	}
