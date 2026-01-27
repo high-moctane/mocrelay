@@ -105,7 +105,10 @@ func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (<-chan 
 		// Check for errors after iteration
 		if err := errFn(); err != nil {
 			// On error, just send EOSE and continue
-			ch <- NewServerEOSEMsg(msg.SubscriptionID)
+			select {
+			case <-ctx.Done():
+			case ch <- NewServerEOSEMsg(msg.SubscriptionID):
+			}
 			return
 		}
 

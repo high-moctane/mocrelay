@@ -47,6 +47,52 @@ go tool lefthook install  # Install git hooks
 - テストが書きやすく、非同期処理の複雑さを隠蔽できる
 - 1:N 変換が必要な特殊ケースのみ `Handler` を直接実装
 
+### Channel 操作のパターン（goroutine leak 防止）
+
+**基本原則**：channel への send/recv 時は `ctx.Done()` をチェックして、goroutine が終了できるようにする。
+
+#### ✅ 安全なパターン
+
+```go
+// send: ctx.Done() と併用
+select {
+case <-ctx.Done():
+    return ctx.Err()
+case ch <- msg:
+}
+
+// recv: ctx.Done() と併用
+select {
+case <-ctx.Done():
+    return ctx.Err()
+case msg, ok := <-ch:
+    if !ok {
+        return nil // channel closed
+    }
+}
+
+// best effort send: ブロックしない（Router の broadcast など）
+select {
+case ch <- msg:
+default:
+    // drop
+}
+```
+
+#### ⚠️ 注意が必要なケース
+
+**Buffered channel への send**：
+- `ch := make(chan T, 1)` の場合、1回目の send はブロックしない
+- 複数回 send する可能性がある場合は `select` + `ctx.Done()` が必要
+
+**Unbuffered channel への send**：
+- 常に `select` + `ctx.Done()` が必要（ブロックする可能性がある）
+
+**Pebble などの I/O 操作**：
+- Pebble の API は ctx を尊重しない（Go の io 全般の制限）
+- 通常はミリ秒単位で完了するので許容
+- 長時間ブロックする場合は、より大きな問題がある状況
+
 ### Design Decisions
 
 #### Handler Interface
