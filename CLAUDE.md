@@ -502,6 +502,18 @@ type PebbleStorageOptions struct {
 - MemTableSize: 4MB（約 4000 イベント分、mocvps 規模なら十分）
 - その他の Pebble オプション: デフォルトで良い、必要になったら追加
 
+**PebbleStorage の Close**：
+- 使用側で `Close()` を呼ぶ責任がある（「New した人が閉じる」原則）
+- WAL やファイルを適切に閉じるために必須
+
+```go
+storage, _ := NewPebbleStorage("/path/to/db", nil)
+defer storage.Close()  // ← 忘れずに！
+
+handler := NewStorageHandler(storage)
+relay := NewRelay(handler)
+```
+
 **Differential Testing**：
 - `storage_differential_test.go` で InMemory と Pebble の挙動一致を検証
 - シードベースのランダムテスト（再現可能）
