@@ -31,7 +31,11 @@ type Relay struct {
 	// Accept: application/nostr+json header.
 	Info *RelayInfo
 
-	wg sync.WaitGroup
+	mu      sync.Mutex
+	wg      sync.WaitGroup
+	connID  uint64
+	cancels map[uint64]context.CancelFunc
+	closed  bool
 }
 
 // NewRelay creates a new Relay with the given handler.
@@ -47,6 +51,51 @@ func (r *Relay) Wait() {
 	r.wg.Wait()
 }
 
+// Shutdown gracefully shuts down the relay.
+// It closes all WebSocket connections and waits for them to finish.
+// If ctx is canceled before all connections finish, it returns ctx.Err().
+func (r *Relay) Shutdown(ctx context.Context) error {
+	r.mu.Lock()
+	r.closed = true
+	for _, cancel := range r.cancels {
+		cancel()
+	}
+	r.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		r.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *Relay) registerConn(cancel context.CancelFunc) uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.cancels == nil {
+		r.cancels = make(map[uint64]context.CancelFunc)
+	}
+
+	r.connID++
+	id := r.connID
+	r.cancels[id] = cancel
+	return id
+}
+
+func (r *Relay) unregisterConn(id uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.cancels, id)
+}
+
 // ServeHTTP implements http.Handler.
 func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// NIP-11: Respond with relay info if Accept header is application/nostr+json
@@ -55,12 +104,24 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Check if relay is shutting down and register connection atomically
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		http.Error(w, "relay is shutting down", http.StatusServiceUnavailable)
+		return
+	}
 	r.wg.Add(1)
+	r.mu.Unlock()
+
 	defer r.wg.Done()
 
 	ctx := req.Context()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	connID := r.registerConn(cancel)
+	defer r.unregisterConn(connID)
 
 	r.logInfo(ctx, "connection start")
 
