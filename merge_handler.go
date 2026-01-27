@@ -107,6 +107,9 @@ loop:
 			if msg.Type == MsgTypeCount {
 				session.startCountResponse(msg.SubscriptionID)
 			}
+			if msg.Type == MsgTypeClose {
+				session.closeSubscription(msg.SubscriptionID)
+			}
 
 		default: // childSends[chosen-2]
 			if !ok {
@@ -226,6 +229,18 @@ func (s *mergeSession) startReqResponse(subID string, filters []*ReqFilter) {
 		eoseSent:        false,
 		handlerEOSESent: make([]bool, s.numHandlers),
 	}
+}
+
+// closeSubscription cleans up all state for a subscription.
+// Called when CLOSE message is received.
+func (s *mergeSession) closeSubscription(subID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.pendingEOSEs, subID)
+	delete(s.pendingCounts, subID)
+	delete(s.completedSubs, subID)
+	delete(s.limitReachedSub, subID)
 }
 
 func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*ServerMsg {

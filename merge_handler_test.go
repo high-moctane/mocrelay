@@ -684,3 +684,60 @@ func TestMergeHandler_Error_OneHandlerFails(t *testing.T) {
 		assert.True(t, errors.Is(err, errHandler), "should contain handler error")
 	})
 }
+
+// TestMergeHandler_Close_CleansUpState tests that CLOSE message cleans up subscription state.
+func TestMergeHandler_Close_CleansUpState(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		handler1 := NewNopHandler()
+		handler2 := NewNopHandler()
+
+		mergeHandler := NewMergeHandler(handler1, handler2)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		synctest.Wait()
+
+		// Send REQ to create subscription state
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// Drain merged EOSE (MergeHandler waits for all handlers then sends one EOSE)
+		msg := <-send
+		assert.Equal(t, MsgTypeEOSE, msg.Type)
+		assert.Equal(t, "sub1", msg.SubscriptionID)
+
+		// Send CLOSE to clean up
+		recv <- &ClientMsg{
+			Type:           MsgTypeClose,
+			SubscriptionID: "sub1",
+		}
+
+		synctest.Wait()
+
+		// Send another REQ with the same subscription ID
+		// This should work normally (state was cleaned up)
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// Should receive EOSE again (subscription was properly re-created)
+		msg = <-send
+		assert.Equal(t, MsgTypeEOSE, msg.Type)
+		assert.Equal(t, "sub1", msg.SubscriptionID)
+	})
+}
