@@ -434,6 +434,9 @@ func (s *PebbleStorage) selectIndexes(filter *ReqFilter) []*indexSelection {
 	// Authors: use pubkey index (most selective)
 	if len(filter.Authors) > 0 {
 		for _, author := range filter.Authors {
+			if len(author) != 64 {
+				continue // skip invalid pubkey (must be 64-char hex)
+			}
 			pubkeyBytes := hexToBytes32(author)
 			// Key format: [0x03][pubkey:32][inverted_ts:8][id:32]
 			lower := make([]byte, 33)
