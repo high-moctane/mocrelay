@@ -15,10 +15,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version-file: go.mod
 
       - name: Build
         run: go build ./...
+        env:
+          GOEXPERIMENT: jsonv2
 
       - name: Test
         run: go test ./...
+        env:
+          GOEXPERIMENT: jsonv2
