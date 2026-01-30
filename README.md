@@ -9,6 +9,15 @@ A middleware-composable Nostr relay implementation in Go.
 - **Pure Go**: No cgo dependencies, easy deployment
 - **Persistent Storage**: Pebble-based storage with MVCC support
 
+## Requirements
+
+- Go 1.25+
+- `GOEXPERIMENT=jsonv2` (for `encoding/json/v2` features)
+
+```bash
+export GOEXPERIMENT=jsonv2
+```
+
 ## Installation
 
 ```bash
