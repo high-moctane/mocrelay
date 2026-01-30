@@ -4,7 +4,7 @@ mocrelay - A Nostr relay implementation in Go.
 
 ## Project Status
 
-This is the `rewrite` branch - rebuilding from scratch.
+Production-ready. Running on salmon (KAGOYA VPS).
 
 ## Commands
 
@@ -14,54 +14,42 @@ go test ./...      # Test
 go tool lefthook install  # Install git hooks
 ```
 
-## Rewrite Branch Policy
+## Development Principles
 
-### Basic Principles
-
-- **Complete rewrite**: LLM-assisted development for consistency and quality
-- **Destructive changes OK**: No users depend on this yet
+- **LLM-assisted development**: Consistency and quality through collaboration
 - **Start minimal, grow incrementally**: Build the smallest working thing first
 - **Discuss as we go**: Design decisions made through conversation
 
-### Scope
-
-- **In scope**: NIP-01 (basic protocol) working correctly
-- **Out of scope (for now)**:
-  - VPS operation conveniences
-  - SQLite / persistent storage
-  - Prometheus metrics
-  - Dockerfile
-
 ### Development Workflow
 
-**Handler/Middleware の開発ループ**：
+**Handler/Middleware development loop**:
 
 ```
-実装 → テスト → CLAUDE.md 完了チェック → commit
+Implement → Test → Update CLAUDE.md → Commit
 ```
 
-1つずつ確実に進める。
+One step at a time.
 
-**実装方針**：
-- 可能な限り `SimpleHandlerBase` / `SimpleMiddlewareBase` をベースに実装
-- テストが書きやすく、非同期処理の複雑さを隠蔽できる
-- 1:N 変換が必要な特殊ケースのみ `Handler` を直接実装
+**Implementation policy**:
+- Prefer `SimpleHandlerBase` / `SimpleMiddlewareBase` as base
+- Makes testing easier, hides async complexity
+- Only implement `Handler` directly for 1:N transformations
 
-### Channel 操作のパターン（goroutine leak 防止）
+### Channel Patterns (goroutine leak prevention)
 
-**基本原則**：channel への send/recv 時は `ctx.Done()` をチェックして、goroutine が終了できるようにする。
+**Basic principle**: Always check `ctx.Done()` on channel send/recv to allow goroutine termination.
 
-#### ✅ 安全なパターン
+#### ✅ Safe Patterns
 
 ```go
-// send: ctx.Done() と併用
+// send: with ctx.Done()
 select {
 case <-ctx.Done():
     return ctx.Err()
 case ch <- msg:
 }
 
-// recv: ctx.Done() と併用
+// recv: with ctx.Done()
 select {
 case <-ctx.Done():
     return ctx.Err()
@@ -71,7 +59,7 @@ case msg, ok := <-ch:
     }
 }
 
-// best effort send: ブロックしない（Router の broadcast など）
+// best effort send: non-blocking (for Router broadcast etc.)
 select {
 case ch <- msg:
 default:
@@ -79,45 +67,45 @@ default:
 }
 ```
 
-#### ⚠️ 注意が必要なケース
+#### ⚠️ Cases Requiring Attention
 
-**Buffered channel への send**：
-- `ch := make(chan T, 1)` の場合、1回目の send はブロックしない
-- 複数回 send する可能性がある場合は `select` + `ctx.Done()` が必要
+**Buffered channel send**:
+- `ch := make(chan T, 1)` - first send won't block
+- If multiple sends possible, use `select` + `ctx.Done()`
 
-**Unbuffered channel への send**：
-- 常に `select` + `ctx.Done()` が必要（ブロックする可能性がある）
+**Unbuffered channel send**:
+- Always use `select` + `ctx.Done()` (may block)
 
-**Pebble などの I/O 操作**：
-- Pebble の API は ctx を尊重しない（Go の io 全般の制限）
-- 通常はミリ秒単位で完了するので許容
-- 長時間ブロックする場合は、より大きな問題がある状況
+**Pebble and other I/O operations**:
+- Pebble API doesn't respect ctx (Go io limitation)
+- Usually completes in milliseconds, acceptable
+- Long blocking indicates bigger problems
 
-### メモリリーク防止（状態管理）
+### Memory Leak Prevention (State Management)
 
-**問題**：Handler が subscription ごとに状態を持つ場合、CLOSE を受け取らずに接続が切断されると状態が残り続ける可能性がある。
+**Problem**: If a Handler holds per-subscription state and the connection drops without CLOSE, state may persist.
 
-**対策**：
+**Countermeasures**:
 
-1. **接続終了時のクリーンアップ**：
-   - `ServeNostr()` が終了すると、その Handler の状態は GC される
-   - ぶち切りされても問題なし
+1. **Cleanup on connection end**:
+   - When `ServeNostr()` returns, Handler state is GC'd
+   - Abrupt disconnection is fine
 
-2. **CLOSE メッセージでのクリーンアップ**：
-   - 長時間の接続で、大量の subscription を作成→放置するケースに対応
-   - MergeHandler: `closeSubscription(subID)` で状態を削除
-   - Router: `Unsubscribe(connID, subID)` で購読を削除
+2. **Cleanup on CLOSE message**:
+   - Handles long connections creating many subscriptions then abandoning them
+   - MergeHandler: `closeSubscription(subID)` deletes state
+   - Router: `Unsubscribe(connID, subID)` removes subscription
 
-**状態を持つ Handler の例**：
+**Handlers with state**:
 
-| Handler | 状態 | クリーンアップ |
-|---------|------|--------------|
-| **MergeHandler** | `pendingEOSEs`, `completedSubs`, `limitReachedSub` | CLOSE で削除 |
-| **Router** | `connections[connID].subscriptions` | CLOSE で削除、切断時は Unregister で接続ごと削除 |
+| Handler | State | Cleanup |
+|---------|-------|---------|
+| **MergeHandler** | `pendingEOSEs`, `completedSubs`, `limitReachedSub` | Deleted on CLOSE |
+| **Router** | `connections[connID].subscriptions` | Deleted on CLOSE; on disconnect, Unregister removes entire connection |
 
-**状態を持たない Handler**（心配不要）：
-- `StorageHandler`: REQ ごとに処理完結、状態なし
-- `NopHandler`: 状態なし
+**Stateless Handlers** (no concern):
+- `StorageHandler`: Completes per REQ, no state
+- `NopHandler`: No state
 
 ### Design Decisions
 
@@ -199,204 +187,204 @@ default:
 
 `duplicate`, `pow`, `blocked`, `rate-limited`, `invalid`, `restricted`, `mute`, `error`
 
-## LLM が間違えやすいポイント（学習データとの差分）
+## Common LLM Mistakes (Training Data vs Current NIP-01)
 
-⚠️ 以下は 2025年1月頃までの学習データと現在の NIP-01 で混乱しやすい点です。
+⚠️ Points where LLM training data (up to ~Jan 2025) may conflict with current NIP-01.
 
-### Filter は exact match（prefix match ではない）
+### Filter uses exact match (not prefix match)
 
-❌ 間違い：`{"ids": ["abcdef"]}` で prefix match できる
-✅ 正解：**64文字の lowercase hex のみ**
+❌ Wrong: `{"ids": ["abcdef"]}` does prefix match
+✅ Correct: **64-character lowercase hex only**
 
 > "The `ids`, `authors`, `#e` and `#p` filter lists MUST contain exact 64-character lowercase hex values."
 
-mocrelay では exact match を採用（DB インデックスの効率を考慮）。
+mocrelay uses exact match (for DB index efficiency).
 
-### limit の適用範囲
+### limit scope
 
-- **initial query にのみ適用**（リアルタイム更新には適用されない）
-- ソート順：`created_at DESC`、同値なら `id ASC`（lexical order）
+- **Applies to initial query only** (not to real-time updates)
+- Sort order: `created_at DESC`, tie-breaker `id ASC` (lexical order)
 
-### e タグの 4番目のフィールド
+### e tag 4th field
 
 `["e", <event_id>, <relay_url>, <author_pubkey>]`
 
-4番目に author の pubkey を追加可能（optional）。
+4th field can contain author's pubkey (optional).
 
-### a タグの末尾コロン
+### a tag trailing colon
 
 - addressable: `30023:pubkey:identifier`
-- replaceable: `10000:pubkey:` ← **末尾コロン必須**
+- replaceable: `10000:pubkey:` ← **trailing colon required**
 
-### タグは最初の値のみインデックス
+### Only first tag value is indexed
 
 > "Only the first value in any given tag is indexed."
 
-`["e", "id1", "relay", "author"]` → `id1` のみがフィルタ対象。
+`["e", "id1", "relay", "author"]` → only `id1` is filterable.
 
 ## Architecture
 
-### Handler 一覧
+### Handler Overview
 
-| Handler | 概要 |
-|---------|------|
-| `NopHandler` | 虚無リレー。EVENT→OK、REQ→EOSE を返すだけ |
-| `RouterHandler` | クライアント間でイベントをルーティング。中央集権 Router で購読管理 |
-| `StorageHandler` ✅ | Storage を wrap。EVENT→Store→OK、REQ→Query→EVENT列+EOSE |
-| `MergeHandler` ✅ | 複数 Handler を並列実行してレスポンスを統合 |
+| Handler | Description |
+|---------|-------------|
+| `NopHandler` | Void relay. EVENT→OK, REQ→EOSE only |
+| `RouterHandler` | Routes events between clients. Centralized Router manages subscriptions |
+| `StorageHandler` ✅ | Wraps Storage. EVENT→Store→OK, REQ→Query→EVENTs+EOSE |
+| `MergeHandler` ✅ | Runs multiple Handlers in parallel, merges responses |
 
-### 実装予定の Handler/Middleware（NIP-11 ベース）
+### Handler/Middleware (NIP-11 based)
 
-NIP-11 の `limitation` / `retention` フィールドに対応する Handler/Middleware を提供する。
-これが mocrelay の主要な提供価値。
+Provides Handler/Middleware corresponding to NIP-11 `limitation` / `retention` fields.
+This is mocrelay's main value proposition.
 
-#### Tier 1: 基本的な制限（NIP-01 のみで実装可能） ✅ 完了
+#### Tier 1: Basic Limitations (NIP-01 only) ✅ Complete
 
-| Middleware | NIP-11 フィールド | 概要 |
-|------------|------------------|------|
-| `MaxSubscriptions` ✅ | `limitation.max_subscriptions` | 接続あたりのサブスクリプション数制限 |
-| `MaxSubidLength` ✅ | `limitation.max_subid_length` | サブスクリプションID長制限 |
-| `MaxLimit` ✅ | `limitation.max_limit`, `default_limit` | limit値クランプ + デフォルト値 |
-| `MaxEventTags` ✅ | `limitation.max_event_tags` | タグ数制限 |
-| `MaxContentLength` ✅ | `limitation.max_content_length` | content文字数制限（Unicode） |
-| `CreatedAtLimits` ✅ | `limitation.created_at_lower/upper_limit` | created_at範囲チェック |
-| `KindBlacklist` ✅ | `retention` (time=0) | 特定kindの拒否（DM関連など） |
-| `RestrictedWrites` ✅ | `limitation.restricted_writes` | pubkeyホワイトリスト/ブラックリスト |
+| Middleware | NIP-11 Field | Description |
+|------------|--------------|-------------|
+| `MaxSubscriptions` ✅ | `limitation.max_subscriptions` | Per-connection subscription limit |
+| `MaxSubidLength` ✅ | `limitation.max_subid_length` | Subscription ID length limit |
+| `MaxLimit` ✅ | `limitation.max_limit`, `default_limit` | Clamp limit + default value |
+| `MaxEventTags` ✅ | `limitation.max_event_tags` | Tag count limit |
+| `MaxContentLength` ✅ | `limitation.max_content_length` | Content length limit (Unicode) |
+| `CreatedAtLimits` ✅ | `limitation.created_at_lower/upper_limit` | created_at range check |
+| `KindBlacklist` ✅ | `retention` (time=0) | Reject specific kinds (DMs etc.) |
+| `RestrictedWrites` ✅ | `limitation.restricted_writes` | Pubkey whitelist/blacklist |
 
-#### Tier 2: WebSocket/HTTP レベル ✅ 完了
+#### Tier 2: WebSocket/HTTP Level ✅ Complete
 
-| 機能 | NIP-11 フィールド | 概要 |
-|------|------------------|------|
-| `MaxMessageLength` ✅ | `limitation.max_message_length` | WebSocketメッセージサイズ制限（`relay.go:78-79`） |
-| `NIP11Handler` ✅ | - | NIP-11 JSON を返す HTTP ハンドラ（`relay.go:244-272`） |
+| Feature | NIP-11 Field | Description |
+|---------|--------------|-------------|
+| `MaxMessageLength` ✅ | `limitation.max_message_length` | WebSocket message size limit (`relay.go:78-79`) |
+| `NIP11Handler` ✅ | - | HTTP handler returning NIP-11 JSON (`relay.go:244-272`) |
 
-#### Tier 3: 他のNIPが必要 ✅ 完了
+#### Tier 3: Requires Other NIPs ✅ Complete
 
-| Middleware | NIP-11 フィールド | 依存NIP |
-|------------|------------------|---------|
+| Middleware | NIP-11 Field | Depends On |
+|------------|--------------|------------|
 | `MinPowDifficulty` ✅ | `limitation.min_pow_difficulty` | NIP-13 |
 | `AuthRequired` ✅ | `limitation.auth_required` | NIP-42 |
 
-#### その他の NIP 対応 ✅
+#### Other NIP Support ✅
 
-| Middleware | NIP | 概要 |
-|------------|-----|------|
-| `ExpirationMiddleware` ✅ | NIP-40 | `expiration` タグで期限切れイベントを拒否・配信停止 |
-| `ProtectedEventsMiddleware` ✅ | NIP-70 | `["-"]` タグの再公開防止（NIP-42 AUTH 前提） |
+| Middleware | NIP | Description |
+|------------|-----|-------------|
+| `ExpirationMiddleware` ✅ | NIP-40 | Reject/drop expired events via `expiration` tag |
+| `ProtectedEventsMiddleware` ✅ | NIP-70 | Prevent republishing `["-"]` tagged events (requires NIP-42 AUTH) |
 
-#### 今後の NIP 実装優先度
+#### Future NIP Implementation Priority
 
-**ストレージ統合後**：
-- NIP-09: Deletion Request（削除処理が必要）
-- NIP-45: COUNT（集計が必要）
+**After storage integration**:
+- NIP-09: Deletion Request (requires deletion processing)
+- NIP-45: COUNT (requires aggregation)
 
-**検索エンジン統合後**：
-- NIP-50: Search（全文検索）
+**After search engine integration**:
+- NIP-50: Search (full-text search)
 
-**特殊機能（必要に応じて）**：
-- NIP-29: Groups（複雑、グループ管理・モデレーション）
-- NIP-77: Negentropy（リレー間同期）
-- NIP-86: Management API（JSON-RPC over HTTP、運用向け）
+**Special features (as needed)**:
+- NIP-29: Groups (complex, group management/moderation)
+- NIP-77: Negentropy (relay synchronization)
+- NIP-86: Management API (JSON-RPC over HTTP, for operations)
 
-**保存するだけ（特殊処理不要）**：
-- NIP-22: Comment（kind 1111）
-- NIP-28: Public Chat（kind 40-44、kind 41 の replaceable-like 挙動だけ注意）
+**Store only (no special processing)**:
+- NIP-22: Comment (kind 1111)
+- NIP-28: Public Chat (kind 40-44, note kind 41 replaceable-like behavior)
 
-詳細は `docs/nips/` に各 NIP の調査結果あり。
+See `docs/nips/` for detailed NIP analysis.
 
-#### 有料リレーについて
+#### Paid Relays
 
-`payment_required` は mocrelay の middleware としては提供しない。
+`payment_required` is not provided as mocrelay middleware.
 
-**理由**：NIP-11 は料金を公開する仕様のみで、実際の支払いプロトコルは標準化されていない。
+**Reason**: NIP-11 only specifies fee disclosure, actual payment protocol is not standardized.
 
-**有料リレーの実現方法**：
-- `RestrictedWrites` で支払い済み pubkey をホワイトリスト管理
-- 外部の支払いシステム（Lightning、Stripe 等）と連携
-- NIP-11 の `fees` で料金を公開
+**How to implement paid relay**:
+- Use `RestrictedWrites` to whitelist paid pubkeys
+- Integrate with external payment systems (Lightning, Stripe, etc.)
+- Publish fees via NIP-11 `fees` field
 
-#### 日本の電気通信事業法対応
+#### Japan Telecommunications Business Act Compliance
 
-`KindBlacklist` で以下の DM 関連 kind を弾く：
-- kind 4（旧 DM）
-- kind 13（Seal wrapper）
-- kind 14（Chat Messages）
-- kind 1059（Gift Wrap）
-- kind 10050（DM relay list）
+Use `KindBlacklist` to reject these DM-related kinds:
+- kind 4 (legacy DM)
+- kind 13 (Seal wrapper)
+- kind 14 (Chat Messages)
+- kind 1059 (Gift Wrap)
+- kind 10050 (DM relay list)
 
-NIP-11 の `retention` で `time: 0` として公開すると、クライアントに事前通知できる。
+Publish as `time: 0` in NIP-11 `retention` to notify clients in advance.
 
-### Router の設計
+### Router Design
 
-- **中央集権方式**：全接続・全購読を Router が管理
-- **階層構造**：接続ID（サーバー生成）→ 購読ID（クライアント提供）
-- **ベストエフォート送信**：channel が詰まったら drop（デッドロック防止）
+- **Centralized**: Router manages all connections and subscriptions
+- **Hierarchical**: Connection ID (server-generated) → Subscription ID (client-provided)
+- **Best-effort send**: Drop if channel full (deadlock prevention)
 
 ```go
-// 送信時は必ずこのパターン
+// Always use this pattern for sending
 select {
 case ch <- msg:
-    // 送れた
+    // sent
 default:
-    // 詰まってるから drop
+    // full, drop
 }
 ```
 
-### MergeHandler の設計 ✅
+### MergeHandler Design ✅
 
-複数の Handler を並列実行して、レスポンスを統合する。
+Runs multiple Handlers in parallel and merges responses.
 
-**典型的な使い方**：
+**Typical usage**:
 ```go
 handler := NewMergeHandler(
-    NewStorageHandler(storage),  // 過去イベント取得
-    NewRouterHandler(router),    // リアルタイム配信
+    NewStorageHandler(storage),  // Fetch past events
+    NewRouterHandler(router),    // Real-time delivery
 )
 ```
 
-**統合ルール**：
+**Merge rules**:
 
-| メッセージ | ルール |
-|-----------|--------|
-| **OK** | 全 handler の応答を待ってマージ（1つでも拒否なら拒否 = 障害発生中） |
-| **EOSE** | 全 handler の EOSE を待ってから送信 |
-| **EVENT (EOSE前)** | 重複排除 + ソートを乱す event は drop |
-| **EVENT (handler EOSE後)** | その handler からの EVENT は pass through（リアルタイムイベント） |
-| **COUNT** | 全 handler の最大値を取る |
+| Message | Rule |
+|---------|------|
+| **OK** | Wait for all handlers, merge (any rejection = rejection, indicates failure) |
+| **EOSE** | Wait for all handlers' EOSE before sending |
+| **EVENT (before EOSE)** | Deduplicate + drop events that break sort order |
+| **EVENT (after handler EOSE)** | Pass through from that handler (real-time events) |
+| **COUNT** | Take max across all handlers |
 
-**limit の扱い**：
-- **最初の filter の limit を使用**（mocrelay の態度として）
-- REQ につき最大 limit 件だけ返して EOSE
-- 子 handler にも同じ limit を渡す
-- **limit 到達後の EVENT は drop**（リアルタイムイベントも含む）
+**limit handling**:
+- **Uses first filter's limit** (mocrelay's stance)
+- Return at most limit events per REQ, then EOSE
+- Pass same limit to child handlers
+- **Drop EVENTs after limit reached** (including real-time)
 
-**ソートの drop ルール**：
-- 子 handler がソート済みの応答を返す前提
-- 到着順に流して、ソートを乱す event は drop
-- ソート順：`created_at DESC`、タイブレーク `id ASC`（lexical order）
+**Sort drop rules**:
+- Assumes child handlers return sorted responses
+- Stream in arrival order, drop events that break sort
+- Sort order: `created_at DESC`, tie-breaker `id ASC` (lexical order)
 
 ```go
-// ソートを乱すかどうかの判定
+// Check if event breaks sort order
 if newEvent.CreatedAt > lastSentCreatedAt {
     // drop
 } else if newEvent.CreatedAt == lastSentCreatedAt && newEvent.ID > lastSentID {
     // drop
 } else {
-    // 送信
+    // send
 }
 ```
 
-**設計方針**：
-- `sync.Mutex` を使う（チャネルでの mutex はやめる）
-- SimpleHandlerBase は使えない（1:N 変換が必要）
+**Design decisions**:
+- Use `sync.Mutex` (not channel-based mutex)
+- Cannot use SimpleHandlerBase (requires 1:N transformation)
 
-**考慮点**：
-- EOSE を返さない handler がいると session 内の map が肥大化する
-- 対策：タイムアウト、CLOSE 時のクリーンアップ、購読数制限
+**Considerations**:
+- If a handler never sends EOSE, session maps grow indefinitely
+- Countermeasures: timeout, CLOSE cleanup, subscription limits
 
-### Storage インターフェース ✅
+### Storage Interface ✅
 
-**iter.Seq パターン**（Go 1.23+）を採用：
+**iter.Seq pattern** (Go 1.23+):
 
 ```go
 type Storage interface {
@@ -404,14 +392,14 @@ type Storage interface {
     Query(ctx context.Context, filters []*ReqFilter) (events iter.Seq[*Event], err func() error, close func() error)
 }
 
-// Optional: Count をサポートする Storage（NIP-45）
+// Optional: Storage supporting Count (NIP-45)
 type CountableStorage interface {
     Storage
     Count(ctx context.Context, filters []*ReqFilter) (int64, error)
 }
 ```
 
-**使用側**：
+**Usage**:
 ```go
 events, errFn, closeFn := storage.Query(ctx, filters)
 defer closeFn()
@@ -425,109 +413,109 @@ if err := errFn(); err != nil {
 }
 ```
 
-**メリット**：
-- **for-range で直感的**：`for event := range events` でスッキリ
-- **ストリーミング応答**：全件揃う前にクライアントに返せる
-- **PebbleStorage で Snapshot 使用**：Query 中も Write をブロックしない（MVCC）
-- **シンプルなインターフェース**：Store と Query の 2 メソッドのみ
+**Benefits**:
+- **Intuitive for-range**: Clean `for event := range events`
+- **Streaming response**: Return to client before all events ready
+- **PebbleStorage uses Snapshot**: Query doesn't block Write (MVCC)
+- **Simple interface**: Only Store and Query methods
 
-**Delete / DeleteByAddr を削除した理由**：
-- Kind 5 の処理は `Store` 内で完結している
-- NIP-86（管理 API）にも特定 event の削除 API はない
-- 外部 API としては不要
+**Why Delete / DeleteByAddr were removed**:
+- Kind 5 processing is complete within `Store`
+- NIP-86 (management API) has no specific event deletion API
+- Not needed as external API
 
-**StorageHandler の役割**：
-- EVENT → Store して OK 返す
-- REQ → Query して EVENT 列 + EOSE 返す（ストリーミング）
-- COUNT → Count があれば使う、なければ Query で代替
-- **購読管理はしない**（それは RouterHandler の仕事）
-- EOSE を返したら、その REQ についての役割は終了
+**StorageHandler responsibilities**:
+- EVENT → Store and return OK
+- REQ → Query and return EVENTs + EOSE (streaming)
+- COUNT → Use Count if available, else fall back to Query
+- **Does not manage subscriptions** (RouterHandler's job)
+- Role ends after sending EOSE for a REQ
 
-**InMemoryStorage**：
-- slice + 全件走査の O(n) 脳筋実装
-- テストがしっかりしているので後で最適化しても安心
-- NIP-09 対応（timestamp チェック、kind 5 削除無効）
+**InMemoryStorage**:
+- Slice + O(n) full scan (simple implementation)
+- Well-tested, safe to optimize later
+- NIP-09 compliant (timestamp check, kind 5 deletion disabled)
 
-**永続化**: Pebble（決定）
-- **github.com/cockroachdb/pebble**: CockroachDB 製の LSM-tree ベース KV ストア
-- Pure Go（cgo なし）、組み込み、デプロイがシンプル
-- **Snapshot** で読み取り時のロック不要（MVCC）
+**Persistence**: Pebble (decided)
+- **github.com/cockroachdb/pebble**: LSM-tree based KV store by CockroachDB
+- Pure Go (no cgo), embedded, simple deployment
+- **Snapshot** for lock-free reads (MVCC)
 
-**選定理由**：
-- PostgreSQL: 全文検索（pgroonga）は魅力だが、外部プロセス管理が必要
-- DuckDB: OLAP 向き、リアルタイム書き込みが苦手
-- SQLite: cgo 問題、パーティショニングが難しい
-- **Pebble**: Pure Go、ストリーミング取得◎、Nostr の追記ワークロードと相性◎
+**Selection rationale**:
+- PostgreSQL: Full-text search (pgroonga) attractive, but requires external process
+- DuckDB: OLAP-oriented, weak at real-time writes
+- SQLite: cgo issues, partitioning difficult
+- **Pebble**: Pure Go, excellent streaming, fits Nostr's append workload
 
-**Key スキーマ（バイナリ固定長）**：
+**Key schema (binary fixed-length)**:
 ```
-主データ:
+Primary data:
 [0x01][event_id:32]  →  event_json                    (33 bytes)
 
-インデックス（Value は空）:
+Indexes (empty value):
 [0x02][inverted_ts:8][id:32]                          (41 bytes)
 [0x03][pubkey:32][inverted_ts:8][id:32]               (73 bytes)
 [0x04][kind:8][inverted_ts:8][id:32]                  (49 bytes)
 [0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32] (74 bytes)
 
-Replaceable/Addressable 専用（Value は event_id:32）:
+Replaceable/Addressable specific (value is event_id:32):
 [0x06][addr_hash:32]  → [event_id:32]  (33 bytes key)
 
-削除マーカー:
+Deletion markers:
 [0x08][event_id:32]   → [pubkey:32][created_at:8]  (33 bytes key, 40 bytes value)
 [0x09][addr_hash:32]  → [pubkey:32][created_at:8]  (33 bytes key, 40 bytes value)
 ```
 
-- **addr_hash**: `SHA256("kind:pubkey:d-tag")` で統一（replaceable は d-tag 空）
+- **addr_hash**: `SHA256("kind:pubkey:d-tag")` unified (replaceable uses empty d-tag)
 
-- **バイナリ固定長**: parse がシンプル、Key 長が予測可能
-- **inverted_ts**: `math.MaxInt64 - created_at`（辞書順で降順になる）
-- **tag_hash**: SHA256(tag_value) で 32 bytes 固定（collision は無視できる）
-- **複合インデックス**: なし（Multi-Cursor Merge で対応、必要なら後から追加）
+- **Binary fixed-length**: Simple parsing, predictable key length
+- **inverted_ts**: `math.MaxInt64 - created_at` (descending order in lexical sort)
+- **tag_hash**: SHA256(tag_value) fixed 32 bytes (collision negligible)
+- **No compound indexes**: Use Multi-Cursor Merge, add later if needed
 
-**全文検索（NIP-50）**：
-- Pebble では対応しない
-- 必要なら別の検索エンジン（Bleve, Meilisearch 等）を MergeHandler で統合
+**Full-text search (NIP-50)**:
+- Not supported in Pebble
+- Use separate search engine (Bleve, Meilisearch, etc.) via MergeHandler if needed
 
-**PebbleStorageOptions**：
+**PebbleStorageOptions**:
 ```go
 type PebbleStorageOptions struct {
-    CacheSize int64  // ブロックキャッシュ（デフォルト 8MB、本番は 64-256MB 推奨）
-    FS        vfs.FS // テスト用（vfs.NewMem()）
+    CacheSize int64  // Block cache (default 8MB, production 64-256MB recommended)
+    FS        vfs.FS // For testing (vfs.NewMem())
 }
 ```
 
-**固定設定（変更不要）**：
-- Bloom filter: 10 bits/key（~1% false positive）、全レベル Table-level filter
-- MemTableSize: 4MB（約 4000 イベント分、mocvps 規模なら十分）
-- その他の Pebble オプション: デフォルトで良い、必要になったら追加
+**Fixed settings (no need to change)**:
+- Bloom filter: 10 bits/key (~1% false positive), Table-level filter on all levels
+- MemTableSize: 4MB (~4000 events, sufficient for mocvps scale)
+- Other Pebble options: defaults are fine, add as needed
 
-**PebbleStorage の Close**：
-- 使用側で `Close()` を呼ぶ責任がある（「New した人が閉じる」原則）
-- WAL やファイルを適切に閉じるために必須
+**PebbleStorage Close**:
+- Caller responsible for `Close()` ("creator closes" principle)
+- Required to properly close WAL and files
 
 ```go
 storage, _ := NewPebbleStorage("/path/to/db", nil)
-defer storage.Close()  // ← 忘れずに！
+defer storage.Close()  // ← Don't forget!
 
 handler := NewStorageHandler(storage)
 relay := NewRelay(handler)
 ```
 
-**Differential Testing**：
-- `storage_differential_test.go` で InMemory と Pebble の挙動一致を検証
-- シードベースのランダムテスト（再現可能）
-- StorageHandler レベルでも検証（EVENT→OK、REQ→EVENT*+EOSE）
+**Differential Testing**:
+- `storage_differential_test.go` verifies InMemory and Pebble behavior match
+- Seed-based random tests (reproducible)
+- Also verified at StorageHandler level (EVENT→OK, REQ→EVENT*+EOSE)
 
-### テストの書き方
+### Writing Tests
 
-**非同期処理のテストには `testing/synctest` を使う**（Go 1.25+）
+**Use `testing/synctest` for async tests** (Go 1.25+)
 
 ```go
 synctest.Test(t, func(t *testing.T) {
-    // この中は "bubble" という隔離環境
-    // - fake clock（時間が自動で進む）
-    // - synctest.Wait() で「全 goroutine がブロックするまで待つ」
+    // Inside is an isolated "bubble" environment
+    // - fake clock (time advances automatically)
+    // - synctest.Wait() waits until all goroutines block
 
     router := NewRouter()
     sendCh := make(chan *ServerMsg, 10)
@@ -536,19 +524,18 @@ synctest.Test(t, func(t *testing.T) {
     router.Subscribe(connID, "sub1", filters)
     router.Broadcast(event)
 
-    synctest.Wait() // 全部の goroutine が落ち着くまで待つ
+    synctest.Wait() // Wait for all goroutines to settle
 
-    // ここでアサーション
+    // Assert here
 })
 ```
 
-**注意**：ネットワーク I/O でブロックしてる goroutine は synctest の対象外。channel ベースのテストに使う。
+**Note**: Goroutines blocked on network I/O are not covered by synctest. Use for channel-based tests.
 
 ## Documentation
 
-- **docs/nips/**: リレーが実装すべき NIP 一覧（MUST/SHOULD/MAY に分類済み）
-- **docs/encoding-json-v2.md**: Go 1.25 の `encoding/json/v2` 調査メモ（`GOEXPERIMENT=jsonv2` が必要）
-- **最新 NIP 仕様**: `~/ghq/github.com/nostr-protocol/nips/` に clone 済み
+- **docs/nips/**: NIPs relays should implement (categorized by MUST/SHOULD/MAY)
+- **docs/encoding-json-v2.md**: Go 1.25 `encoding/json/v2` notes (requires `GOEXPERIMENT=jsonv2`)
 
 ## NIP Support
 
