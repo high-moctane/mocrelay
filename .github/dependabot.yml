@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: thursday
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: "deps"
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
