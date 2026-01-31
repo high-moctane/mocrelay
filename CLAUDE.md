@@ -271,15 +271,13 @@ This is mocrelay's main value proposition.
 |------------|-----|-------------|
 | `ExpirationMiddleware` ✅ | NIP-40 | Reject/drop expired events via `expiration` tag |
 | `ProtectedEventsMiddleware` ✅ | NIP-70 | Prevent republishing `["-"]` tagged events (requires NIP-42 AUTH) |
+| `CompositeStorage` ✅ | NIP-50 | Full-text search via Bleve with CJK support |
 
 #### Future NIP Implementation Priority
 
 **After storage integration**:
 - NIP-09: Deletion Request (requires deletion processing)
 - NIP-45: COUNT (requires aggregation)
-
-**After search engine integration**:
-- NIP-50: Search (full-text search)
 
 **Special features (as needed)**:
 - NIP-29: Groups (complex, group management/moderation)
@@ -539,5 +537,11 @@ synctest.Test(t, func(t *testing.T) {
 
 ## NIP Support
 
-- NIP-01: Basic protocol (in progress)
+- NIP-01: Basic protocol ✅
+- NIP-09: Event Deletion ✅
 - NIP-11: Relay Information Document ✅
+- NIP-13: Proof of Work ✅
+- NIP-40: Expiration Timestamp ✅
+- NIP-42: Authentication ✅
+- NIP-50: Search Capability ✅ (Bleve + CJK)
+- NIP-70: Protected Events ✅

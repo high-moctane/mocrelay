@@ -8,6 +8,7 @@ A middleware-composable Nostr relay implementation in Go.
 - **NIP-11 Driven**: Middlewares map directly to NIP-11 `limitation` fields
 - **Pure Go**: No cgo dependencies, easy deployment
 - **Persistent Storage**: Pebble-based storage with MVCC support
+- **Full-text Search**: Bleve-based search with CJK support (NIP-50)
 
 ## Requirements
 
@@ -86,6 +87,7 @@ func main() {
 | [13](https://github.com/nostr-protocol/nips/blob/master/13.md) | ✅ | Proof of Work |
 | [40](https://github.com/nostr-protocol/nips/blob/master/40.md) | ✅ | Expiration Timestamp |
 | [42](https://github.com/nostr-protocol/nips/blob/master/42.md) | ✅ | Authentication |
+| [50](https://github.com/nostr-protocol/nips/blob/master/50.md) | ✅ | Search Capability |
 | [70](https://github.com/nostr-protocol/nips/blob/master/70.md) | ✅ | Protected Events |
 
 ## License
