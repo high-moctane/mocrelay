@@ -275,10 +275,6 @@ This is mocrelay's main value proposition.
 
 #### Future NIP Implementation Priority
 
-**After storage integration**:
-- NIP-09: Deletion Request (requires deletion processing)
-- NIP-45: COUNT (requires aggregation)
-
 **Special features (as needed)**:
 - NIP-29: Groups (complex, group management/moderation)
 - NIP-77: Negentropy (relay synchronization)
@@ -390,11 +386,8 @@ type Storage interface {
     Query(ctx context.Context, filters []*ReqFilter) (events iter.Seq[*Event], err func() error, close func() error)
 }
 
-// Optional: Storage supporting Count (NIP-45)
-type CountableStorage interface {
-    Storage
-    Count(ctx context.Context, filters []*ReqFilter) (int64, error)
-}
+// Future optimization: CountableStorage for efficient counting
+// Currently COUNT uses Query + iteration, which is sufficient for typical usage.
 ```
 
 **Usage**:
@@ -425,7 +418,7 @@ if err := errFn(); err != nil {
 **StorageHandler responsibilities**:
 - EVENT → Store and return OK
 - REQ → Query and return EVENTs + EOSE (streaming)
-- COUNT → Use Count if available, else fall back to Query
+- COUNT → Query and count (iterating over results)
 - **Does not manage subscriptions** (RouterHandler's job)
 - Role ends after sending EOSE for a REQ
 
@@ -543,5 +536,6 @@ synctest.Test(t, func(t *testing.T) {
 - NIP-13: Proof of Work ✅
 - NIP-40: Expiration Timestamp ✅
 - NIP-42: Authentication ✅
+- NIP-45: Event Counts ✅
 - NIP-50: Search Capability ✅ (Bleve + CJK)
 - NIP-70: Protected Events ✅

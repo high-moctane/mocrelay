@@ -87,6 +87,7 @@ func main() {
 | [13](https://github.com/nostr-protocol/nips/blob/master/13.md) | ✅ | Proof of Work |
 | [40](https://github.com/nostr-protocol/nips/blob/master/40.md) | ✅ | Expiration Timestamp |
 | [42](https://github.com/nostr-protocol/nips/blob/master/42.md) | ✅ | Authentication |
+| [45](https://github.com/nostr-protocol/nips/blob/master/45.md) | ✅ | Event Counts |
 | [50](https://github.com/nostr-protocol/nips/blob/master/50.md) | ✅ | Search Capability |
 | [70](https://github.com/nostr-protocol/nips/blob/master/70.md) | ✅ | Protected Events |
 
