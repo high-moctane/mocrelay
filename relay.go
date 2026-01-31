@@ -114,13 +114,29 @@ func (r *Relay) unregisterConn(id uint64) {
 
 // ServeHTTP implements http.Handler.
 func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// Check if relay is shutting down (for all requests)
+	r.mu.Lock()
+	closed := r.closed
+	r.mu.Unlock()
+
+	if closed {
+		http.Error(w, "relay is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	// NIP-11: Respond with relay info if Accept header is application/nostr+json
 	if r.Info != nil && req.Header.Get("Accept") == "application/nostr+json" {
 		r.serveNIP11(w, req)
 		return
 	}
 
-	// Check if relay is shutting down and register connection atomically
+	// Non-WebSocket GET: return simple message instead of upgrade error
+	if req.Header.Get("Upgrade") == "" {
+		r.serveWelcome(w, req)
+		return
+	}
+
+	// WebSocket connection: track with WaitGroup
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -382,6 +398,18 @@ func (r *Relay) logWarn(ctx context.Context, msg string, args ...any) {
 	if r.Logger != nil {
 		r.Logger.WarnContext(ctx, msg, args...)
 	}
+}
+
+// serveWelcome responds with a simple welcome message for non-WebSocket requests.
+// If RelayInfo.Name is set, it returns the name. Otherwise, returns empty 200 OK.
+func (r *Relay) serveWelcome(w http.ResponseWriter, req *http.Request) {
+	if r.Info != nil && r.Info.Name != "" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write([]byte(r.Info.Name))
+		return
+	}
+	// Empty 200 OK
+	w.WriteHeader(http.StatusOK)
 }
 
 // serveNIP11 responds with the NIP-11 Relay Information Document.
