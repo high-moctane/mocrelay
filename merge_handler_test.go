@@ -579,18 +579,147 @@ func TestMergeHandler_Req_Limit_MultipleHandlers(t *testing.T) {
 		}
 	done:
 
-		// Should have at most 3 EVENTs + 1 EOSE = 4 messages
-		// (MergeHandler should enforce the limit across all handlers)
-		eventCount := 0
+		// Count events before EOSE (should be at most 3 = limit)
+		// After EOSE, additional events may arrive (real-time passthrough)
+		eventCountBeforeEOSE := 0
+		foundEOSE := false
 		for _, msg := range events {
+			if msg.Type == MsgTypeEOSE {
+				foundEOSE = true
+				break
+			}
 			if msg.Type == MsgTypeEvent {
-				eventCount++
+				eventCountBeforeEOSE++
 			}
 		}
 
-		assert.LessOrEqual(t, eventCount, 3, "should have at most 3 events (limit)")
-		assert.Equal(t, MsgTypeEOSE, events[len(events)-1].Type)
+		assert.True(t, foundEOSE, "should have EOSE")
+		assert.LessOrEqual(t, eventCountBeforeEOSE, 3, "should have at most 3 events before EOSE (limit)")
 	})
+}
+
+// TestMergeHandler_Req_Limit_RealTimeEventsAfterEOSE tests that real-time events
+// are NOT dropped after limit-triggered EOSE.
+// This is the key bug fix test: previously, limitReachedSub permanently blocked
+// all events including real-time ones.
+func TestMergeHandler_Req_Limit_RealTimeEventsAfterEOSE(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// Storage with enough events to trigger limit
+		storage := NewInMemoryStorage()
+		storage.Store(ctx, makeEvent("event-1", "pubkey01", 1, 500))
+		storage.Store(ctx, makeEvent("event-2", "pubkey01", 1, 400))
+		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
+
+		// A handler that simulates RouterHandler:
+		// sends EOSE immediately, then delivers a real-time event via trigger channel
+		realTimeCh := make(chan struct{})
+		realTimeEvent := makeEvent("realtime-1", "pubkey01", 1, 600)
+		rtHandler := &triggeredRealTimeHandler{
+			triggerCh: realTimeCh,
+			event:     realTimeEvent,
+		}
+
+		mergeHandler := NewMergeHandler(NewStorageHandler(storage), rtHandler)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 20)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		// Send a REQ with limit=2 (storage has 3 events, so limit will be reached)
+		limit := int64(2)
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{Limit: &limit}},
+		}
+
+		synctest.Wait()
+
+		// Collect messages until EOSE
+		var beforeEOSE []*ServerMsg
+		foundEOSE := false
+		for {
+			select {
+			case msg := <-send:
+				if msg.Type == MsgTypeEOSE {
+					foundEOSE = true
+					goto eoseReceived
+				}
+				beforeEOSE = append(beforeEOSE, msg)
+			default:
+				goto eoseReceived
+			}
+		}
+	eoseReceived:
+		assert.True(t, foundEOSE, "should receive EOSE")
+		assert.LessOrEqual(t, len(beforeEOSE), 2, "should have at most 2 events before EOSE")
+
+		// Now trigger a real-time event AFTER EOSE
+		close(realTimeCh)
+
+		synctest.Wait()
+
+		// The real-time event should be delivered (NOT dropped)
+		foundRealTime := false
+		for {
+			select {
+			case msg := <-send:
+				if msg.Type == MsgTypeEvent && msg.Event.ID == "realtime-1" {
+					foundRealTime = true
+				}
+			default:
+				goto done
+			}
+		}
+	done:
+		assert.True(t, foundRealTime, "real-time event should be delivered after limit-triggered EOSE")
+	})
+}
+
+// triggeredRealTimeHandler sends EOSE immediately on REQ,
+// then waits for triggerCh to close before sending a real-time event.
+// This simulates RouterHandler behavior where real-time events arrive later.
+type triggeredRealTimeHandler struct {
+	triggerCh <-chan struct{}
+	event     *Event
+}
+
+func (h *triggeredRealTimeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+	var subID string
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-recv:
+			if !ok {
+				return nil
+			}
+			if msg.Type == MsgTypeReq {
+				subID = msg.SubscriptionID
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case send <- NewServerEOSEMsg(subID):
+				}
+			}
+		case <-h.triggerCh:
+			if subID != "" {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case send <- NewServerEventMsg(subID, h.event):
+				}
+				// Only send once: set triggerCh to nil to stop selecting on it
+				h.triggerCh = nil
+			}
+		}
+	}
 }
 
 // errorHandler is a handler that returns an error.

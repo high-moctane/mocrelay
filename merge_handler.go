@@ -151,8 +151,7 @@ type mergeSession struct {
 	pendingOKs      map[string]*pendingOK    // eventID -> pending OK state
 	pendingEOSEs    map[string]*pendingEOSE  // subscriptionID -> pending EOSE state
 	pendingCounts   map[string]*pendingCount // subscriptionID -> pending COUNT state
-	completedSubs   map[string]bool          // subscriptionID -> true if EOSE already sent
-	limitReachedSub map[string]bool          // subscriptionID -> true if limit reached (drop events)
+	completedSubs map[string]bool // subscriptionID -> true if EOSE already sent
 }
 
 type pendingOK struct {
@@ -184,11 +183,10 @@ type pendingEOSE struct {
 func newMergeSession(numHandlers int) *mergeSession {
 	return &mergeSession{
 		numHandlers:     numHandlers,
-		pendingOKs:      make(map[string]*pendingOK),
-		pendingEOSEs:    make(map[string]*pendingEOSE),
-		pendingCounts:   make(map[string]*pendingCount),
-		completedSubs:   make(map[string]bool),
-		limitReachedSub: make(map[string]bool),
+		pendingOKs:    make(map[string]*pendingOK),
+		pendingEOSEs:  make(map[string]*pendingEOSE),
+		pendingCounts: make(map[string]*pendingCount),
+		completedSubs: make(map[string]bool),
 	}
 }
 
@@ -240,7 +238,6 @@ func (s *mergeSession) closeSubscription(subID string) {
 	delete(s.pendingEOSEs, subID)
 	delete(s.pendingCounts, subID)
 	delete(s.completedSubs, subID)
-	delete(s.limitReachedSub, subID)
 }
 
 func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*ServerMsg {
@@ -270,11 +267,6 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 		subID := msg.SubscriptionID
 		eventCreatedAt := msg.Event.CreatedAt.Unix()
 		eventID := msg.Event.ID
-
-		// If limit reached, drop all subsequent events
-		if s.limitReachedSub[subID] {
-			return nil
-		}
 
 		// If EOSE already sent (all handlers finished), pass through without dedup/sort (real-time events)
 		if s.completedSubs[subID] {
@@ -336,7 +328,6 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 			pending.eoseSent = true
 			delete(s.pendingEOSEs, subID)
 			s.completedSubs[subID] = true
-			s.limitReachedSub[subID] = true // Drop subsequent events
 			return []*ServerMsg{msg, NewServerEOSEMsg(subID)}
 		}
 
