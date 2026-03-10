@@ -57,28 +57,18 @@ type PebbleStorageOptions struct {
 	// Default: 8MB (Pebble's default). Recommended: 64MB-256MB for production.
 	CacheSize int64
 
-	// FS provides the interface for persistent file storage.
-	// Use vfs.NewMem() for in-memory storage (useful for testing).
+	// fs provides the interface for persistent file storage (unexported: test use only).
+	// Use vfs.NewMem() for in-memory storage.
 	// Default: vfs.Default (operating system's file system)
-	FS vfs.FS
+	fs vfs.FS
 }
 
-// NewPebbleStorage creates a new Pebble-backed storage with default options.
+// NewPebbleStorage creates a new Pebble-backed storage.
 // path is the directory where Pebble will store its data.
-func NewPebbleStorage(path string) (*PebbleStorage, error) {
-	return NewPebbleStorageWithOptions(path, nil)
-}
-
-// NewPebbleStorageWithFS creates a new Pebble-backed storage with a custom filesystem.
-// Use vfs.NewMem() for in-memory storage (useful for testing).
-func NewPebbleStorageWithFS(path string, fs vfs.FS) (*PebbleStorage, error) {
-	return NewPebbleStorageWithOptions(path, &PebbleStorageOptions{FS: fs})
-}
-
-// NewPebbleStorageWithOptions creates a new Pebble-backed storage with custom options.
-func NewPebbleStorageWithOptions(path string, storageOpts *PebbleStorageOptions) (*PebbleStorage, error) {
-	if storageOpts == nil {
-		storageOpts = &PebbleStorageOptions{}
+// opts can be nil for default options.
+func NewPebbleStorage(path string, opts *PebbleStorageOptions) (*PebbleStorage, error) {
+	if opts == nil {
+		opts = &PebbleStorageOptions{}
 	}
 
 	// Configure Bloom filter for efficient negative lookups.
@@ -88,7 +78,7 @@ func NewPebbleStorageWithOptions(path string, storageOpts *PebbleStorageOptions)
 		FilterType:   pebble.TableFilter, // Table-level filter (faster than block-level)
 	}
 
-	opts := &pebble.Options{
+	pebbleOpts := &pebble.Options{
 		// Apply Bloom filter to all levels (Pebble uses 7 levels by default)
 		Levels: []pebble.LevelOptions{
 			levelOpts, // L0
@@ -102,18 +92,18 @@ func NewPebbleStorageWithOptions(path string, storageOpts *PebbleStorageOptions)
 	}
 
 	// Apply custom filesystem
-	if storageOpts.FS != nil {
-		opts.FS = storageOpts.FS
+	if opts.fs != nil {
+		pebbleOpts.FS = opts.fs
 	}
 
 	// Apply custom cache size
 	var cache *pebble.Cache
-	if storageOpts.CacheSize > 0 {
-		cache = pebble.NewCache(storageOpts.CacheSize)
-		opts.Cache = cache
+	if opts.CacheSize > 0 {
+		cache = pebble.NewCache(opts.CacheSize)
+		pebbleOpts.Cache = cache
 	}
 
-	db, err := pebble.Open(path, opts)
+	db, err := pebble.Open(path, pebbleOpts)
 	if err != nil {
 		if cache != nil {
 			cache.Unref()

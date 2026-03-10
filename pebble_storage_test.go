@@ -13,7 +13,7 @@ import (
 func setupPebbleStorage(t *testing.T) *PebbleStorage {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := NewPebbleStorage(dir)
+	s, err := NewPebbleStorage(dir, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		s.Close()

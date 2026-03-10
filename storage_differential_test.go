@@ -33,7 +33,7 @@ func testStorageDifferentialWithSeed(t *testing.T, seed uint64) {
 	// Create both storages
 	inMemory := NewInMemoryStorage()
 
-	pebbleStorage, err := NewPebbleStorageWithFS("test", vfs.NewMem())
+	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
 	require.NoError(t, err)
 	defer pebbleStorage.Close()
 
@@ -188,7 +188,7 @@ func TestStorageDifferential_Kind5(t *testing.T) {
 	ctx := context.Background()
 
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorageWithFS("test", vfs.NewMem())
+	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
 	require.NoError(t, err)
 	defer pebbleStorage.Close()
 
@@ -237,7 +237,7 @@ func TestStorageDifferential_Replaceable(t *testing.T) {
 	ctx := context.Background()
 
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorageWithFS("test", vfs.NewMem())
+	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
 	require.NoError(t, err)
 	defer pebbleStorage.Close()
 
@@ -272,7 +272,7 @@ func TestStorageDifferential_Addressable(t *testing.T) {
 	ctx := context.Background()
 
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorageWithFS("test", vfs.NewMem())
+	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
 	require.NoError(t, err)
 	defer pebbleStorage.Close()
 
@@ -331,7 +331,7 @@ func testStorageHandlerDifferentialWithSeed(t *testing.T, seed uint64) {
 
 	// Create both storages
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorageWithFS("test", vfs.NewMem())
+	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
 	require.NoError(t, err)
 	defer pebbleStorage.Close()
 
