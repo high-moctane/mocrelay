@@ -13,7 +13,7 @@ type RouterHandler struct {
 }
 
 // NewRouterHandler creates a new RouterHandler with the given Router.
-func NewRouterHandler(router *Router) *RouterHandler {
+func NewRouterHandler(router *Router) Handler {
 	return &RouterHandler{router: router}
 }
 

@@ -62,7 +62,7 @@ type SimpleHandler struct {
 }
 
 // NewSimpleHandler creates a new SimpleHandler from a SimpleHandlerBase.
-func NewSimpleHandler(base SimpleHandlerBase) *SimpleHandler {
+func NewSimpleHandler(base SimpleHandlerBase) Handler {
 	return &SimpleHandler{base: base}
 }
 

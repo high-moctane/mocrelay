@@ -12,7 +12,7 @@ import (
 type NopHandler struct{}
 
 // NewNopHandler creates a new NopHandler.
-func NewNopHandler() *NopHandler {
+func NewNopHandler() Handler {
 	return &NopHandler{}
 }
 
