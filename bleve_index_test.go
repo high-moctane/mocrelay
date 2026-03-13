@@ -35,7 +35,7 @@ func TestBleveIndex_IndexAndSearch(t *testing.T) {
 	}
 
 	// Verify doc count
-	count, err := idx.DocCount()
+	count, err := idx.docCount()
 	if err != nil {
 		t.Fatalf("DocCount failed: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestBleveIndex_Delete(t *testing.T) {
 	}
 
 	// Verify doc count
-	count, err := idx.DocCount()
+	count, err := idx.docCount()
 	if err != nil {
 		t.Fatalf("DocCount failed: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestBleveIndex_NilEvent(t *testing.T) {
 		t.Errorf("Index(nil) returned error: %v", err)
 	}
 
-	count, _ := idx.DocCount()
+	count, _ := idx.docCount()
 	if count != 0 {
 		t.Errorf("DocCount after nil index = %d, want 0", count)
 	}

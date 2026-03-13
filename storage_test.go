@@ -61,13 +61,13 @@ func TestInMemoryStorage_Store_Regular(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, stored)
 
-	assert.Equal(t, 3, s.Len())
+	assert.Equal(t, 3, s.len())
 
 	// Duplicate should not be stored
 	stored, err = s.Store(ctx, ev1)
 	require.NoError(t, err)
 	assert.False(t, stored)
-	assert.Equal(t, 3, s.Len())
+	assert.Equal(t, 3, s.len())
 }
 
 func TestInMemoryStorage_Store_Replaceable(t *testing.T) {
@@ -84,19 +84,19 @@ func TestInMemoryStorage_Store_Replaceable(t *testing.T) {
 	stored, err := s.Store(ctx, ev1)
 	require.NoError(t, err)
 	assert.True(t, stored)
-	assert.Equal(t, 1, s.Len())
+	assert.Equal(t, 1, s.len())
 
 	// Newer replaces older
 	stored, err = s.Store(ctx, ev2)
 	require.NoError(t, err)
 	assert.True(t, stored)
-	assert.Equal(t, 1, s.Len())
+	assert.Equal(t, 1, s.len())
 
 	// Older should not replace newer
 	stored, err = s.Store(ctx, ev3)
 	require.NoError(t, err)
 	assert.False(t, stored)
-	assert.Equal(t, 1, s.Len())
+	assert.Equal(t, 1, s.len())
 
 	// Query should return only the newest
 	events := queryInMemory(t, s, ctx, []*ReqFilter{{}})
@@ -144,13 +144,13 @@ func TestInMemoryStorage_Store_Addressable(t *testing.T) {
 	stored, err = s.Store(ctx, ev2)
 	require.NoError(t, err)
 	assert.True(t, stored)
-	assert.Equal(t, 1, s.Len())
+	assert.Equal(t, 1, s.len())
 
 	// Different address -> new entry
 	stored, err = s.Store(ctx, ev3)
 	require.NoError(t, err)
 	assert.True(t, stored)
-	assert.Equal(t, 2, s.Len())
+	assert.Equal(t, 2, s.len())
 }
 
 func TestInMemoryStorage_Store_Ephemeral(t *testing.T) {
@@ -164,7 +164,7 @@ func TestInMemoryStorage_Store_Ephemeral(t *testing.T) {
 	stored, err := s.Store(ctx, ev)
 	require.NoError(t, err)
 	assert.False(t, stored)
-	assert.Equal(t, 0, s.Len())
+	assert.Equal(t, 0, s.len())
 }
 
 func TestInMemoryStorage_Store_Kind5_DeleteByEventID(t *testing.T) {
@@ -205,7 +205,7 @@ func TestInMemoryStorage_Store_Kind5_PreventFutureEvent(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, stored)
 
-	assert.Equal(t, 1, s.Len()) // Only kind 5 remains
+	assert.Equal(t, 1, s.len()) // Only kind 5 remains
 }
 
 func TestInMemoryStorage_Store_Kind5_DifferentPubkey(t *testing.T) {
@@ -225,7 +225,7 @@ func TestInMemoryStorage_Store_Kind5_DifferentPubkey(t *testing.T) {
 	assert.True(t, stored) // The kind 5 itself is stored
 
 	// Both events should exist
-	assert.Equal(t, 2, s.Len())
+	assert.Equal(t, 2, s.len())
 }
 
 func TestInMemoryStorage_Store_Kind5_DeleteByAddress(t *testing.T) {
@@ -261,7 +261,7 @@ func TestInMemoryStorage_Store_Kind5_DeleteItself(t *testing.T) {
 	assert.True(t, stored)
 
 	// The kind 5 should have deleted itself
-	assert.Equal(t, 0, s.Len())
+	assert.Equal(t, 0, s.len())
 }
 
 func TestInMemoryStorage_Store_Kind5_DeleteKind5(t *testing.T) {

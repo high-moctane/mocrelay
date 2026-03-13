@@ -167,8 +167,6 @@ func (b *BleveIndex) Close() error {
 	return b.index.Close()
 }
 
-// DocCount returns the number of documents in the index.
-// Useful for testing and monitoring.
-func (b *BleveIndex) DocCount() (uint64, error) {
+func (b *BleveIndex) docCount() (uint64, error) {
 	return b.index.DocCount()
 }

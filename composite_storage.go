@@ -116,23 +116,3 @@ func (s *CompositeStorage) Query(ctx context.Context, filters []*ReqFilter) (ite
 	// Query primary storage with the IDs from search
 	return s.primary.Query(ctx, []*ReqFilter{searchFilter})
 }
-
-// Delete removes an event from both primary and search index.
-// This is called when processing kind 5 deletion requests.
-func (s *CompositeStorage) Delete(ctx context.Context, eventID string) error {
-	if s.search != nil {
-		_ = s.search.Delete(ctx, eventID) // Best effort
-	}
-	return nil // Primary handles deletion through Store (kind 5 processing)
-}
-
-// Primary returns the underlying primary storage.
-// Useful for operations that don't need search.
-func (s *CompositeStorage) Primary() Storage {
-	return s.primary
-}
-
-// Search returns the underlying search index (may be nil).
-func (s *CompositeStorage) Search() SearchIndex {
-	return s.search
-}

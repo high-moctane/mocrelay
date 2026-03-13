@@ -314,16 +314,8 @@ func appendInt(b []byte, n int64) []byte {
 	return append(b, digits[i:]...)
 }
 
-// Len returns the number of stored events.
-func (s *InMemoryStorage) Len() int {
+func (s *InMemoryStorage) len() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.events)
-}
-
-// DeletedLen returns the number of deleted event IDs being tracked.
-func (s *InMemoryStorage) DeletedLen() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.deletedIDs)
 }

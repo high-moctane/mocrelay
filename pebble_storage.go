@@ -769,8 +769,7 @@ func (s *PebbleStorage) getEventByIDFromSnapshot(snapshot *pebble.Snapshot, even
 	return &event, nil
 }
 
-// Len returns the number of stored events.
-func (s *PebbleStorage) Len() int {
+func (s *PebbleStorage) len() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

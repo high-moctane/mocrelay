@@ -44,7 +44,7 @@ func TestStorageHandler_Event_Store(t *testing.T) {
 		}
 
 		// Event should be stored
-		assert.Equal(t, 1, storage.Len())
+		assert.Equal(t, 1, storage.len())
 	})
 }
 
@@ -81,7 +81,7 @@ func TestStorageHandler_Event_Duplicate(t *testing.T) {
 		}
 
 		// Still only 1 event
-		assert.Equal(t, 1, storage.Len())
+		assert.Equal(t, 1, storage.len())
 	})
 }
 

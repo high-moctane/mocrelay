@@ -221,7 +221,7 @@ func TestCompositeStorage_EphemeralNotIndexed(t *testing.T) {
 	}
 
 	// Search index should be empty
-	count, _ := search.DocCount()
+	count, _ := search.docCount()
 	if count != 0 {
 		t.Errorf("Search index has %d docs, want 0 (ephemeral not indexed)", count)
 	}
