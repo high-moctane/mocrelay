@@ -8,6 +8,8 @@ updates:
       timezone: Asia/Tokyo
     commit-message:
       prefix: "deps"
+    reviewers:
+      - high-moctane
     groups:
       all-dependencies:
         patterns:
