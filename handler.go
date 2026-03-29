@@ -5,6 +5,7 @@ package mocrelay
 import (
 	"context"
 	"errors"
+	"iter"
 )
 
 // Handler is the interface for processing Nostr client connections.
@@ -50,10 +51,9 @@ type SimpleHandlerBase interface {
 	OnEnd(ctx context.Context) (*ServerMsg, error)
 
 	// HandleMsg is called for each client message.
-	// Return a channel of server messages to send back.
-	// The channel should be closed when all responses are sent.
+	// Return an iterator of server messages to send back.
 	// Return an error to terminate the connection.
-	HandleMsg(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error)
+	HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error)
 }
 
 // SimpleHandler wraps a SimpleHandlerBase to implement Handler.
@@ -104,18 +104,18 @@ func (h *SimpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, 
 				return nil
 			}
 
-			respCh, err := h.base.HandleMsg(ctx, msg)
+			resp, err := h.base.HandleMsg(ctx, msg)
 			if err != nil {
 				return err
 			}
 
 			// Forward all responses to send channel
-			if respCh != nil {
-				for resp := range respCh {
+			if resp != nil {
+				for msg := range resp {
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
-					case send <- resp:
+					case send <- msg:
 					}
 				}
 			}

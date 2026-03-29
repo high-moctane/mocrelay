@@ -4,6 +4,7 @@ package mocrelay
 
 import (
 	"context"
+	"iter"
 )
 
 // StorageHandler wraps a Storage as a Handler.
@@ -34,7 +35,7 @@ func (h *StorageHandler) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-func (h *StorageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
+func (h *StorageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 	switch msg.Type {
 	case MsgTypeEvent:
 		return h.handleEvent(ctx, msg)
@@ -50,42 +51,30 @@ func (h *StorageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (<-chan 
 	}
 }
 
-func (h *StorageHandler) handleEvent(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
-	ch := make(chan *ServerMsg, 1)
-
-	go func() {
-		defer close(ch)
-
+func (h *StorageHandler) handleEvent(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+	return func(yield func(*ServerMsg) bool) {
 		if msg.Event == nil {
-			ch <- NewServerOKMsg("", false, "error: no event provided")
+			yield(NewServerOKMsg("", false, "error: no event provided"))
 			return
 		}
 
 		stored, err := h.storage.Store(ctx, msg.Event)
 		if err != nil {
-			ch <- NewServerOKMsg(msg.Event.ID, false, "error: "+err.Error())
+			yield(NewServerOKMsg(msg.Event.ID, false, "error: "+err.Error()))
 			return
 		}
 
 		if stored {
-			ch <- NewServerOKMsg(msg.Event.ID, true, "")
+			yield(NewServerOKMsg(msg.Event.ID, true, ""))
 		} else {
 			// Not stored: could be duplicate, older replaceable, deleted, or ephemeral
-			ch <- NewServerOKMsg(msg.Event.ID, true, "duplicate: already have this event")
+			yield(NewServerOKMsg(msg.Event.ID, true, "duplicate: already have this event"))
 		}
-	}()
-
-	return ch, nil
+	}, nil
 }
 
-func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
-	// Buffer size: we'll send events + EOSE
-	// Use unbuffered to avoid memory issues with large queries
-	ch := make(chan *ServerMsg)
-
-	go func() {
-		defer close(ch)
-
+func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+	return func(yield func(*ServerMsg) bool) {
 		if msg.SubscriptionID == "" {
 			return
 		}
@@ -95,40 +84,25 @@ func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (<-chan 
 
 		// Send all events using for-range over iterator
 		for event := range events {
-			select {
-			case <-ctx.Done():
+			if !yield(NewServerEventMsg(msg.SubscriptionID, event)) {
 				return
-			case ch <- NewServerEventMsg(msg.SubscriptionID, event):
 			}
 		}
 
 		// Check for errors after iteration
 		if err := errFn(); err != nil {
 			// On error, just send EOSE and continue
-			select {
-			case <-ctx.Done():
-			case ch <- NewServerEOSEMsg(msg.SubscriptionID):
-			}
+			yield(NewServerEOSEMsg(msg.SubscriptionID))
 			return
 		}
 
 		// Send EOSE to signal end of stored events
-		select {
-		case <-ctx.Done():
-			return
-		case ch <- NewServerEOSEMsg(msg.SubscriptionID):
-		}
-	}()
-
-	return ch, nil
+		yield(NewServerEOSEMsg(msg.SubscriptionID))
+	}, nil
 }
 
-func (h *StorageHandler) handleCount(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
-	ch := make(chan *ServerMsg, 1)
-
-	go func() {
-		defer close(ch)
-
+func (h *StorageHandler) handleCount(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+	return func(yield func(*ServerMsg) bool) {
 		if msg.SubscriptionID == "" {
 			return
 		}
@@ -143,12 +117,10 @@ func (h *StorageHandler) handleCount(ctx context.Context, msg *ClientMsg) (<-cha
 		}
 
 		if err := errFn(); err != nil {
-			ch <- NewServerCountMsg(msg.SubscriptionID, 0, nil)
+			yield(NewServerCountMsg(msg.SubscriptionID, 0, nil))
 			return
 		}
 
-		ch <- NewServerCountMsg(msg.SubscriptionID, count, nil)
-	}()
-
-	return ch, nil
+		yield(NewServerCountMsg(msg.SubscriptionID, count, nil))
+	}, nil
 }

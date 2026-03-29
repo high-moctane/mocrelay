@@ -5,6 +5,7 @@ package mocrelay
 import (
 	"context"
 	"errors"
+	"iter"
 	"testing"
 	"time"
 )
@@ -13,7 +14,7 @@ import (
 type mockSimpleHandlerBase struct {
 	onStartFunc   func(context.Context) (context.Context, *ServerMsg, error)
 	onEndFunc     func(context.Context) (*ServerMsg, error)
-	handleMsgFunc func(context.Context, *ClientMsg) (<-chan *ServerMsg, error)
+	handleMsgFunc func(context.Context, *ClientMsg) (iter.Seq[*ServerMsg], error)
 
 	onStartCalled bool
 	onEndCalled   bool
@@ -36,7 +37,7 @@ func (m *mockSimpleHandlerBase) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-func (m *mockSimpleHandlerBase) HandleMsg(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
+func (m *mockSimpleHandlerBase) HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 	m.msgsReceived = append(m.msgsReceived, msg)
 	if m.handleMsgFunc != nil {
 		return m.handleMsgFunc(ctx, msg)
@@ -47,11 +48,10 @@ func (m *mockSimpleHandlerBase) HandleMsg(ctx context.Context, msg *ClientMsg) (
 func TestSimpleHandler_NormalFlow(t *testing.T) {
 	// Test normal message flow: receive message, send response
 	mock := &mockSimpleHandlerBase{
-		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
-			ch := make(chan *ServerMsg, 1)
-			ch <- NewServerOKMsg("test-id", true, "")
-			close(ch)
-			return ch, nil
+		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+			return func(yield func(*ServerMsg) bool) {
+				yield(NewServerOKMsg("test-id", true, ""))
+			}, nil
 		},
 	}
 
@@ -115,7 +115,7 @@ func TestSimpleHandler_HandleMsgError(t *testing.T) {
 	// Test that HandleMsg error terminates the handler but OnEnd is still called
 	expectedErr := errors.New("handlemsg error")
 	mock := &mockSimpleHandlerBase{
-		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
+		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 			return nil, expectedErr
 		},
 	}
@@ -191,11 +191,11 @@ func TestSimpleHandler_ContextCanceled(t *testing.T) {
 	}
 }
 
-func TestSimpleHandler_NilResponseChannel(t *testing.T) {
-	// Test that nil response channel is handled correctly (no responses sent)
+func TestSimpleHandler_NilResponseIterator(t *testing.T) {
+	// Test that nil response iterator is handled correctly (no responses sent)
 	mock := &mockSimpleHandlerBase{
-		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
-			return nil, nil // nil channel
+		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+			return nil, nil // nil iterator
 		},
 	}
 
@@ -217,13 +217,13 @@ func TestSimpleHandler_NilResponseChannel(t *testing.T) {
 	}
 }
 
-func TestSimpleHandler_EmptyResponseChannel(t *testing.T) {
-	// Test that empty response channel (immediately closed) is handled correctly
+func TestSimpleHandler_EmptyResponseIterator(t *testing.T) {
+	// Test that empty response iterator (yields nothing) is handled correctly
 	mock := &mockSimpleHandlerBase{
-		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
-			ch := make(chan *ServerMsg)
-			close(ch) // immediately closed
-			return ch, nil
+		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+			return func(yield func(*ServerMsg) bool) {
+				// yields nothing
+			}, nil
 		},
 	}
 
@@ -249,13 +249,14 @@ func TestSimpleHandler_MultipleMessages(t *testing.T) {
 	// Test handling multiple messages
 	responseCount := 0
 	mock := &mockSimpleHandlerBase{
-		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (<-chan *ServerMsg, error) {
+		handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 			responseCount++
-			ch := make(chan *ServerMsg, 2)
-			ch <- NewServerOKMsg("id1", true, "")
-			ch <- NewServerOKMsg("id2", true, "")
-			close(ch)
-			return ch, nil
+			return func(yield func(*ServerMsg) bool) {
+				if !yield(NewServerOKMsg("id1", true, "")) {
+					return
+				}
+				yield(NewServerOKMsg("id2", true, ""))
+			}, nil
 		},
 	}
 
