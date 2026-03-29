@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"iter"
 	"math"
 	"sync"
@@ -108,7 +109,7 @@ func NewPebbleStorage(path string, opts *PebbleStorageOptions) (*PebbleStorage, 
 		if cache != nil {
 			cache.Unref()
 		}
-		return nil, err
+		return nil, fmt.Errorf("open pebble database: %w", err)
 	}
 	return &PebbleStorage{db: db, cache: cache}, nil
 }
@@ -140,7 +141,7 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 		return false, nil // Duplicate
 	}
 	if err != pebble.ErrNotFound {
-		return false, err
+		return false, fmt.Errorf("check duplicate: %w", err)
 	}
 
 	// Check if deleted by event ID
@@ -190,7 +191,7 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 			// Get the existing event to compare timestamps
 			existingEvent, err := s.getEventByID(existingID)
 			if err != nil {
-				return false, err
+				return false, fmt.Errorf("get existing replaceable event: %w", err)
 			}
 			if existingEvent != nil {
 				// Compare: keep newer, or if same timestamp, keep smaller ID
@@ -204,14 +205,14 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 				oldEventID = existingID
 			}
 		} else if err != pebble.ErrNotFound {
-			return false, err
+			return false, fmt.Errorf("check replaceable: %w", err)
 		}
 	}
 
 	// Serialize event
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("marshal event: %w", err)
 	}
 
 	// Create batch for atomic write
@@ -277,7 +278,7 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 
 	// Commit batch
 	if err := batch.Commit(pebble.Sync); err != nil {
-		return false, err
+		return false, fmt.Errorf("commit batch: %w", err)
 	}
 
 	return true, nil
@@ -320,7 +321,7 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.S
 					UpperBound: sel.upperBound,
 				})
 				if err != nil {
-					queryErr = err
+					queryErr = fmt.Errorf("create iterator: %w", err)
 					return
 				}
 				iterators = append(iterators, iter)
@@ -348,7 +349,7 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.S
 				// Get the event from snapshot
 				event, err := s.getEventByIDFromSnapshot(snapshot, entry.eventID)
 				if err != nil {
-					queryErr = err
+					queryErr = fmt.Errorf("query event: %w", err)
 					return
 				}
 
@@ -632,7 +633,7 @@ func (s *PebbleStorage) getDeletionRecord(prefix byte, keyData []byte) (*deletio
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get deletion record: %w", err)
 	}
 	defer closer.Close()
 
@@ -710,12 +711,12 @@ func (s *PebbleStorage) processKind5(event *Event) error {
 				closer.Close()
 				targetEvent, err := s.getEventByID(existingID)
 				if err != nil {
-					return err
+					return fmt.Errorf("get event for address deletion: %w", err)
 				}
 				if targetEvent != nil && targetEvent.Pubkey == event.Pubkey && !targetEvent.CreatedAt.After(event.CreatedAt) {
 					// Delete the event
 					if err := s.deleteEventFromBatch(batch, existingID); err != nil {
-						return err
+						return fmt.Errorf("delete event by address: %w", err)
 					}
 					// Also delete the addr index
 					if err := batch.Delete(addrKey, pebble.Sync); err != nil {
@@ -723,12 +724,15 @@ func (s *PebbleStorage) processKind5(event *Event) error {
 					}
 				}
 			} else if err != pebble.ErrNotFound {
-				return err
+				return fmt.Errorf("get address for deletion: %w", err)
 			}
 		}
 	}
 
-	return batch.Commit(pebble.Sync)
+	if err := batch.Commit(pebble.Sync); err != nil {
+		return fmt.Errorf("commit kind 5 batch: %w", err)
+	}
+	return nil
 }
 
 // getEventByID retrieves an event by its ID bytes.
@@ -739,13 +743,13 @@ func (s *PebbleStorage) getEventByID(eventID []byte) (*Event, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get event: %w", err)
 	}
 	defer closer.Close()
 
 	var event Event
 	if err := json.Unmarshal(value, &event); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal event: %w", err)
 	}
 	return &event, nil
 }
@@ -758,13 +762,13 @@ func (s *PebbleStorage) getEventByIDFromSnapshot(snapshot *pebble.Snapshot, even
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get event from snapshot: %w", err)
 	}
 	defer closer.Close()
 
 	var event Event
 	if err := json.Unmarshal(value, &event); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal event: %w", err)
 	}
 	return &event, nil
 }
