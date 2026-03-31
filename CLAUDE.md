@@ -4,7 +4,7 @@ mocrelay - A Nostr relay implementation in Go.
 
 ## Project Status
 
-Production-ready. Running on salmon (KAGOYA VPS).
+Production-ready.
 
 ## Commands
 
@@ -478,7 +478,7 @@ type PebbleStorageOptions struct {
 
 **Fixed settings (no need to change)**:
 - Bloom filter: 10 bits/key (~1% false positive), Table-level filter on all levels
-- MemTableSize: 4MB (~4000 events, sufficient for mocvps scale)
+- MemTableSize: 4MB (~4000 events, sufficient for small-to-medium scale relays)
 - Other Pebble options: defaults are fine, add as needed
 
 **PebbleStorage Close**:
