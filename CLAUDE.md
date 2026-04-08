@@ -107,6 +107,31 @@ default:
 - `StorageHandler`: Completes per REQ, no state
 - `NopHandler`: No state
 
+### Logging
+
+**Context-based logger propagation**:
+
+```go
+// logger.go: package-level API
+ContextWithLogger(ctx, logger) context.Context
+LoggerFromContext(ctx) *slog.Logger  // returns slog.Default() if not set
+```
+
+**Design**:
+- `Relay.Logger *slog.Logger`: nil → `slog.Default()` fallback (net/http style)
+- Relay injects connID-tagged logger into ctx at connection start: `r.logger().With("conn_id", connID)`
+- All Handlers use `LoggerFromContext(ctx)` — connID propagates automatically
+- Users with zerolog/zap can wrap their logger as `*slog.Logger` via bridge adapters
+
+**Usage in Handlers**:
+```go
+// ✅ Correct: use LoggerFromContext
+LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", err)
+
+// ❌ Wrong: direct slog call (bypasses context logger)
+slog.WarnContext(ctx, "query error", "error", err)
+```
+
 ### Design Decisions
 
 #### Handler Interface
