@@ -155,6 +155,9 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	connID := r.registerConn(cancel)
 	defer r.unregisterConn(connID)
 
+	logger := r.logger().With("conn_id", connID)
+	ctx = ContextWithLogger(ctx, logger)
+
 	// Metrics: connection tracking
 	if r.Metrics != nil {
 		r.Metrics.ConnectionsTotal.Inc()
@@ -162,7 +165,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		defer r.Metrics.ConnectionsCurrent.Dec()
 	}
 
-	r.logInfo(ctx, "connection start")
+	logger.InfoContext(ctx, "connection start")
 
 	// Upgrade to WebSocket
 	conn, err := websocket.Accept(w, req, &websocket.AcceptOptions{
@@ -170,7 +173,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		CompressionMode:    websocket.CompressionDisabled,
 	})
 	if err != nil {
-		r.logWarn(ctx, "failed to upgrade to websocket", "error", err)
+		logger.WarnContext(ctx, "failed to upgrade to websocket", "error", err)
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "")
@@ -231,13 +234,13 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	var wsErr websocket.CloseError
 	if errors.Is(allErrs, io.EOF) {
-		r.logInfo(ctx, "connection end")
+		logger.InfoContext(ctx, "connection end")
 	} else if errors.As(allErrs, &wsErr) {
-		r.logInfo(ctx, "connection end", "code", wsErr.Code, "reason", wsErr.Reason)
+		logger.InfoContext(ctx, "connection end", "code", wsErr.Code, "reason", wsErr.Reason)
 	} else if errors.Is(allErrs, context.Canceled) {
-		r.logInfo(ctx, "connection end (canceled)")
+		logger.InfoContext(ctx, "connection end (canceled)")
 	} else {
-		r.logWarn(ctx, "connection end with error", "error", allErrs)
+		logger.WarnContext(ctx, "connection end with error", "error", allErrs)
 	}
 }
 
@@ -256,14 +259,14 @@ func (r *Relay) readLoop(
 
 		// Must be text message
 		if typ != websocket.MessageText {
-			r.logWarn(ctx, "received binary message")
+			LoggerFromContext(ctx).WarnContext(ctx, "received binary message")
 			r.sendNotice(ctx, send, "binary message not allowed")
 			continue
 		}
 
 		// Must be valid UTF-8
 		if !utf8.Valid(payload) {
-			r.logWarn(ctx, "received invalid UTF-8")
+			LoggerFromContext(ctx).WarnContext(ctx, "received invalid UTF-8")
 			r.sendNotice(ctx, send, "invalid UTF-8")
 			continue
 		}
@@ -271,7 +274,7 @@ func (r *Relay) readLoop(
 		// Parse client message
 		msg, err := ParseClientMsg(payload)
 		if err != nil {
-			r.logWarn(ctx, "failed to parse client message", "error", err)
+			LoggerFromContext(ctx).WarnContext(ctx, "failed to parse client message", "error", err)
 			r.sendNotice(ctx, send, "invalid message format")
 			continue
 		}
@@ -280,12 +283,12 @@ func (r *Relay) readLoop(
 		if msg.Type == MsgTypeEvent && msg.Event != nil {
 			valid, err := msg.Event.Verify()
 			if err != nil {
-				r.logWarn(ctx, "failed to verify event", "error", err)
+				LoggerFromContext(ctx).WarnContext(ctx, "failed to verify event", "error", err)
 				r.sendNotice(ctx, send, "verification error")
 				continue
 			}
 			if !valid {
-				r.logWarn(ctx, "invalid event signature", "id", msg.Event.ID)
+				LoggerFromContext(ctx).WarnContext(ctx, "invalid event signature", "id", msg.Event.ID)
 				r.sendNotice(ctx, send, "invalid signature")
 				continue
 			}
@@ -327,7 +330,7 @@ func (r *Relay) writeLoop(
 
 			data, err := json.Marshal(msg)
 			if err != nil {
-				r.logWarn(ctx, "failed to marshal server message", "error", err)
+				LoggerFromContext(ctx).WarnContext(ctx, "failed to marshal server message", "error", err)
 				continue
 			}
 
@@ -388,16 +391,11 @@ func (r *Relay) sendNotice(ctx context.Context, send chan<- *ServerMsg, message 
 	}
 }
 
-func (r *Relay) logInfo(ctx context.Context, msg string, args ...any) {
+func (r *Relay) logger() *slog.Logger {
 	if r.Logger != nil {
-		r.Logger.InfoContext(ctx, msg, args...)
+		return r.Logger
 	}
-}
-
-func (r *Relay) logWarn(ctx context.Context, msg string, args ...any) {
-	if r.Logger != nil {
-		r.Logger.WarnContext(ctx, msg, args...)
-	}
+	return slog.Default()
 }
 
 // serveWelcome responds with a simple welcome message for non-WebSocket requests.
@@ -435,7 +433,7 @@ func (r *Relay) serveNIP11(w http.ResponseWriter, req *http.Request) {
 
 	data, err := json.Marshal(r.Info)
 	if err != nil {
-		r.logWarn(req.Context(), "failed to marshal relay info", "error", err)
+		r.logger().WarnContext(req.Context(), "failed to marshal relay info", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

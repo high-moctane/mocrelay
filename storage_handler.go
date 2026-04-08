@@ -5,7 +5,6 @@ package mocrelay
 import (
 	"context"
 	"iter"
-	"log/slog"
 )
 
 // StorageHandler wraps a Storage as a Handler.
@@ -92,7 +91,7 @@ func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Se
 
 		// Check for errors after iteration
 		if err := errFn(); err != nil {
-			slog.WarnContext(ctx, "query error", "error", err, "subscription_id", msg.SubscriptionID)
+			LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", err, "subscription_id", msg.SubscriptionID)
 			yield(NewServerEOSEMsg(msg.SubscriptionID))
 			return
 		}
@@ -118,7 +117,7 @@ func (h *StorageHandler) handleCount(ctx context.Context, msg *ClientMsg) (iter.
 		}
 
 		if err := errFn(); err != nil {
-			slog.WarnContext(ctx, "count query error", "error", err, "subscription_id", msg.SubscriptionID)
+			LoggerFromContext(ctx).WarnContext(ctx, "count query error", "error", err, "subscription_id", msg.SubscriptionID)
 			yield(NewServerCountMsg(msg.SubscriptionID, 0, nil))
 			return
 		}
