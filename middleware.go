@@ -57,6 +57,10 @@ type SimpleMiddlewareBase interface {
 }
 
 // NewSimpleMiddleware creates a Middleware from a SimpleMiddlewareBase.
+//
+// Internally uses a unified select loop with nil channel pattern to handle
+// both recv and send directions in a single goroutine, avoiding deadlocks
+// without requiring buffered channels.
 func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
 	return func(next Handler) Handler {
 		return HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) (err error) {
@@ -92,48 +96,80 @@ func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
 			downstreamRecv := make(chan *ClientMsg)
 			downstreamSend := make(chan *ServerMsg)
 
-			errs := make(chan error, 2)
+			errs := make(chan error, 1)
 
-			// Goroutine 1: Handle recv direction (client -> downstream)
+			// Single goroutine: unified select loop for both directions
 			go func() {
 				defer close(downstreamRecv)
-				errs <- simpleMiddlewareRecvLoop(ctx, base, recv, send, downstreamRecv)
-			}()
-
-			// Goroutine 2: Handle send direction (downstream -> client)
-			go func() {
-				errs <- simpleMiddlewareSendLoop(ctx, base, downstreamSend, send)
+				errs <- simpleMiddlewareLoop(ctx, base, recv, send, downstreamRecv, downstreamSend)
 			}()
 
 			// Run downstream handler
 			handlerErr := next.ServeNostr(ctx, downstreamSend, downstreamRecv)
 
-			// Cancel and wait for goroutines
+			// Cancel and wait for goroutine
 			cancel()
-			err1, err2 := <-errs, <-errs
+			loopErr := <-errs
 
-			err = errors.Join(handlerErr, err1, err2)
+			err = errors.Join(handlerErr, loopErr)
 			return
 		})
 	}
 }
 
-// simpleMiddlewareRecvLoop handles the recv direction.
-func simpleMiddlewareRecvLoop(
+// simpleMiddlewareLoop handles both recv and send directions in a single goroutine.
+//
+// Uses the nil channel pattern to avoid deadlock: when there are pending messages
+// to forward to downstream, the downstreamRecv channel is active in the select;
+// when there are none, it is set to nil so the case is never selected.
+//
+// Similarly, pending responses to the client use a queue with nil channel pattern
+// on the send channel.
+func simpleMiddlewareLoop(
 	ctx context.Context,
 	base SimpleMiddlewareBase,
 	recv <-chan *ClientMsg,
 	send chan<- *ServerMsg,
 	downstreamRecv chan<- *ClientMsg,
+	downstreamSend <-chan *ServerMsg,
 ) error {
+	// Pending queues for nil channel pattern
+	var pendingToDownstream []*ClientMsg
+	var pendingToClient []*ServerMsg
+
 	for {
+		// When recv is closed (nil) and all pending messages are drained, we're done.
+		// This ensures all queued responses reach their destination before returning.
+		if recv == nil && len(pendingToDownstream) == 0 && len(pendingToClient) == 0 {
+			return nil
+		}
+
+		// nil channel pattern: only activate send cases when there are pending messages.
+		// A nil channel in select is never selected, effectively disabling that case.
+		var downstreamRecvCh chan<- *ClientMsg
+		var downstreamRecvMsg *ClientMsg
+		if len(pendingToDownstream) > 0 {
+			downstreamRecvCh = downstreamRecv
+			downstreamRecvMsg = pendingToDownstream[0]
+		}
+
+		var sendCh chan<- *ServerMsg
+		var sendMsg *ServerMsg
+		if len(pendingToClient) > 0 {
+			sendCh = send
+			sendMsg = pendingToClient[0]
+		}
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
 		case msg, ok := <-recv:
 			if !ok {
-				return nil // recv closed, normal termination
+				// recv closed: nil it out to stop reading, then drain pending queues.
+				// This is the nil channel pattern applied to recv itself.
+				recv = nil
+				continue
 			}
 
 			out, resp, err := base.HandleClientMsg(ctx, msg)
@@ -141,42 +177,16 @@ func simpleMiddlewareRecvLoop(
 				return err
 			}
 
-			// Send response to client if provided
 			if resp != nil {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case send <- resp:
-				}
+				pendingToClient = append(pendingToClient, resp)
 			}
-
-			// Pass to downstream if out is provided
 			if out != nil {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case downstreamRecv <- out:
-				}
+				pendingToDownstream = append(pendingToDownstream, out)
 			}
-		}
-	}
-}
-
-// simpleMiddlewareSendLoop handles the send direction.
-func simpleMiddlewareSendLoop(
-	ctx context.Context,
-	base SimpleMiddlewareBase,
-	downstreamSend <-chan *ServerMsg,
-	send chan<- *ServerMsg,
-) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
 
 		case msg, ok := <-downstreamSend:
 			if !ok {
-				return nil // downstream closed
+				return nil // downstream handler finished
 			}
 
 			out, err := base.HandleServerMsg(ctx, msg)
@@ -184,14 +194,15 @@ func simpleMiddlewareSendLoop(
 				return err
 			}
 
-			// Send to client if out is provided
 			if out != nil {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case send <- out:
-				}
+				pendingToClient = append(pendingToClient, out)
 			}
+
+		case downstreamRecvCh <- downstreamRecvMsg:
+			pendingToDownstream = pendingToDownstream[1:]
+
+		case sendCh <- sendMsg:
+			pendingToClient = pendingToClient[1:]
 		}
 	}
 }
