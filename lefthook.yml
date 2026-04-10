@@ -1,10 +1,10 @@
 pre-commit:
   commands:
-    modernize:
+    fix:
       glob: "*.go"
       env:
         GOEXPERIMENT: jsonv2
-      run: go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -fix ./...
+      run: go fix ./...
       stage_fixed: true
     fmt:
       glob: "*.go"
