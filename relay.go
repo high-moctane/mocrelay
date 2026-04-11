@@ -185,7 +185,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	recv := make(chan *ClientMsg)
 	send := make(chan *ServerMsg)
 
-	errs := make(chan error, 4)
+	errs := make(chan error, 2)
 	var wg sync.WaitGroup
 
 	// Read loop: WebSocket -> recv channel
@@ -196,38 +196,23 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errs <- fmt.Errorf("readLoop: %w", err)
 	})
 
-	// Write loop: send channel -> WebSocket
+	// Write loop: send channel -> WebSocket + ping
 	wg.Go(func() {
 		defer cancel()
 		err := r.writeLoop(ctx, conn, send)
 		errs <- fmt.Errorf("writeLoop: %w", err)
 	})
 
-	// Ping loop: keep-alive and detect dead connections
-	wg.Go(func() {
-		defer cancel()
-		err := r.pingLoop(ctx, conn)
-		if err != nil {
-			errs <- fmt.Errorf("pingLoop: %w", err)
-		}
-	})
-
-	// Handler
-	wg.Go(func() {
-		defer cancel()
-		err := r.Handler.ServeNostr(ctx, send, recv)
-		errs <- fmt.Errorf("handler: %w", err)
-	})
-
-	// Wait for cancellation
-	<-ctx.Done()
+	// Run handler in current goroutine (saves 1 goroutine)
+	handlerErr := r.Handler.ServeNostr(ctx, send, recv)
+	cancel()
 	conn.Close(websocket.StatusNormalClosure, "")
 
 	wg.Wait()
 	close(errs)
 
 	// Collect errors for logging
-	var allErrs error
+	allErrs := fmt.Errorf("handler: %w", handlerErr)
 	for e := range errs {
 		allErrs = errors.Join(allErrs, e)
 	}
@@ -312,12 +297,31 @@ func (r *Relay) readLoop(
 	}
 }
 
-// writeLoop reads messages from send channel and writes them to WebSocket.
+// writeLoop reads messages from send channel, writes them to WebSocket,
+// and sends periodic pings to detect dead connections.
 func (r *Relay) writeLoop(
 	ctx context.Context,
 	conn *websocket.Conn,
 	send <-chan *ServerMsg,
 ) error {
+	// Ping setup (nil channel pattern: tickerC stays nil when pings disabled)
+	interval := r.PingInterval
+	if interval == 0 {
+		interval = 30 * time.Second
+	}
+
+	var tickerC <-chan time.Time
+	if interval > 0 {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		tickerC = ticker.C
+	}
+
+	timeout := r.PingTimeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -342,40 +346,11 @@ func (r *Relay) writeLoop(
 			if r.Metrics != nil {
 				r.Metrics.MessagesSent.WithLabelValues(string(msg.Type)).Inc()
 			}
-		}
-	}
-}
 
-// pingLoop sends periodic pings to detect dead connections.
-// It returns nil if pings are disabled (PingInterval == 0) or context is canceled.
-// It returns an error if a ping times out (connection is dead).
-func (r *Relay) pingLoop(ctx context.Context, conn *websocket.Conn) error {
-	interval := r.PingInterval
-	if interval == 0 {
-		interval = 30 * time.Second
-	}
-	if interval < 0 {
-		// Negative interval disables pings
-		<-ctx.Done()
-		return nil
-	}
-
-	timeout := r.PingTimeout
-	if timeout == 0 {
-		timeout = 10 * time.Second
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			pingCtx, cancel := context.WithTimeout(ctx, timeout)
+		case <-tickerC:
+			pingCtx, pingCancel := context.WithTimeout(ctx, timeout)
 			err := conn.Ping(pingCtx)
-			cancel()
+			pingCancel()
 			if err != nil {
 				return fmt.Errorf("ping timeout: %w", err)
 			}
