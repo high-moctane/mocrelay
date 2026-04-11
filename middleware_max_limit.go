@@ -12,10 +12,10 @@ type MaxLimitMiddleware struct {
 	defaultLimit int64
 }
 
-// NewMaxLimitMiddleware creates a new MaxLimitMiddleware.
+// NewMaxLimitMiddlewareBase creates a new MaxLimitMiddleware.
 // maxLimit is the maximum allowed limit value (must be positive).
 // defaultLimit is applied when no limit is specified (must be positive and <= maxLimit).
-func NewMaxLimitMiddleware(maxLimit, defaultLimit int64) Middleware {
+func NewMaxLimitMiddlewareBase(maxLimit, defaultLimit int64) SimpleMiddlewareBase {
 	if maxLimit < 1 {
 		panic("maxLimit must be positive")
 	}
@@ -25,10 +25,10 @@ func NewMaxLimitMiddleware(maxLimit, defaultLimit int64) Middleware {
 	if defaultLimit > maxLimit {
 		panic("defaultLimit must not exceed maxLimit")
 	}
-	return NewSimpleMiddleware(&MaxLimitMiddleware{
+	return &MaxLimitMiddleware{
 		maxLimit:     maxLimit,
 		defaultLimit: defaultLimit,
-	})
+	}
 }
 
 func (m *MaxLimitMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

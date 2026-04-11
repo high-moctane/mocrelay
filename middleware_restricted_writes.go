@@ -22,18 +22,18 @@ type RestrictedWritesMiddleware struct {
 	mode    RestrictedWritesMode
 }
 
-// NewRestrictedWritesMiddleware creates a new RestrictedWritesMiddleware.
+// NewRestrictedWritesMiddlewareBase creates a new RestrictedWritesMiddleware.
 // mode determines whether the list is an allowlist or blocklist.
 // pubkeys is the list of pubkeys to allow or block.
-func NewRestrictedWritesMiddleware(mode RestrictedWritesMode, pubkeys []string) Middleware {
+func NewRestrictedWritesMiddlewareBase(mode RestrictedWritesMode, pubkeys []string) SimpleMiddlewareBase {
 	set := make(map[string]struct{}, len(pubkeys))
 	for _, pk := range pubkeys {
 		set[pk] = struct{}{}
 	}
-	return NewSimpleMiddleware(&RestrictedWritesMiddleware{
+	return &RestrictedWritesMiddleware{
 		pubkeys: set,
 		mode:    mode,
-	})
+	}
 }
 
 func (m *RestrictedWritesMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

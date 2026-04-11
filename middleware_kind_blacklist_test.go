@@ -11,7 +11,7 @@ import (
 func TestKindBlacklistMiddleware_AllowNonBlacklisted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block DM-related kinds
-		middleware := NewKindBlacklistMiddleware([]int64{4, 13, 14, 1059, 10050})
+		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -57,7 +57,7 @@ func TestKindBlacklistMiddleware_AllowNonBlacklisted(t *testing.T) {
 func TestKindBlacklistMiddleware_RejectBlacklisted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block DM-related kinds
-		middleware := NewKindBlacklistMiddleware([]int64{4, 13, 14, 1059, 10050})
+		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -103,7 +103,7 @@ func TestKindBlacklistMiddleware_RejectBlacklisted(t *testing.T) {
 func TestKindBlacklistMiddleware_RejectGiftWrap(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block DM-related kinds
-		middleware := NewKindBlacklistMiddleware([]int64{4, 13, 14, 1059, 10050})
+		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -149,7 +149,7 @@ func TestKindBlacklistMiddleware_RejectGiftWrap(t *testing.T) {
 func TestKindBlacklistMiddleware_EmptyBlacklist(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Empty blacklist - all kinds allowed
-		middleware := NewKindBlacklistMiddleware([]int64{})
+		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -195,7 +195,7 @@ func TestKindBlacklistMiddleware_EmptyBlacklist(t *testing.T) {
 func TestKindBlacklistMiddleware_PassthroughNonEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block all kinds (extreme case)
-		middleware := NewKindBlacklistMiddleware([]int64{0, 1, 2, 3, 4, 5})
+		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{0, 1, 2, 3, 4, 5}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

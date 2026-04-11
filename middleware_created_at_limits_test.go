@@ -11,7 +11,7 @@ import (
 
 func TestCreatedAtLimitsMiddleware_AllowWithinRange(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewCreatedAtLimitsMiddleware(3600, 60) // 1 hour past, 1 minute future
+		middleware := NewSimpleMiddleware(NewCreatedAtLimitsMiddlewareBase(3600, 60)) // 1 hour past, 1 minute future
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -212,7 +212,7 @@ func TestCreatedAtLimitsMiddleware_AllowAtBoundary(t *testing.T) {
 
 func TestCreatedAtLimitsMiddleware_PassthroughNonEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewCreatedAtLimitsMiddleware(1, 1) // very strict limits
+		middleware := NewSimpleMiddleware(NewCreatedAtLimitsMiddlewareBase(1, 1)) // very strict limits
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

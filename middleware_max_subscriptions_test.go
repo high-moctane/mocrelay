@@ -10,7 +10,7 @@ import (
 
 func TestMaxSubscriptionsMiddleware_AllowWithinLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxSubscriptionsMiddleware(3)
+		middleware := NewSimpleMiddleware(NewMaxSubscriptionsMiddlewareBase(3))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -54,7 +54,7 @@ func TestMaxSubscriptionsMiddleware_AllowWithinLimit(t *testing.T) {
 
 func TestMaxSubscriptionsMiddleware_RejectOverLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxSubscriptionsMiddleware(2)
+		middleware := NewSimpleMiddleware(NewMaxSubscriptionsMiddlewareBase(2))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -115,7 +115,7 @@ func TestMaxSubscriptionsMiddleware_RejectOverLimit(t *testing.T) {
 
 func TestMaxSubscriptionsMiddleware_ReplaceAllowed(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxSubscriptionsMiddleware(1)
+		middleware := NewSimpleMiddleware(NewMaxSubscriptionsMiddlewareBase(1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -165,7 +165,7 @@ func TestMaxSubscriptionsMiddleware_ReplaceAllowed(t *testing.T) {
 
 func TestMaxSubscriptionsMiddleware_CloseFreesSlot(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxSubscriptionsMiddleware(1)
+		middleware := NewSimpleMiddleware(NewMaxSubscriptionsMiddlewareBase(1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

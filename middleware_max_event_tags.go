@@ -11,13 +11,13 @@ type MaxEventTagsMiddleware struct {
 	maxTags int
 }
 
-// NewMaxEventTagsMiddleware creates a new MaxEventTagsMiddleware.
+// NewMaxEventTagsMiddlewareBase creates a new MaxEventTagsMiddleware.
 // maxTags must be a positive integer.
-func NewMaxEventTagsMiddleware(maxTags int) Middleware {
+func NewMaxEventTagsMiddlewareBase(maxTags int) SimpleMiddlewareBase {
 	if maxTags < 1 {
 		panic("maxTags must be positive")
 	}
-	return NewSimpleMiddleware(&MaxEventTagsMiddleware{maxTags: maxTags})
+	return &MaxEventTagsMiddleware{maxTags: maxTags}
 }
 
 func (m *MaxEventTagsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

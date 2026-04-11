@@ -13,9 +13,9 @@ import (
 // If no authentication state is found in the context, protected events are always rejected.
 type ProtectedEventsMiddleware struct{}
 
-// NewProtectedEventsMiddleware creates a new ProtectedEventsMiddleware.
-func NewProtectedEventsMiddleware() Middleware {
-	return NewSimpleMiddleware(&ProtectedEventsMiddleware{})
+// NewProtectedEventsMiddlewareBase creates a new ProtectedEventsMiddleware.
+func NewProtectedEventsMiddlewareBase() SimpleMiddlewareBase {
+	return &ProtectedEventsMiddleware{}
 }
 
 func (m *ProtectedEventsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

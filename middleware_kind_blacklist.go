@@ -13,14 +13,14 @@ type KindBlacklistMiddleware struct {
 	blacklist map[int64]struct{}
 }
 
-// NewKindBlacklistMiddleware creates a new KindBlacklistMiddleware.
+// NewKindBlacklistMiddlewareBase creates a new KindBlacklistMiddleware.
 // kinds is the list of kind numbers to reject.
-func NewKindBlacklistMiddleware(kinds []int64) Middleware {
+func NewKindBlacklistMiddlewareBase(kinds []int64) SimpleMiddlewareBase {
 	blacklist := make(map[int64]struct{}, len(kinds))
 	for _, k := range kinds {
 		blacklist[k] = struct{}{}
 	}
-	return NewSimpleMiddleware(&KindBlacklistMiddleware{blacklist: blacklist})
+	return &KindBlacklistMiddleware{blacklist: blacklist}
 }
 
 func (m *KindBlacklistMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

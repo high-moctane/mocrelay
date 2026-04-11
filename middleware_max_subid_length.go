@@ -11,13 +11,13 @@ type MaxSubidLengthMiddleware struct {
 	maxLen int
 }
 
-// NewMaxSubidLengthMiddleware creates a new MaxSubidLengthMiddleware.
+// NewMaxSubidLengthMiddlewareBase creates a new MaxSubidLengthMiddleware.
 // maxLen must be a positive integer.
-func NewMaxSubidLengthMiddleware(maxLen int) Middleware {
+func NewMaxSubidLengthMiddlewareBase(maxLen int) SimpleMiddlewareBase {
 	if maxLen < 1 {
 		panic("maxLen must be positive")
 	}
-	return NewSimpleMiddleware(&MaxSubidLengthMiddleware{maxLen: maxLen})
+	return &MaxSubidLengthMiddleware{maxLen: maxLen}
 }
 
 func (m *MaxSubidLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

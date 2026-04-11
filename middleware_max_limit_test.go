@@ -10,7 +10,7 @@ import (
 
 func TestMaxLimitMiddleware_ClampToMax(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxLimitMiddleware(100, 50)
+		middleware := NewSimpleMiddleware(NewMaxLimitMiddlewareBase(100, 50))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -57,7 +57,7 @@ func TestMaxLimitMiddleware_ClampToMax(t *testing.T) {
 
 func TestMaxLimitMiddleware_ApplyDefault(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxLimitMiddleware(100, 50)
+		middleware := NewSimpleMiddleware(NewMaxLimitMiddlewareBase(100, 50))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -103,7 +103,7 @@ func TestMaxLimitMiddleware_ApplyDefault(t *testing.T) {
 
 func TestMaxLimitMiddleware_ApplyDefaultForZero(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxLimitMiddleware(100, 50)
+		middleware := NewSimpleMiddleware(NewMaxLimitMiddlewareBase(100, 50))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -140,7 +140,7 @@ func TestMaxLimitMiddleware_ApplyDefaultForZero(t *testing.T) {
 
 func TestMaxLimitMiddleware_AllowWithinLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxLimitMiddleware(100, 50)
+		middleware := NewSimpleMiddleware(NewMaxLimitMiddlewareBase(100, 50))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

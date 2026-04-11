@@ -12,14 +12,14 @@ type MaxContentLengthMiddleware struct {
 	maxLen int
 }
 
-// NewMaxContentLengthMiddleware creates a new MaxContentLengthMiddleware.
+// NewMaxContentLengthMiddlewareBase creates a new MaxContentLengthMiddleware.
 // maxLen is the maximum number of Unicode characters (not bytes).
 // maxLen must be a positive integer.
-func NewMaxContentLengthMiddleware(maxLen int) Middleware {
+func NewMaxContentLengthMiddlewareBase(maxLen int) SimpleMiddlewareBase {
 	if maxLen < 1 {
 		panic("maxLen must be positive")
 	}
-	return NewSimpleMiddleware(&MaxContentLengthMiddleware{maxLen: maxLen})
+	return &MaxContentLengthMiddleware{maxLen: maxLen}
 }
 
 func (m *MaxContentLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

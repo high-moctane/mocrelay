@@ -10,7 +10,7 @@ import (
 
 func TestMaxEventTagsMiddleware_AllowWithinLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxEventTagsMiddleware(5)
+		middleware := NewSimpleMiddleware(NewMaxEventTagsMiddlewareBase(5))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -59,7 +59,7 @@ func TestMaxEventTagsMiddleware_AllowWithinLimit(t *testing.T) {
 
 func TestMaxEventTagsMiddleware_RejectTooMany(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxEventTagsMiddleware(2)
+		middleware := NewSimpleMiddleware(NewMaxEventTagsMiddlewareBase(2))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -111,7 +111,7 @@ func TestMaxEventTagsMiddleware_RejectTooMany(t *testing.T) {
 
 func TestMaxEventTagsMiddleware_ExactLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxEventTagsMiddleware(2)
+		middleware := NewSimpleMiddleware(NewMaxEventTagsMiddlewareBase(2))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -159,7 +159,7 @@ func TestMaxEventTagsMiddleware_ExactLimit(t *testing.T) {
 
 func TestMaxEventTagsMiddleware_PassthroughNonEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxEventTagsMiddleware(1)
+		middleware := NewSimpleMiddleware(NewMaxEventTagsMiddlewareBase(1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

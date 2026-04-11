@@ -123,7 +123,7 @@ func TestMinPowDifficultyMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				downstream := NewNopHandler()
-				middleware := NewMinPowDifficultyMiddleware(tt.minDifficulty, tt.checkCommitment)
+				middleware := NewSimpleMiddleware(NewMinPowDifficultyMiddlewareBase(tt.minDifficulty, tt.checkCommitment))
 				handler := middleware(downstream)
 
 				recv := make(chan *ClientMsg, 1)
@@ -182,7 +182,7 @@ func TestMinPowDifficultyMiddleware(t *testing.T) {
 func TestMinPowDifficultyMiddleware_NonEventMessages(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewMinPowDifficultyMiddleware(20, true)
+		middleware := NewSimpleMiddleware(NewMinPowDifficultyMiddlewareBase(20, true))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)

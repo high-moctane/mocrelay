@@ -10,10 +10,10 @@ import (
 
 func TestRestrictedWritesMiddleware_AllowlistAllow(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewRestrictedWritesMiddleware(
+		middleware := NewSimpleMiddleware(NewRestrictedWritesMiddlewareBase(
 			RestrictedWritesModeAllowlist,
 			[]string{"allowed-pubkey-1", "allowed-pubkey-2"},
-		)
+		))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -58,10 +58,10 @@ func TestRestrictedWritesMiddleware_AllowlistAllow(t *testing.T) {
 
 func TestRestrictedWritesMiddleware_AllowlistReject(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewRestrictedWritesMiddleware(
+		middleware := NewSimpleMiddleware(NewRestrictedWritesMiddlewareBase(
 			RestrictedWritesModeAllowlist,
 			[]string{"allowed-pubkey-1", "allowed-pubkey-2"},
-		)
+		))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -106,10 +106,10 @@ func TestRestrictedWritesMiddleware_AllowlistReject(t *testing.T) {
 
 func TestRestrictedWritesMiddleware_BlocklistAllow(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewRestrictedWritesMiddleware(
+		middleware := NewSimpleMiddleware(NewRestrictedWritesMiddlewareBase(
 			RestrictedWritesModeBlocklist,
 			[]string{"blocked-pubkey-1", "blocked-pubkey-2"},
-		)
+		))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -154,10 +154,10 @@ func TestRestrictedWritesMiddleware_BlocklistAllow(t *testing.T) {
 
 func TestRestrictedWritesMiddleware_BlocklistReject(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewRestrictedWritesMiddleware(
+		middleware := NewSimpleMiddleware(NewRestrictedWritesMiddlewareBase(
 			RestrictedWritesModeBlocklist,
 			[]string{"blocked-pubkey-1", "blocked-pubkey-2"},
-		)
+		))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -203,10 +203,10 @@ func TestRestrictedWritesMiddleware_BlocklistReject(t *testing.T) {
 func TestRestrictedWritesMiddleware_EmptyAllowlist(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Empty allowlist = nobody allowed
-		middleware := NewRestrictedWritesMiddleware(
+		middleware := NewSimpleMiddleware(NewRestrictedWritesMiddlewareBase(
 			RestrictedWritesModeAllowlist,
 			[]string{},
-		)
+		))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -252,10 +252,10 @@ func TestRestrictedWritesMiddleware_EmptyAllowlist(t *testing.T) {
 func TestRestrictedWritesMiddleware_EmptyBlocklist(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Empty blocklist = everyone allowed
-		middleware := NewRestrictedWritesMiddleware(
+		middleware := NewSimpleMiddleware(NewRestrictedWritesMiddlewareBase(
 			RestrictedWritesModeBlocklist,
 			[]string{},
-		)
+		))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -301,10 +301,10 @@ func TestRestrictedWritesMiddleware_EmptyBlocklist(t *testing.T) {
 func TestRestrictedWritesMiddleware_PassthroughNonEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Empty allowlist (extreme restriction)
-		middleware := NewRestrictedWritesMiddleware(
+		middleware := NewSimpleMiddleware(NewRestrictedWritesMiddlewareBase(
 			RestrictedWritesModeAllowlist,
 			[]string{},
-		)
+		))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

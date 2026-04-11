@@ -11,7 +11,7 @@ import (
 
 func TestProtectedEventsMiddleware_RejectWithoutAuth(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewProtectedEventsMiddleware()
+		middleware := NewSimpleMiddleware(NewProtectedEventsMiddlewareBase())
 
 		downstream := HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
 			for msg := range recv {
@@ -66,7 +66,7 @@ func TestProtectedEventsMiddleware_RejectWithoutAuth(t *testing.T) {
 
 func TestProtectedEventsMiddleware_AcceptWithMatchingAuth(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewProtectedEventsMiddleware()
+		middleware := NewSimpleMiddleware(NewProtectedEventsMiddlewareBase())
 
 		received := make(chan *ClientMsg, 1)
 		downstream := HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
@@ -121,7 +121,7 @@ func TestProtectedEventsMiddleware_AcceptWithMatchingAuth(t *testing.T) {
 
 func TestProtectedEventsMiddleware_RejectWithNonMatchingAuth(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewProtectedEventsMiddleware()
+		middleware := NewSimpleMiddleware(NewProtectedEventsMiddlewareBase())
 
 		downstream := HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
 			for msg := range recv {
@@ -180,7 +180,7 @@ func TestProtectedEventsMiddleware_RejectWithNonMatchingAuth(t *testing.T) {
 
 func TestProtectedEventsMiddleware_AcceptNonProtectedEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewProtectedEventsMiddleware()
+		middleware := NewSimpleMiddleware(NewProtectedEventsMiddlewareBase())
 
 		received := make(chan *ClientMsg, 1)
 		downstream := HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
@@ -229,7 +229,7 @@ func TestProtectedEventsMiddleware_AcceptNonProtectedEvent(t *testing.T) {
 
 func TestProtectedEventsMiddleware_PassThroughNonEventMessages(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewProtectedEventsMiddleware()
+		middleware := NewSimpleMiddleware(NewProtectedEventsMiddlewareBase())
 
 		received := make(chan *ClientMsg, 1)
 		downstream := HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
@@ -267,7 +267,7 @@ func TestProtectedEventsMiddleware_PassThroughNonEventMessages(t *testing.T) {
 
 func TestProtectedEventsMiddleware_ProtectedTagMustBeExactlyOneDash(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewProtectedEventsMiddleware()
+		middleware := NewSimpleMiddleware(NewProtectedEventsMiddlewareBase())
 
 		received := make(chan *ClientMsg, 1)
 		downstream := HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {

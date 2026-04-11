@@ -170,13 +170,13 @@ func generateChallenge() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// NewAuthMiddleware creates a middleware that requires NIP-42 authentication.
+// NewAuthMiddlewareBase creates a middleware base that requires NIP-42 authentication.
 //
 // Parameters:
 //   - relayURL: the URL of this relay (used for relay tag validation)
-func NewAuthMiddleware(relayURL string) Middleware {
-	return NewSimpleMiddleware(&AuthMiddleware{
+func NewAuthMiddlewareBase(relayURL string) SimpleMiddlewareBase {
+	return &AuthMiddleware{
 		RelayURL:           relayURL,
 		CreatedAtTolerance: 10 * time.Minute,
-	})
+	}
 }

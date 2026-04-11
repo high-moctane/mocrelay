@@ -10,7 +10,7 @@ import (
 
 func TestMaxSubidLengthMiddleware_AllowWithinLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxSubidLengthMiddleware(10)
+		middleware := NewSimpleMiddleware(NewMaxSubidLengthMiddlewareBase(10))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -50,7 +50,7 @@ func TestMaxSubidLengthMiddleware_AllowWithinLimit(t *testing.T) {
 
 func TestMaxSubidLengthMiddleware_RejectTooLong(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxSubidLengthMiddleware(5)
+		middleware := NewSimpleMiddleware(NewMaxSubidLengthMiddlewareBase(5))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -93,7 +93,7 @@ func TestMaxSubidLengthMiddleware_RejectTooLong(t *testing.T) {
 
 func TestMaxSubidLengthMiddleware_ExactLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxSubidLengthMiddleware(5)
+		middleware := NewSimpleMiddleware(NewMaxSubidLengthMiddlewareBase(5))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

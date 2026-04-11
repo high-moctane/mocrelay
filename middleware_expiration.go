@@ -15,11 +15,11 @@ type ExpirationMiddleware struct {
 	now func() time.Time
 }
 
-// NewExpirationMiddleware creates a new ExpirationMiddleware.
-func NewExpirationMiddleware() Middleware {
-	return NewSimpleMiddleware(&ExpirationMiddleware{
+// NewExpirationMiddlewareBase creates a new ExpirationMiddleware.
+func NewExpirationMiddlewareBase() SimpleMiddlewareBase {
+	return &ExpirationMiddleware{
 		now: time.Now,
-	})
+	}
 }
 
 func (m *ExpirationMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

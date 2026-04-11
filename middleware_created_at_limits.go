@@ -14,22 +14,22 @@ type CreatedAtLimitsMiddleware struct {
 	now        func() time.Time
 }
 
-// NewCreatedAtLimitsMiddleware creates a new CreatedAtLimitsMiddleware.
+// NewCreatedAtLimitsMiddlewareBase creates a new CreatedAtLimitsMiddleware.
 // lowerLimit is the maximum age in seconds (how far into the past is allowed).
 // upperLimit is the maximum seconds into the future allowed.
 // Both must be non-negative.
-func NewCreatedAtLimitsMiddleware(lowerLimit, upperLimit int64) Middleware {
+func NewCreatedAtLimitsMiddlewareBase(lowerLimit, upperLimit int64) SimpleMiddlewareBase {
 	if lowerLimit < 0 {
 		panic("lowerLimit must be non-negative")
 	}
 	if upperLimit < 0 {
 		panic("upperLimit must be non-negative")
 	}
-	return NewSimpleMiddleware(&CreatedAtLimitsMiddleware{
+	return &CreatedAtLimitsMiddleware{
 		lowerLimit: lowerLimit,
 		upperLimit: upperLimit,
 		now:        time.Now,
-	})
+	}
 }
 
 func (m *CreatedAtLimitsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {

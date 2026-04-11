@@ -10,7 +10,7 @@ import (
 
 func TestMaxContentLengthMiddleware_AllowWithinLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxContentLengthMiddleware(10)
+		middleware := NewSimpleMiddleware(NewMaxContentLengthMiddlewareBase(10))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -55,7 +55,7 @@ func TestMaxContentLengthMiddleware_AllowWithinLimit(t *testing.T) {
 
 func TestMaxContentLengthMiddleware_RejectTooLong(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxContentLengthMiddleware(5)
+		middleware := NewSimpleMiddleware(NewMaxContentLengthMiddlewareBase(5))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -100,7 +100,7 @@ func TestMaxContentLengthMiddleware_RejectTooLong(t *testing.T) {
 
 func TestMaxContentLengthMiddleware_UnicodeCharacters(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxContentLengthMiddleware(5)
+		middleware := NewSimpleMiddleware(NewMaxContentLengthMiddlewareBase(5))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -146,7 +146,7 @@ func TestMaxContentLengthMiddleware_UnicodeCharacters(t *testing.T) {
 
 func TestMaxContentLengthMiddleware_UnicodeExceedsLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxContentLengthMiddleware(4)
+		middleware := NewSimpleMiddleware(NewMaxContentLengthMiddlewareBase(4))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -191,7 +191,7 @@ func TestMaxContentLengthMiddleware_UnicodeExceedsLimit(t *testing.T) {
 
 func TestMaxContentLengthMiddleware_Emoji(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewMaxContentLengthMiddleware(3)
+		middleware := NewSimpleMiddleware(NewMaxContentLengthMiddlewareBase(3))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

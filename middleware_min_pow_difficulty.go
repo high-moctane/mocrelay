@@ -87,14 +87,14 @@ func getCommittedPowTarget(event *Event) int {
 	return -1
 }
 
-// NewMinPowDifficultyMiddleware creates a middleware that validates Proof of Work.
+// NewMinPowDifficultyMiddlewareBase creates a middleware base that validates Proof of Work.
 //
 // Parameters:
 //   - minDifficulty: minimum number of leading zero bits required in event ID
 //   - checkCommitment: if true, also validates the nonce tag's target difficulty
-func NewMinPowDifficultyMiddleware(minDifficulty int, checkCommitment bool) Middleware {
-	return NewSimpleMiddleware(&MinPowDifficultyMiddleware{
+func NewMinPowDifficultyMiddlewareBase(minDifficulty int, checkCommitment bool) SimpleMiddlewareBase {
+	return &MinPowDifficultyMiddleware{
 		MinDifficulty:   minDifficulty,
 		CheckCommitment: checkCommitment,
-	})
+	}
 }

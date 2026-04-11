@@ -56,52 +56,80 @@ type SimpleMiddlewareBase interface {
 	HandleServerMsg(ctx context.Context, msg *ServerMsg) (out *ServerMsg, err error)
 }
 
-// NewSimpleMiddleware creates a Middleware from a SimpleMiddlewareBase.
+// NewSimpleMiddleware creates a Middleware from one or more SimpleMiddlewareBase.
+//
+// When multiple bases are provided, they are composed into a single pipeline
+// that uses only one goroutine, regardless of the number of bases.
+// Bases are listed in outermost-first order (like alice.New):
+//
+//	NewSimpleMiddleware(logging, auth)(handler)
+//	// message flow: client → logging → auth → handler
 //
 // Internally uses a unified select loop with nil channel pattern to handle
 // both recv and send directions in a single goroutine, avoiding deadlocks
 // without requiring buffered channels.
-func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
+func NewSimpleMiddleware(bases ...SimpleMiddlewareBase) Middleware {
+	if len(bases) == 0 {
+		return func(next Handler) Handler { return next }
+	}
+
 	return func(next Handler) Handler {
 		return HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) (err error) {
-			ctx, startMsg, startErr := base.OnStart(ctx)
-			if startErr != nil {
-				return startErr
-			}
-			defer func() {
-				endMsg, endErr := base.OnEnd(ctx)
-				err = errors.Join(err, endErr)
-				if endMsg != nil {
+			// OnStart all bases (outermost first)
+			for i, base := range bases {
+				var startMsg *ServerMsg
+				var startErr error
+				ctx, startMsg, startErr = base.OnStart(ctx)
+				if startErr != nil {
+					// OnEnd already-started bases (reverse order)
+					for j := i - 1; j >= 0; j-- {
+						_, endErr := bases[j].OnEnd(ctx)
+						err = errors.Join(err, endErr)
+					}
+					return errors.Join(err, startErr)
+				}
+				if startMsg != nil {
 					select {
-					case send <- endMsg:
-					default:
-						// send channel might be full or closed, best effort
+					case <-ctx.Done():
+						// OnEnd already-started bases including current (reverse order)
+						for j := i; j >= 0; j-- {
+							_, endErr := bases[j].OnEnd(ctx)
+							err = errors.Join(err, endErr)
+						}
+						return errors.Join(err, ctx.Err())
+					case send <- startMsg:
+					}
+				}
+			}
+
+			// OnEnd all bases (reverse order, always called)
+			defer func() {
+				for i := len(bases) - 1; i >= 0; i-- {
+					endMsg, endErr := bases[i].OnEnd(ctx)
+					err = errors.Join(err, endErr)
+					if endMsg != nil {
+						select {
+						case send <- endMsg:
+						default:
+							// send channel might be full or closed, best effort
+						}
 					}
 				}
 			}()
 
-			// Send OnStart message if provided
-			if startMsg != nil {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case send <- startMsg:
-				}
-			}
-
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			// Channels between this middleware and downstream handler
+			// Channels between this pipeline and downstream handler
 			downstreamRecv := make(chan *ClientMsg)
 			downstreamSend := make(chan *ServerMsg)
 
 			errs := make(chan error, 1)
 
-			// Single goroutine: unified select loop for both directions
+			// Single goroutine: pipeline loop for all bases
 			go func() {
 				defer close(downstreamRecv)
-				errs <- simpleMiddlewareLoop(ctx, base, recv, send, downstreamRecv, downstreamSend)
+				errs <- simpleMiddlewarePipelineLoop(ctx, bases, recv, send, downstreamRecv, downstreamSend)
 			}()
 
 			// Run downstream handler
@@ -117,17 +145,23 @@ func NewSimpleMiddleware(base SimpleMiddlewareBase) Middleware {
 	}
 }
 
-// simpleMiddlewareLoop handles both recv and send directions in a single goroutine.
+// simpleMiddlewarePipelineLoop handles both recv and send directions for
+// multiple middleware bases in a single goroutine.
+//
+// For client messages (recv direction), HandleClientMsg is applied through
+// all bases in forward order (outermost to innermost). If a base generates
+// a response, that response is passed through HandleServerMsg of all outer
+// bases before being sent to the client.
+//
+// For server messages (send direction), HandleServerMsg is applied through
+// all bases in reverse order (innermost to outermost).
 //
 // Uses the nil channel pattern to avoid deadlock: when there are pending messages
 // to forward to downstream, the downstreamRecv channel is active in the select;
 // when there are none, it is set to nil so the case is never selected.
-//
-// Similarly, pending responses to the client use a queue with nil channel pattern
-// on the send channel.
-func simpleMiddlewareLoop(
+func simpleMiddlewarePipelineLoop(
 	ctx context.Context,
-	base SimpleMiddlewareBase,
+	bases []SimpleMiddlewareBase,
 	recv <-chan *ClientMsg,
 	send chan<- *ServerMsg,
 	downstreamRecv chan<- *ClientMsg,
@@ -172,13 +206,36 @@ func simpleMiddlewareLoop(
 				continue
 			}
 
-			out, resp, err := base.HandleClientMsg(ctx, msg)
-			if err != nil {
-				return err
-			}
+			// Apply HandleClientMsg through all bases (outermost to innermost)
+			out := msg
+			for i, base := range bases {
+				var resp *ServerMsg
+				var handleErr error
+				out, resp, handleErr = base.HandleClientMsg(ctx, out)
+				if handleErr != nil {
+					return handleErr
+				}
 
-			if resp != nil {
-				pendingToClient = append(pendingToClient, resp)
+				if resp != nil {
+					// Response goes through HandleServerMsg of outer bases
+					for j := i - 1; j >= 0; j-- {
+						var serverErr error
+						resp, serverErr = bases[j].HandleServerMsg(ctx, resp)
+						if serverErr != nil {
+							return serverErr
+						}
+						if resp == nil {
+							break
+						}
+					}
+					if resp != nil {
+						pendingToClient = append(pendingToClient, resp)
+					}
+				}
+
+				if out == nil {
+					break
+				}
 			}
 			if out != nil {
 				pendingToDownstream = append(pendingToDownstream, out)
@@ -189,11 +246,18 @@ func simpleMiddlewareLoop(
 				return nil // downstream handler finished
 			}
 
-			out, err := base.HandleServerMsg(ctx, msg)
-			if err != nil {
-				return err
+			// Apply HandleServerMsg through all bases (innermost to outermost)
+			out := msg
+			for i := len(bases) - 1; i >= 0; i-- {
+				var handleErr error
+				out, handleErr = bases[i].HandleServerMsg(ctx, out)
+				if handleErr != nil {
+					return handleErr
+				}
+				if out == nil {
+					break
+				}
 			}
-
 			if out != nil {
 				pendingToClient = append(pendingToClient, out)
 			}

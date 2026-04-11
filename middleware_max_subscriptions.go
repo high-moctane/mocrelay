@@ -12,13 +12,13 @@ type MaxSubscriptionsMiddleware struct {
 	maxSubs int
 }
 
-// NewMaxSubscriptionsMiddleware creates a new MaxSubscriptionsMiddleware.
+// NewMaxSubscriptionsMiddlewareBase creates a new MaxSubscriptionsMiddleware.
 // maxSubs must be a positive integer.
-func NewMaxSubscriptionsMiddleware(maxSubs int) Middleware {
+func NewMaxSubscriptionsMiddlewareBase(maxSubs int) SimpleMiddlewareBase {
 	if maxSubs < 1 {
 		panic("maxSubs must be positive")
 	}
-	return NewSimpleMiddleware(&MaxSubscriptionsMiddleware{maxSubs: maxSubs})
+	return &MaxSubscriptionsMiddleware{maxSubs: maxSubs}
 }
 
 type maxSubsCtxKey struct{}
