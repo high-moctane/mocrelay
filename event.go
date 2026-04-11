@@ -40,6 +40,36 @@ type Event struct {
 // The first element is the tag name, followed by optional values.
 type Tag []string
 
+// UnmarshalJSONFrom implements json.UnmarshalerFrom to reject null elements.
+// NIP-01 requires tags to be "arrays of non-null strings".
+func (t *Tag) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	tok, err := dec.ReadToken()
+	if err != nil {
+		return err
+	}
+	if tok.Kind() != '[' {
+		return fmt.Errorf("expected array for tag, got %v", tok.Kind())
+	}
+
+	*t = (*t)[:0]
+	for dec.PeekKind() != ']' {
+		if dec.PeekKind() == 'n' {
+			return fmt.Errorf("tag elements must be non-null strings")
+		}
+		var s string
+		if err := json.UnmarshalDecode(dec, &s); err != nil {
+			return fmt.Errorf("invalid tag element: %w", err)
+		}
+		*t = append(*t, s)
+	}
+
+	if _, err := dec.ReadToken(); err != nil { // ]
+		return err
+	}
+
+	return nil
+}
+
 // Key returns the tag name (first element).
 func (t Tag) Key() string {
 	if len(t) < 1 {
@@ -56,15 +86,26 @@ func (t Tag) Value() string {
 	return t[1]
 }
 
-// UnmarshalJSONFrom implements json.UnmarshalerFrom to validate field count.
-// Nostr events must have exactly 7 fields.
+// MarshalJSONTo implements json.MarshalerTo to ensure NIP-01 compliant output.
+// Tags is always marshaled as [] (never null).
+func (e Event) MarshalJSONTo(enc *jsontext.Encoder) error {
+	type EventAlias Event
+	alias := EventAlias(e)
+	if alias.Tags == nil {
+		alias.Tags = []Tag{}
+	}
+	return json.MarshalEncode(enc, &alias)
+}
+
+// UnmarshalJSONFrom implements json.UnmarshalerFrom to validate field count
+// and field value types. Nostr events must have exactly 7 fields, all non-null.
 func (e *Event) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	val, err := dec.ReadValue()
 	if err != nil {
 		return err
 	}
 
-	// Count fields
+	// Count fields and validate value types
 	count := 0
 	tempDec := jsontext.NewDecoder(bytes.NewReader(val))
 	tok, err := tempDec.ReadToken()
@@ -82,9 +123,22 @@ func (e *Event) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		if tok.Kind() == '}' {
 			break
 		}
+		key := tok.String()
 		count++
-		if err := tempDec.SkipValue(); err != nil {
-			return fmt.Errorf("failed to skip value: %w", err)
+
+		raw, err := tempDec.ReadValue()
+		if err != nil {
+			return fmt.Errorf("failed to read value for %s: %w", key, err)
+		}
+
+		// All fields must be non-null
+		if string(raw) == "null" {
+			return fmt.Errorf("field %q must not be null", key)
+		}
+
+		// created_at must be a plain integer (no decimal point or exponent)
+		if key == "created_at" && bytes.ContainsAny(raw, ".eE") {
+			return fmt.Errorf("created_at must be an integer")
 		}
 	}
 
@@ -119,18 +173,18 @@ func (e *Event) Valid() bool {
 		return false
 	}
 
-	// ID: 64 hex characters (32 bytes)
-	if !isValidHex(e.ID, 64) {
+	// ID: 32-bytes lowercase hex (NIP-01)
+	if !isValidLowercaseHex(e.ID, 64) {
 		return false
 	}
 
-	// Pubkey: 64 hex characters (32 bytes)
-	if !isValidHex(e.Pubkey, 64) {
+	// Pubkey: 32-bytes lowercase hex (NIP-01)
+	if !isValidLowercaseHex(e.Pubkey, 64) {
 		return false
 	}
 
-	// Kind: 0-65535 (but we use int64 to be safe)
-	if e.Kind < 0 {
+	// Kind: integer between 0 and 65535 (NIP-01)
+	if e.Kind < 0 || e.Kind > 65535 {
 		return false
 	}
 
@@ -144,8 +198,8 @@ func (e *Event) Valid() bool {
 		}
 	}
 
-	// Sig: 128 hex characters (64 bytes)
-	if !isValidHex(e.Sig, 128) {
+	// Sig: 64-bytes lowercase hex (NIP-01)
+	if !isValidLowercaseHex(e.Sig, 128) {
 		return false
 	}
 
@@ -273,17 +327,4 @@ func (e *Event) Address() string {
 	default:
 		return ""
 	}
-}
-
-// isValidHex checks if a string is valid hexadecimal with expected length.
-func isValidHex(s string, length int) bool {
-	if len(s) != length {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-	return true
 }

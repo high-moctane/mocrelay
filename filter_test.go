@@ -75,6 +75,46 @@ func TestReqFilter_UnmarshalJSON(t *testing.T) {
 			input:   `{"#123":["abc"]}`,
 			wantErr: true,
 		},
+		{
+			name:    "null ids",
+			input:   `{"ids":null}`,
+			wantErr: true,
+		},
+		{
+			name:    "null kinds",
+			input:   `{"kinds":null}`,
+			wantErr: true,
+		},
+		{
+			name:    "null since",
+			input:   `{"since":null}`,
+			wantErr: true,
+		},
+		{
+			name:    "null limit",
+			input:   `{"limit":null}`,
+			wantErr: true,
+		},
+		{
+			name:    "null tag filter",
+			input:   `{"#e":null}`,
+			wantErr: true,
+		},
+		{
+			name:    "null inside ids",
+			input:   `{"ids":["abc",null]}`,
+			wantErr: true,
+		},
+		{
+			name:    "null inside kinds",
+			input:   `{"kinds":[1,null]}`,
+			wantErr: true,
+		},
+		{
+			name:    "null inside tag filter",
+			input:   `{"#e":["abc",null]}`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

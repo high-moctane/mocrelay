@@ -81,6 +81,9 @@ func parseClientEventMsg(data []byte) (*ClientMsg, error) {
 		return nil, fmt.Errorf("failed to parse event: %w", err)
 	}
 
+	if dec.PeekKind() != ']' {
+		return nil, fmt.Errorf("EVENT must have exactly 2 elements")
+	}
 	if _, err := dec.ReadToken(); err != nil { // ]
 		return nil, err
 	}
@@ -105,6 +108,9 @@ func parseClientReqMsg(data []byte) (*ClientMsg, error) {
 	var subID string
 	if err := json.UnmarshalDecode(dec, &subID); err != nil {
 		return nil, fmt.Errorf("failed to parse subscription id: %w", err)
+	}
+	if err := validateSubscriptionID(subID); err != nil {
+		return nil, err
 	}
 
 	var filters []*ReqFilter
@@ -140,6 +146,9 @@ func parseClientCloseMsg(data []byte) (*ClientMsg, error) {
 	if len(arr) != 2 {
 		return nil, fmt.Errorf("CLOSE must have exactly 2 elements")
 	}
+	if err := validateSubscriptionID(arr[1]); err != nil {
+		return nil, err
+	}
 
 	return &ClientMsg{
 		Type:           MsgTypeClose,
@@ -163,6 +172,9 @@ func parseClientAuthMsg(data []byte) (*ClientMsg, error) {
 		return nil, fmt.Errorf("failed to parse auth event: %w", err)
 	}
 
+	if dec.PeekKind() != ']' {
+		return nil, fmt.Errorf("AUTH must have exactly 2 elements")
+	}
 	if _, err := dec.ReadToken(); err != nil { // ]
 		return nil, err
 	}
@@ -187,6 +199,9 @@ func parseClientCountMsg(data []byte) (*ClientMsg, error) {
 	var subID string
 	if err := json.UnmarshalDecode(dec, &subID); err != nil {
 		return nil, fmt.Errorf("failed to parse subscription id: %w", err)
+	}
+	if err := validateSubscriptionID(subID); err != nil {
+		return nil, err
 	}
 
 	var filters []*ReqFilter
@@ -332,4 +347,12 @@ func (m *ServerMsg) MarshalJSON() ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unknown server message type: %s", m.Type)
 	}
+}
+
+// validateSubscriptionID checks NIP-01 subscription_id requirements.
+func validateSubscriptionID(subID string) error {
+	if subID == "" {
+		return fmt.Errorf("subscription_id must be non-empty")
+	}
+	return nil
 }

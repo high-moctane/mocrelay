@@ -14,6 +14,9 @@ import (
 
 // Helper to create events easily
 func makeEvent(id, pubkey string, kind int64, createdAt int64, tags ...Tag) *Event {
+	if tags == nil {
+		tags = []Tag{}
+	}
 	return &Event{
 		ID:        id,
 		Pubkey:    pubkey,

@@ -24,6 +24,7 @@ type ReqFilter struct {
 
 // UnmarshalJSONFrom implements json.UnmarshalerFrom for ReqFilter.
 // This handles the dynamic tag fields (#e, #p, etc.) and rejects unknown fields.
+// All field values must be non-null (NIP-01).
 func (f *ReqFilter) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	val, err := dec.ReadValue()
 	if err != nil {
@@ -44,41 +45,50 @@ func (f *ReqFilter) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		}
 		key := keyTok.String()
 
-		// Read value based on key
+		// Read raw value for null checking
+		raw, err := tempDec.ReadValue()
+		if err != nil {
+			return fmt.Errorf("invalid %s: %w", key, err)
+		}
+		if containsJSONNull(raw) {
+			return fmt.Errorf("field %q must not contain null", key)
+		}
+
+		// Unmarshal value based on key
 		switch key {
 		case "ids":
-			if err := json.UnmarshalDecode(tempDec, &f.IDs); err != nil {
+			if err := json.Unmarshal(raw, &f.IDs); err != nil {
 				return fmt.Errorf("invalid ids: %w", err)
 			}
 		case "authors":
-			if err := json.UnmarshalDecode(tempDec, &f.Authors); err != nil {
+			if err := json.Unmarshal(raw, &f.Authors); err != nil {
 				return fmt.Errorf("invalid authors: %w", err)
 			}
 		case "kinds":
-			if err := json.UnmarshalDecode(tempDec, &f.Kinds); err != nil {
+			if err := json.Unmarshal(raw, &f.Kinds); err != nil {
 				return fmt.Errorf("invalid kinds: %w", err)
 			}
 		case "since":
-			if err := json.UnmarshalDecode(tempDec, &f.Since); err != nil {
+			if err := json.Unmarshal(raw, &f.Since); err != nil {
 				return fmt.Errorf("invalid since: %w", err)
 			}
 		case "until":
-			if err := json.UnmarshalDecode(tempDec, &f.Until); err != nil {
+			if err := json.Unmarshal(raw, &f.Until); err != nil {
 				return fmt.Errorf("invalid until: %w", err)
 			}
 		case "limit":
-			if err := json.UnmarshalDecode(tempDec, &f.Limit); err != nil {
+			if err := json.Unmarshal(raw, &f.Limit); err != nil {
 				return fmt.Errorf("invalid limit: %w", err)
 			}
 		case "search":
-			if err := json.UnmarshalDecode(tempDec, &f.Search); err != nil {
+			if err := json.Unmarshal(raw, &f.Search); err != nil {
 				return fmt.Errorf("invalid search: %w", err)
 			}
 		default:
 			// Check if it's a tag filter (#a-z, #A-Z)
 			if len(key) == 2 && key[0] == '#' && isTagLetter(key[1]) {
 				var values []string
-				if err := json.UnmarshalDecode(tempDec, &values); err != nil {
+				if err := json.Unmarshal(raw, &values); err != nil {
 					return fmt.Errorf("invalid tag filter %s: %w", key, err)
 				}
 				f.Tags[string(key[1])] = values
@@ -89,6 +99,20 @@ func (f *ReqFilter) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	}
 
 	return nil
+}
+
+// containsJSONNull scans a JSON value for any null token at any depth.
+func containsJSONNull(raw []byte) bool {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return false
+		}
+		if tok.Kind() == 'n' {
+			return true
+		}
+	}
 }
 
 // MarshalJSON implements json.Marshaler for ReqFilter.

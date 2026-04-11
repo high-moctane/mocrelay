@@ -112,7 +112,7 @@ func generateRandomEvents(rng *rand.Rand, n int) []*Event {
 		// Generate unique ID
 		id := fmt.Sprintf("%064x", rng.Uint64())[:64]
 
-		var tags []Tag
+		tags := []Tag{}
 		// Add d-tag for addressable events
 		if kind >= 30000 && kind < 40000 {
 			dValue := fmt.Sprintf("d-%d", rng.IntN(5))
@@ -200,6 +200,7 @@ func TestStorageDifferential_Kind5(t *testing.T) {
 		Pubkey:    pubkey,
 		Kind:      1,
 		CreatedAt: time.Unix(1000, 0),
+		Tags:      []Tag{},
 	}
 
 	storedInMem, _ := inMemory.Store(ctx, event1)
@@ -245,9 +246,9 @@ func TestStorageDifferential_Replaceable(t *testing.T) {
 
 	// Store replaceable events with same (pubkey, kind)
 	events := []*Event{
-		{ID: "1111111111111111111111111111111111111111111111111111111111111111", Pubkey: pubkey, Kind: 10000, CreatedAt: time.Unix(1000, 0)},
-		{ID: "2222222222222222222222222222222222222222222222222222222222222222", Pubkey: pubkey, Kind: 10000, CreatedAt: time.Unix(2000, 0)}, // newer
-		{ID: "3333333333333333333333333333333333333333333333333333333333333333", Pubkey: pubkey, Kind: 10000, CreatedAt: time.Unix(500, 0)},  // older
+		{ID: "1111111111111111111111111111111111111111111111111111111111111111", Pubkey: pubkey, Kind: 10000, CreatedAt: time.Unix(1000, 0), Tags: []Tag{}},
+		{ID: "2222222222222222222222222222222222222222222222222222222222222222", Pubkey: pubkey, Kind: 10000, CreatedAt: time.Unix(2000, 0), Tags: []Tag{}}, // newer
+		{ID: "3333333333333333333333333333333333333333333333333333333333333333", Pubkey: pubkey, Kind: 10000, CreatedAt: time.Unix(500, 0), Tags: []Tag{}},  // older
 	}
 
 	for _, event := range events {

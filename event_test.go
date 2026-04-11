@@ -58,6 +58,71 @@ func TestEvent_UnmarshalJSON(t *testing.T) {
 			input:   `[1,2,3]`,
 			wantErr: true,
 		},
+		{
+			name: "null created_at",
+			input: `{
+				"id": "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				"pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				"created_at": null,
+				"kind": 1,
+				"tags": [],
+				"content": "",
+				"sig": "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f"
+			}`,
+			wantErr: true,
+		},
+		{
+			name: "float created_at",
+			input: `{
+				"id": "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				"pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				"created_at": 1723212754.5,
+				"kind": 1,
+				"tags": [],
+				"content": "",
+				"sig": "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f"
+			}`,
+			wantErr: true,
+		},
+		{
+			name: "null kind",
+			input: `{
+				"id": "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				"pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				"created_at": 1723212754,
+				"kind": null,
+				"tags": [],
+				"content": "",
+				"sig": "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f"
+			}`,
+			wantErr: true,
+		},
+		{
+			name: "null id",
+			input: `{
+				"id": null,
+				"pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				"created_at": 1723212754,
+				"kind": 1,
+				"tags": [],
+				"content": "",
+				"sig": "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f"
+			}`,
+			wantErr: true,
+		},
+		{
+			name: "null tags",
+			input: `{
+				"id": "dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168",
+				"pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+				"created_at": 1723212754,
+				"kind": 1,
+				"tags": null,
+				"content": "",
+				"sig": "5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f"
+			}`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -163,9 +228,14 @@ func TestEvent_Valid(t *testing.T) {
 		{"short ID", &Event{ID: "abc", Pubkey: validEvent.Pubkey, Tags: []Tag{}, Sig: validEvent.Sig}, false},
 		{"short pubkey", &Event{ID: validEvent.ID, Pubkey: "abc", Tags: []Tag{}, Sig: validEvent.Sig}, false},
 		{"short sig", &Event{ID: validEvent.ID, Pubkey: validEvent.Pubkey, Tags: []Tag{}, Sig: "abc"}, false},
+		{"uppercase ID", &Event{ID: "DC097CD6BD76F2D8816F8A2D294E8442173228E5B24FB946AA05DD89339C9168", Pubkey: validEvent.Pubkey, Tags: []Tag{}, Sig: validEvent.Sig}, false},
+		{"uppercase pubkey", &Event{ID: validEvent.ID, Pubkey: "79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798", Tags: []Tag{}, Sig: validEvent.Sig}, false},
+		{"uppercase sig", &Event{ID: validEvent.ID, Pubkey: validEvent.Pubkey, Tags: []Tag{}, Sig: "5D2F49649A4F448D13757EE563FD1B8FA04E4DC1931DD34763FB7DF40A082CBDC4E136C733177D3B96A0321F8783FD6B218FEA046E039A23D99B1AB9E2D8B45F"}, false},
 		{"nil tags", &Event{ID: validEvent.ID, Pubkey: validEvent.Pubkey, Tags: nil, Sig: validEvent.Sig}, false},
 		{"empty tag", &Event{ID: validEvent.ID, Pubkey: validEvent.Pubkey, Tags: []Tag{{}}, Sig: validEvent.Sig}, false},
 		{"negative kind", &Event{ID: validEvent.ID, Pubkey: validEvent.Pubkey, Tags: []Tag{}, Sig: validEvent.Sig, Kind: -1}, false},
+		{"kind too large", &Event{ID: validEvent.ID, Pubkey: validEvent.Pubkey, Tags: []Tag{}, Sig: validEvent.Sig, Kind: 65536}, false},
+		{"kind max valid", &Event{ID: validEvent.ID, Pubkey: validEvent.Pubkey, Tags: []Tag{}, Sig: validEvent.Sig, Kind: 65535}, true},
 	}
 
 	for _, tt := range tests {
@@ -275,24 +345,62 @@ func TestTag(t *testing.T) {
 	})
 }
 
-func TestIsValidHex(t *testing.T) {
+func TestTag_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
-		s      string
-		length int
-		want   bool
+		name    string
+		input   string
+		wantErr bool
+		want    Tag
 	}{
-		{"abcd", 4, true},
-		{"ABCD", 4, true},
-		{"1234", 4, true},
-		{"abcd", 3, false},
-		{"abcd", 5, false},
-		{"ghij", 4, false},
-		{"ab cd", 5, false},
+		{
+			name:    "valid tag",
+			input:   `["e", "abc"]`,
+			wantErr: false,
+			want:    Tag{"e", "abc"},
+		},
+		{
+			name:    "valid tag with empty value",
+			input:   `["d", ""]`,
+			wantErr: false,
+			want:    Tag{"d", ""},
+		},
+		{
+			name:    "null element",
+			input:   `["d", null]`,
+			wantErr: true,
+		},
+		{
+			name:    "null in middle",
+			input:   `["e", null, "relay"]`,
+			wantErr: true,
+		},
+		{
+			name:    "number element",
+			input:   `["e", 123]`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
-		if got := isValidHex(tt.s, tt.length); got != tt.want {
-			t.Errorf("isValidHex(%q, %d) = %v, want %v", tt.s, tt.length, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			var tag Tag
+			err := json.Unmarshal([]byte(tt.input), &tag)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Unmarshal() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if len(tag) != len(tt.want) {
+					t.Errorf("got %v, want %v", tag, tt.want)
+					return
+				}
+				for i := range tag {
+					if tag[i] != tt.want[i] {
+						t.Errorf("got %v, want %v", tag, tt.want)
+						return
+					}
+				}
+			}
+		})
 	}
 }

@@ -118,6 +118,12 @@ func TestParseClientMsg_Errors(t *testing.T) {
 		{"REQ no filters", `["REQ","sub1"]`},
 		{"COUNT no filters", `["COUNT","sub1"]`},
 		{"CLOSE wrong length", `["CLOSE"]`},
+		{"EVENT extra element", `["EVENT",{"id":"dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1723212754,"kind":1,"tags":[],"content":"","sig":"5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f"},"extra"]`},
+		{"AUTH extra element", `["AUTH",{"id":"dc097cd6bd76f2d8816f8a2d294e8442173228e5b24fb946aa05dd89339c9168","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1723212754,"kind":1,"tags":[],"content":"","sig":"5d2f49649a4f448d13757ee563fd1b8fa04e4dc1931dd34763fb7df40a082cbdc4e136c733177d3b96a0321f8783fd6b218fea046e039a23d99b1ab9e2d8b45f"},"extra"]`},
+		{"CLOSE extra element", `["CLOSE","sub1","extra"]`},
+		{"REQ empty subscription_id", `["REQ","",{"kinds":[1]}]`},
+		{"CLOSE empty subscription_id", `["CLOSE",""]`},
+		{"COUNT empty subscription_id", `["COUNT","",{"kinds":[1]}]`},
 	}
 
 	for _, tt := range tests {
