@@ -3,6 +3,7 @@
 package mocrelay
 
 import (
+	"bytes"
 	"container/heap"
 	"context"
 	"crypto/sha256"
@@ -331,57 +332,43 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.S
 			return
 		}
 
-		seen := make(map[string]bool)
-		count := int64(0)
+		// Build per-filter cursors and add to cross-filter heap (OR between filters)
+		fh := &filterCursorHeap{}
+		heap.Init(fh)
 
-		// Create a single heap for all filters
-		h := &cursorHeap{}
-		heap.Init(h)
-
-		// Open iterators for ALL filters and add to the same heap
 		for _, filter := range filters {
-			selections := s.selectIndexes(filter)
-
-			for _, sel := range selections {
-				iter, err := snapshot.NewIter(&pebble.IterOptions{
-					LowerBound: sel.lowerBound,
-					UpperBound: sel.upperBound,
-				})
-				if err != nil {
-					queryErr = fmt.Errorf("create iterator: %w", err)
-					return
-				}
-				iterators = append(iterators, iter)
-
-				// Position at first entry and add to heap
-				if iter.First() {
-					entry := s.makeCursorEntry(iter, sel, filter)
-					heap.Push(h, entry)
-				}
+			cursor, err := s.buildFilterCursor(snapshot, filter, &iterators)
+			if err != nil {
+				queryErr = fmt.Errorf("build filter cursor: %w", err)
+				return
+			}
+			if cursor != nil && cursor.Valid() {
+				heap.Push(fh, &filterCursorPair{cursor: cursor, filter: filter})
 			}
 		}
 
-		// Merge cursors using heap (across all filters)
-		for h.Len() > 0 {
+		seen := make(map[string]bool)
+		count := int64(0)
+
+		// Merge across filters (OR) using heap
+		for fh.Len() > 0 {
 			if limit >= 0 && count >= limit {
 				return
 			}
 
-			// Pop the entry with smallest invertedTS (= newest event)
-			entry := heap.Pop(h).(*cursorEntry)
+			// Pop the entry with smallest (invertedTS, eventID) = newest event
+			pair := heap.Pop(fh).(*filterCursorPair)
+			eventIDHex := bytesToHex(pair.cursor.EventID())
 
-			// Skip if already seen
-			eventIDHex := bytesToHex(entry.eventID)
 			if !seen[eventIDHex] {
-				// Get the event from snapshot
-				event, err := s.getEventByIDFromSnapshot(snapshot, entry.eventID)
+				event, err := s.getEventByIDFromSnapshot(snapshot, pair.cursor.EventID())
 				if err != nil {
 					queryErr = fmt.Errorf("query event: %w", err)
 					return
 				}
 
-				// Use the filter associated with this cursor for Match check
-				if event != nil && entry.filter.Match(event) {
+				// Match recheck (for FNV-1a collision, IDs filter, etc.)
+				if event != nil && pair.filter.Match(event) {
 					seen[eventIDHex] = true
 					count++
 					if !yield(event) {
@@ -390,10 +377,8 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.S
 				}
 			}
 
-			// Advance this cursor and re-add to heap if valid
-			if entry.iter.Next() {
-				newEntry := s.makeCursorEntry(entry.iter, entry.selection, entry.filter)
-				heap.Push(h, newEntry)
+			if pair.cursor.Next() {
+				heap.Push(fh, pair)
 			}
 		}
 	}
@@ -418,150 +403,414 @@ func (s *PebbleStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.S
 	return events, errFn, closeFn
 }
 
-// makeCursorEntry creates a cursorEntry from the current iterator position.
-func (s *PebbleStorage) makeCursorEntry(iter *pebble.Iterator, sel *indexSelection, filter *ReqFilter) *cursorEntry {
-	key := iter.Key()
-	eventID := make([]byte, 32)
-	copy(eventID, key[sel.eventIDOffset:sel.eventIDOffset+32])
-	invertedTS := binary.BigEndian.Uint64(key[sel.timestampOffset : sel.timestampOffset+8])
+// --- Query cursor abstraction ---
+//
+// queryCursor produces (invertedTS, eventID) pairs in sorted order.
+// Three implementations form a composable tree:
+//   - indexCursor:     single Pebble iterator (leaf)
+//   - unionCursor:     heap-based OR merge
+//   - intersectCursor: sort-merge join AND (with SeekGE optimization)
 
-	return &cursorEntry{
-		iter:       iter,
-		eventID:    eventID,
-		invertedTS: invertedTS,
-		selection:  sel,
-		filter:     filter,
+type queryCursor interface {
+	Valid() bool
+	InvertedTS() uint64
+	EventID() []byte
+	Next() bool
+	SeekGE(invertedTS uint64, eventID []byte) bool
+}
+
+// indexCursor wraps a Pebble iterator as a queryCursor.
+// Works with any key format that has inverted_ts and event_id at known offsets.
+type indexCursor struct {
+	iter            *pebble.Iterator
+	seekPrefix      []byte // key bytes before inverted_ts (for constructing SeekGE keys)
+	timestampOffset int
+	eventIDOffset   int
+	curInvertedTS   uint64
+	curEventID      []byte
+	curValid        bool
+}
+
+func newIndexCursor(iter *pebble.Iterator, seekPrefix []byte, timestampOffset, eventIDOffset int) *indexCursor {
+	c := &indexCursor{
+		iter:            iter,
+		seekPrefix:      seekPrefix,
+		timestampOffset: timestampOffset,
+		eventIDOffset:   eventIDOffset,
+	}
+	if iter.First() {
+		c.readCurrent()
+	}
+	return c
+}
+
+func (c *indexCursor) readCurrent() {
+	key := c.iter.Key()
+	c.curInvertedTS = binary.BigEndian.Uint64(key[c.timestampOffset : c.timestampOffset+8])
+	c.curEventID = make([]byte, 32)
+	copy(c.curEventID, key[c.eventIDOffset:c.eventIDOffset+32])
+	c.curValid = true
+}
+
+func (c *indexCursor) Valid() bool        { return c.curValid }
+func (c *indexCursor) InvertedTS() uint64 { return c.curInvertedTS }
+func (c *indexCursor) EventID() []byte    { return c.curEventID }
+
+func (c *indexCursor) Next() bool {
+	if !c.iter.Next() {
+		c.curValid = false
+		return false
+	}
+	c.readCurrent()
+	return true
+}
+
+func (c *indexCursor) SeekGE(invertedTS uint64, eventID []byte) bool {
+	seekKey := make([]byte, len(c.seekPrefix)+8+32)
+	copy(seekKey, c.seekPrefix)
+	binary.BigEndian.PutUint64(seekKey[len(c.seekPrefix):len(c.seekPrefix)+8], invertedTS)
+	copy(seekKey[len(c.seekPrefix)+8:], eventID)
+	if !c.iter.SeekGE(seekKey) {
+		c.curValid = false
+		return false
+	}
+	c.readCurrent()
+	return true
+}
+
+// unionCursor merges multiple queryCursors in sorted order (OR).
+type unionCursor struct {
+	h queryCursorHeap
+}
+
+func newUnionCursor(cursors []queryCursor) *unionCursor {
+	h := make(queryCursorHeap, 0, len(cursors))
+	for _, c := range cursors {
+		if c.Valid() {
+			h = append(h, c)
+		}
+	}
+	heap.Init(&h)
+	return &unionCursor{h: h}
+}
+
+func (c *unionCursor) Valid() bool        { return c.h.Len() > 0 }
+func (c *unionCursor) InvertedTS() uint64 { return c.h[0].InvertedTS() }
+func (c *unionCursor) EventID() []byte    { return c.h[0].EventID() }
+
+func (c *unionCursor) Next() bool {
+	if c.h.Len() == 0 {
+		return false
+	}
+	if c.h[0].Next() {
+		heap.Fix(&c.h, 0)
+	} else {
+		heap.Pop(&c.h)
+	}
+	return c.h.Len() > 0
+}
+
+func (c *unionCursor) SeekGE(invertedTS uint64, eventID []byte) bool {
+	newH := make(queryCursorHeap, 0, len(c.h))
+	for _, cur := range c.h {
+		if cur.SeekGE(invertedTS, eventID) {
+			newH = append(newH, cur)
+		}
+	}
+	c.h = newH
+	if len(c.h) > 0 {
+		heap.Init(&c.h)
+	}
+	return c.h.Len() > 0
+}
+
+// queryCursorHeap implements heap.Interface for queryCursor.
+// Sorted by (invertedTS ASC, eventID ASC) = (created_at DESC, id ASC).
+type queryCursorHeap []queryCursor
+
+func (h queryCursorHeap) Len() int { return len(h) }
+func (h queryCursorHeap) Less(i, j int) bool {
+	if h[i].InvertedTS() != h[j].InvertedTS() {
+		return h[i].InvertedTS() < h[j].InvertedTS()
+	}
+	return bytesLess(h[i].EventID(), h[j].EventID())
+}
+func (h queryCursorHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h *queryCursorHeap) Push(x any)   { *h = append(*h, x.(queryCursor)) }
+func (h *queryCursorHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	old[n-1] = nil
+	*h = old[:n-1]
+	return x
+}
+
+// intersectCursor produces the intersection of multiple queryCursors
+// via sort-merge join with SeekGE optimization.
+type intersectCursor struct {
+	cursors []queryCursor
+	valid   bool
+}
+
+func newIntersectCursor(cursors []queryCursor) *intersectCursor {
+	c := &intersectCursor{cursors: cursors}
+	c.findMatch()
+	return c
+}
+
+// findMatch advances cursors until all point to the same (invertedTS, eventID).
+func (c *intersectCursor) findMatch() {
+	for {
+		for _, cur := range c.cursors {
+			if !cur.Valid() {
+				c.valid = false
+				return
+			}
+		}
+
+		// Find the maximum (invertedTS, eventID) among all cursor heads.
+		// This is the "slowest" cursor — all others must catch up.
+		maxIdx := 0
+		for i := 1; i < len(c.cursors); i++ {
+			ci, cm := c.cursors[i], c.cursors[maxIdx]
+			if ci.InvertedTS() > cm.InvertedTS() ||
+				(ci.InvertedTS() == cm.InvertedTS() && bytesLess(cm.EventID(), ci.EventID())) {
+				maxIdx = i
+			}
+		}
+
+		maxTS := c.cursors[maxIdx].InvertedTS()
+		maxID := c.cursors[maxIdx].EventID()
+
+		// SeekGE all other cursors to at least (maxTS, maxID)
+		allMatch := true
+		for i, cur := range c.cursors {
+			if i == maxIdx {
+				continue
+			}
+			if cur.InvertedTS() == maxTS && bytes.Equal(cur.EventID(), maxID) {
+				continue // already at the right position
+			}
+			if !cur.SeekGE(maxTS, maxID) {
+				c.valid = false
+				return
+			}
+			if cur.InvertedTS() != maxTS || !bytes.Equal(cur.EventID(), maxID) {
+				allMatch = false
+			}
+		}
+
+		if allMatch {
+			c.valid = true
+			return
+		}
+		// Some cursor jumped past max — loop again to find new max
 	}
 }
 
-// indexSelection holds information about which index to use for a query.
-type indexSelection struct {
-	lowerBound      []byte
-	upperBound      []byte
-	eventIDOffset   int // position of event ID in the key
-	timestampOffset int // position of inverted_ts in the key (for since/until filtering)
+func (c *intersectCursor) Valid() bool        { return c.valid }
+func (c *intersectCursor) InvertedTS() uint64 { return c.cursors[0].InvertedTS() }
+func (c *intersectCursor) EventID() []byte    { return c.cursors[0].EventID() }
+
+func (c *intersectCursor) Next() bool {
+	if !c.valid {
+		return false
+	}
+	// Advance the first cursor (all are at the same position)
+	if !c.cursors[0].Next() {
+		c.valid = false
+		return false
+	}
+	c.findMatch()
+	return c.valid
 }
 
-// selectIndexes chooses the best indexes based on filter conditions.
-// Returns multiple indexSelections for multi-cursor merge.
-// Priority: authors > tags > kinds > created_at (fallback)
-// Also applies since/until bounds to narrow the time range.
-func (s *PebbleStorage) selectIndexes(filter *ReqFilter) []*indexSelection {
-	var selections []*indexSelection
+func (c *intersectCursor) SeekGE(invertedTS uint64, eventID []byte) bool {
+	for _, cur := range c.cursors {
+		if !cur.SeekGE(invertedTS, eventID) {
+			c.valid = false
+			return false
+		}
+	}
+	c.findMatch()
+	return c.valid
+}
 
-	// Authors: use pubkey index (most selective)
+// filterCursorPair associates a queryCursor with its filter for Match checking.
+type filterCursorPair struct {
+	cursor queryCursor
+	filter *ReqFilter
+}
+
+// filterCursorHeap implements heap.Interface for cross-filter merge (OR).
+type filterCursorHeap []*filterCursorPair
+
+func (h filterCursorHeap) Len() int { return len(h) }
+func (h filterCursorHeap) Less(i, j int) bool {
+	if h[i].cursor.InvertedTS() != h[j].cursor.InvertedTS() {
+		return h[i].cursor.InvertedTS() < h[j].cursor.InvertedTS()
+	}
+	return bytesLess(h[i].cursor.EventID(), h[j].cursor.EventID())
+}
+func (h filterCursorHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h *filterCursorHeap) Push(x any)   { *h = append(*h, x.(*filterCursorPair)) }
+func (h *filterCursorHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	old[n-1] = nil
+	*h = old[:n-1]
+	return x
+}
+
+// --- Filter cursor builder ---
+
+// buildFilterCursor creates a queryCursor tree for a single filter.
+// Uses combo hash indexes (0x0A) with sort-merge join for AND conditions.
+// Falls back to created_at index (0x02) when no conditions are specified.
+func (s *PebbleStorage) buildFilterCursor(snapshot *pebble.Snapshot, filter *ReqFilter, iters *[]*pebble.Iterator) (queryCursor, error) {
+	var conditionCursors []queryCursor
+
+	// Authors condition
 	if len(filter.Authors) > 0 {
+		var cursors []queryCursor
 		for _, author := range filter.Authors {
 			if len(author) != 64 {
-				continue // skip invalid pubkey (must be 64-char hex)
+				continue
 			}
-			pubkeyBytes := hexToBytes32(author)
-			// Key format: [0x03][pubkey:32][inverted_ts:8][id:32]
-			lower := make([]byte, 33)
-			lower[0] = prefixPubkey
-			copy(lower[1:33], pubkeyBytes)
-
-			upper := incrementBytes(lower)
-
-			sel := &indexSelection{
-				lowerBound:      lower,
-				upperBound:      upper,
-				eventIDOffset:   41, // 1 + 32 + 8
-				timestampOffset: 33, // 1 + 32
+			cur, err := s.newComboIndexCursor(snapshot, comboHashAuthor(author), filter, iters)
+			if err != nil {
+				return nil, err
 			}
-			sel.applyTimeBounds(filter)
-			selections = append(selections, sel)
+			cursors = append(cursors, cur)
 		}
-		return selections
+		if len(cursors) > 0 {
+			conditionCursors = append(conditionCursors, wrapCursors(cursors))
+		}
 	}
 
-	// Tags: use tag index
-	if tagName, tagValues := getTagFilter(filter); tagName != 0 {
-		for _, tagValue := range tagValues {
-			tagHash := hashTagValue(tagValue)
-			// Key format: [0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32]
-			lower := make([]byte, 34)
-			lower[0] = prefixTag
-			lower[1] = tagName
-			copy(lower[2:34], tagHash)
-
-			upper := incrementBytes(lower)
-
-			sel := &indexSelection{
-				lowerBound:      lower,
-				upperBound:      upper,
-				eventIDOffset:   42, // 1 + 1 + 32 + 8
-				timestampOffset: 34, // 1 + 1 + 32
-			}
-			sel.applyTimeBounds(filter)
-			selections = append(selections, sel)
-		}
-		return selections
-	}
-
-	// Kinds: use kind index
+	// Kinds condition
 	if len(filter.Kinds) > 0 {
+		var cursors []queryCursor
 		for _, kind := range filter.Kinds {
-			// Key format: [0x04][kind:8][inverted_ts:8][id:32]
-			lower := make([]byte, 9)
-			lower[0] = prefixKind
-			binary.BigEndian.PutUint64(lower[1:9], uint64(kind))
-
-			upper := make([]byte, 9)
-			upper[0] = prefixKind
-			binary.BigEndian.PutUint64(upper[1:9], uint64(kind+1))
-
-			sel := &indexSelection{
-				lowerBound:      lower,
-				upperBound:      upper,
-				eventIDOffset:   17, // 1 + 8 + 8
-				timestampOffset: 9,  // 1 + 8
+			cur, err := s.newComboIndexCursor(snapshot, comboHashKind(kind), filter, iters)
+			if err != nil {
+				return nil, err
 			}
-			sel.applyTimeBounds(filter)
-			selections = append(selections, sel)
+			cursors = append(cursors, cur)
 		}
-		return selections
+		if len(cursors) > 0 {
+			conditionCursors = append(conditionCursors, wrapCursors(cursors))
+		}
 	}
 
-	// Fallback: created_at index (full scan)
-	sel := &indexSelection{
-		lowerBound:      []byte{prefixCreatedAt},
-		upperBound:      []byte{prefixCreatedAt + 1},
-		eventIDOffset:   9, // 1 + 8
-		timestampOffset: 1, // 1
+	// Tag conditions (one group per tag name, AND between tag names)
+	for tagName, tagValues := range filter.Tags {
+		if len(tagName) != 1 || len(tagValues) == 0 {
+			continue
+		}
+		var cursors []queryCursor
+		for _, tagValue := range tagValues {
+			cur, err := s.newComboIndexCursor(snapshot, comboHashTag(tagName[0], tagValue), filter, iters)
+			if err != nil {
+				return nil, err
+			}
+			cursors = append(cursors, cur)
+		}
+		if len(cursors) > 0 {
+			conditionCursors = append(conditionCursors, wrapCursors(cursors))
+		}
 	}
-	sel.applyTimeBounds(filter)
 
-	return []*indexSelection{sel}
+	// No conditions -> fallback to created_at index (full scan)
+	if len(conditionCursors) == 0 {
+		return s.newCreatedAtCursor(snapshot, filter, iters)
+	}
+
+	// Single condition -> return directly (no intersection needed)
+	if len(conditionCursors) == 1 {
+		return conditionCursors[0], nil
+	}
+
+	// Multiple conditions -> sort-merge join (AND)
+	return newIntersectCursor(conditionCursors), nil
 }
 
-// applyTimeBounds adjusts lower/upper bounds based on since/until filters.
-func (sel *indexSelection) applyTimeBounds(filter *ReqFilter) {
-	// until: adjust lower bound (inverted_ts >= MaxInt64 - until)
+// wrapCursors returns a single cursor or a union of cursors.
+func wrapCursors(cursors []queryCursor) queryCursor {
+	if len(cursors) == 1 {
+		return cursors[0]
+	}
+	return newUnionCursor(cursors)
+}
+
+// newComboIndexCursor creates an indexCursor for a combo hash prefix with time bounds.
+func (s *PebbleStorage) newComboIndexCursor(snapshot *pebble.Snapshot, hash uint64, filter *ReqFilter, iters *[]*pebble.Iterator) (*indexCursor, error) {
+	prefix := make([]byte, 9)
+	prefix[0] = prefixCombo
+	binary.BigEndian.PutUint64(prefix[1:9], hash)
+
+	lower := prefix
+	upper := incrementBytes(prefix)
+
 	if filter.Until != nil {
 		invertedUntil := invertTimestamp(*filter.Until)
-		newLower := make([]byte, sel.timestampOffset+8)
-		copy(newLower, sel.lowerBound[:sel.timestampOffset])
-		binary.BigEndian.PutUint64(newLower[sel.timestampOffset:], invertedUntil)
-
-		// Only use if more restrictive than current lower bound
-		if len(sel.lowerBound) < len(newLower) || bytesLess(sel.lowerBound, newLower) {
-			sel.lowerBound = newLower
-		}
+		newLower := make([]byte, 17)
+		copy(newLower[:9], prefix)
+		binary.BigEndian.PutUint64(newLower[9:17], invertedUntil)
+		lower = newLower
 	}
-
-	// since: adjust upper bound (inverted_ts <= MaxInt64 - since)
 	if filter.Since != nil {
 		invertedSince := invertTimestamp(*filter.Since)
-		newUpper := make([]byte, sel.timestampOffset+8)
-		copy(newUpper, sel.upperBound[:sel.timestampOffset])
-		binary.BigEndian.PutUint64(newUpper[sel.timestampOffset:], invertedSince+1) // +1 for exclusive upper
-
-		// Only use if more restrictive than current upper bound
-		if len(sel.upperBound) > len(newUpper) || bytesLess(newUpper, sel.upperBound) {
-			sel.upperBound = newUpper
-		}
+		newUpper := make([]byte, 17)
+		copy(newUpper[:9], prefix)
+		binary.BigEndian.PutUint64(newUpper[9:17], invertedSince+1)
+		upper = newUpper
 	}
+
+	iter, err := snapshot.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create combo iterator: %w", err)
+	}
+	*iters = append(*iters, iter)
+
+	return newIndexCursor(iter, prefix, 9, 17), nil
+}
+
+// newCreatedAtCursor creates an indexCursor for the created_at fallback index.
+func (s *PebbleStorage) newCreatedAtCursor(snapshot *pebble.Snapshot, filter *ReqFilter, iters *[]*pebble.Iterator) (*indexCursor, error) {
+	lower := []byte{prefixCreatedAt}
+	upper := []byte{prefixCreatedAt + 1}
+
+	if filter.Until != nil {
+		invertedUntil := invertTimestamp(*filter.Until)
+		newLower := make([]byte, 9)
+		newLower[0] = prefixCreatedAt
+		binary.BigEndian.PutUint64(newLower[1:9], invertedUntil)
+		lower = newLower
+	}
+	if filter.Since != nil {
+		invertedSince := invertTimestamp(*filter.Since)
+		newUpper := make([]byte, 9)
+		newUpper[0] = prefixCreatedAt
+		binary.BigEndian.PutUint64(newUpper[1:9], invertedSince+1)
+		upper = newUpper
+	}
+
+	iter, err := snapshot.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create created_at iterator: %w", err)
+	}
+	*iters = append(*iters, iter)
+
+	return newIndexCursor(iter, []byte{prefixCreatedAt}, 1, 9), nil
 }
 
 // bytesLess returns true if a < b lexicographically.
@@ -578,20 +827,6 @@ func bytesLess(a, b []byte) bool {
 	return len(a) < len(b)
 }
 
-// getTagFilter returns the tag name and values if the filter has exactly one tag condition.
-// Returns (0, nil) if no single-letter tag filter is found.
-func getTagFilter(filter *ReqFilter) (byte, []string) {
-	if len(filter.Tags) != 1 {
-		return 0, nil
-	}
-	for tagName, values := range filter.Tags {
-		if len(tagName) == 1 && len(values) > 0 {
-			return tagName[0], values
-		}
-	}
-	return 0, nil
-}
-
 // incrementBytes returns a byte slice that is lexicographically
 // the next value after b. Used for creating exclusive upper bounds.
 func incrementBytes(b []byte) []byte {
@@ -606,44 +841,6 @@ func incrementBytes(b []byte) []byte {
 	}
 	// All bytes were 0xFF, append 0x00 (overflow case)
 	return append(result, 0)
-}
-
-// cursorEntry represents a single cursor in the multi-cursor merge.
-// It holds an iterator and its current position.
-type cursorEntry struct {
-	iter       *pebble.Iterator
-	eventID    []byte // current event ID (32 bytes)
-	invertedTS uint64 // for comparison (lower = newer)
-	selection  *indexSelection
-	filter     *ReqFilter // The filter this cursor belongs to (for Match check)
-}
-
-// cursorHeap implements heap.Interface for merging multiple cursors.
-// Sorted by (invertedTS ASC, eventID ASC) which gives (created_at DESC, id ASC).
-type cursorHeap []*cursorEntry
-
-func (h cursorHeap) Len() int { return len(h) }
-
-func (h cursorHeap) Less(i, j int) bool {
-	if h[i].invertedTS != h[j].invertedTS {
-		return h[i].invertedTS < h[j].invertedTS // Lower invertedTS = newer
-	}
-	return bytesLess(h[i].eventID, h[j].eventID) // Tie-break by ID ASC
-}
-
-func (h cursorHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
-
-func (h *cursorHeap) Push(x any) {
-	*h = append(*h, x.(*cursorEntry))
-}
-
-func (h *cursorHeap) Pop() any {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	old[n-1] = nil // avoid memory leak
-	*h = old[:n-1]
-	return x
 }
 
 // deletionRecordData holds information about a deletion request.

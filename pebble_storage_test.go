@@ -636,3 +636,173 @@ func TestPebbleStorage_Query_MultipleFilters_Dedup(t *testing.T) {
 
 	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[0].ID)
 }
+
+// Step 5: AND queries (sort-merge join via combo hash indexes)
+
+func TestPebbleStorage_Query_AuthorsAndKinds(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pubkey2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	// pubkey1, kind 1
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey1, 1, 100))
+	// pubkey1, kind 2
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey1, 2, 200))
+	// pubkey2, kind 1
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey2, 1, 300))
+	// pubkey1, kind 1 (newer)
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey1, 1, 400))
+
+	// AND: authors=[pubkey1] AND kinds=[1]
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		Authors: []string{pubkey1},
+		Kinds:   []int64{1},
+	}})
+	require.Len(t, events, 2)
+
+	// Should be sorted by created_at DESC
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID) // 400
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[1].ID) // 100
+}
+
+func TestPebbleStorage_Query_AuthorsAndTags(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pubkey2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	targetID := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+	// pubkey1 with tag
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey1, 1, 100, Tag{"e", targetID}))
+	// pubkey2 with tag (should NOT match)
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey2, 1, 200, Tag{"e", targetID}))
+	// pubkey1 without tag (should NOT match)
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey1, 1, 300))
+	// pubkey1 with tag (newer)
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey1, 1, 400, Tag{"e", targetID}))
+
+	// AND: authors=[pubkey1] AND #e=[targetID]
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		Authors: []string{pubkey1},
+		Tags:    map[string][]string{"e": {targetID}},
+	}})
+	require.Len(t, events, 2)
+
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID) // 400
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[1].ID) // 100
+}
+
+func TestPebbleStorage_Query_KindsAndTags(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	targetID := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+	// kind 1 with tag
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100, Tag{"e", targetID}))
+	// kind 2 with tag (should NOT match)
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 2, 200, Tag{"e", targetID}))
+	// kind 1 without tag (should NOT match)
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+	// kind 1 with tag (newer)
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400, Tag{"e", targetID}))
+
+	// AND: kinds=[1] AND #e=[targetID]
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		Kinds: []int64{1},
+		Tags:  map[string][]string{"e": {targetID}},
+	}})
+	require.Len(t, events, 2)
+
+	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID) // 400
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[1].ID) // 100
+}
+
+func TestPebbleStorage_Query_AuthorsAndKindsAndTags(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pubkey2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	targetID := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+	// Match: pubkey1, kind 1, has tag
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey1, 1, 100, Tag{"e", targetID}))
+	// No match: wrong pubkey
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey2, 1, 200, Tag{"e", targetID}))
+	// No match: wrong kind
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey1, 2, 300, Tag{"e", targetID}))
+	// No match: no tag
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey1, 1, 400))
+	// Match: pubkey1, kind 1, has tag (newest)
+	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey1, 1, 500, Tag{"e", targetID}))
+
+	// AND: authors=[pubkey1] AND kinds=[1] AND #e=[targetID]
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		Authors: []string{pubkey1},
+		Kinds:   []int64{1},
+		Tags:    map[string][]string{"e": {targetID}},
+	}})
+	require.Len(t, events, 2)
+
+	assert.Equal(t, "5555555555555555555555555555555555555555555555555555555555555555", events[0].ID) // 500
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[1].ID) // 100
+}
+
+func TestPebbleStorage_Query_AuthorsAndKindsWithLimit(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 2, 400)) // wrong kind
+
+	// AND: authors=[pubkey] AND kinds=[1], limit=2
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		Authors: []string{pubkey},
+		Kinds:   []int64{1},
+		Limit:   toPtr[int64](2),
+	}})
+	require.Len(t, events, 2)
+
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID) // 300
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[1].ID) // 200
+}
+
+func TestPebbleStorage_Query_MultipleAuthorsAndMultipleKinds(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pubkey2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	pubkey3 := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+	// pubkey1, kind 1
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey1, 1, 100))
+	// pubkey2, kind 7
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey2, 7, 200))
+	// pubkey3, kind 1 (wrong author)
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey3, 1, 300))
+	// pubkey1, kind 3 (wrong kind)
+	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey1, 3, 400))
+	// pubkey2, kind 1
+	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey2, 1, 500))
+
+	// AND: authors=[pubkey1, pubkey2] AND kinds=[1, 7]
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		Authors: []string{pubkey1, pubkey2},
+		Kinds:   []int64{1, 7},
+	}})
+	require.Len(t, events, 3)
+
+	assert.Equal(t, "5555555555555555555555555555555555555555555555555555555555555555", events[0].ID) // 500
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[1].ID) // 200
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[2].ID) // 100
+}
