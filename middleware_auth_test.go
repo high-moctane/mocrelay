@@ -237,6 +237,238 @@ func TestAuthMiddleware_SuccessfulAuth(t *testing.T) {
 	})
 }
 
+func TestAuthMiddleware_DifferentPubkeyEvent(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		downstream := NewNopHandler()
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		handler := middleware(downstream)
+
+		recv := make(chan *ClientMsg, 1)
+		send := make(chan *ServerMsg, 10)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go handler.ServeNostr(ctx, send, recv)
+
+		synctest.Wait()
+
+		// Get AUTH challenge
+		authMsg := <-send
+		challenge := authMsg.Message
+
+		// Authenticate as pubkey A
+		recv <- &ClientMsg{
+			Type: MsgTypeAuth,
+			Event: &Event{
+				ID:        "auth-event-id",
+				Pubkey:    "pubkey-a",
+				CreatedAt: time.Now(),
+				Kind:      22242,
+				Tags: []Tag{
+					{"relay", "wss://relay.example.com/"},
+					{"challenge", challenge},
+				},
+				Content: "",
+				Sig:     "valid-sig",
+			},
+		}
+
+		synctest.Wait()
+
+		// Drain OK
+		<-send
+
+		// Send EVENT with different pubkey B - should be rejected
+		recv <- &ClientMsg{
+			Type: MsgTypeEvent,
+			Event: &Event{
+				ID:        "event-from-b",
+				Pubkey:    "pubkey-b",
+				CreatedAt: time.Now(),
+				Kind:      1,
+				Tags:      []Tag{},
+				Content:   "test",
+				Sig:       "test-sig",
+			},
+		}
+
+		synctest.Wait()
+
+		select {
+		case msg := <-send:
+			if msg.Type != MsgTypeOK {
+				t.Errorf("expected OK message, got %v", msg.Type)
+			}
+			if msg.Accepted {
+				t.Error("expected accepted=false for unauthenticated pubkey")
+			}
+			if !strings.HasPrefix(msg.Message, "auth-required:") {
+				t.Errorf("expected auth-required prefix, got %q", msg.Message)
+			}
+		default:
+			t.Error("expected OK message, got nothing")
+		}
+
+		// Send EVENT with pubkey A - should succeed
+		recv <- &ClientMsg{
+			Type: MsgTypeEvent,
+			Event: &Event{
+				ID:        "event-from-a",
+				Pubkey:    "pubkey-a",
+				CreatedAt: time.Now(),
+				Kind:      1,
+				Tags:      []Tag{},
+				Content:   "test",
+				Sig:       "test-sig",
+			},
+		}
+
+		synctest.Wait()
+
+		select {
+		case msg := <-send:
+			if msg.Type != MsgTypeOK {
+				t.Errorf("expected OK message, got %v", msg.Type)
+			}
+			if !msg.Accepted {
+				t.Errorf("expected accepted=true, got false with message: %s", msg.Message)
+			}
+		default:
+			t.Error("expected OK message, got nothing")
+		}
+
+		cancel()
+	})
+}
+
+func TestAuthMiddleware_MultiplePubkeyAuth(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		downstream := NewNopHandler()
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		handler := middleware(downstream)
+
+		recv := make(chan *ClientMsg, 1)
+		send := make(chan *ServerMsg, 10)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go handler.ServeNostr(ctx, send, recv)
+
+		synctest.Wait()
+
+		// Get AUTH challenge
+		authMsg := <-send
+		challenge := authMsg.Message
+
+		// Authenticate as pubkey A
+		recv <- &ClientMsg{
+			Type: MsgTypeAuth,
+			Event: &Event{
+				ID:        "auth-a",
+				Pubkey:    "pubkey-a",
+				CreatedAt: time.Now(),
+				Kind:      22242,
+				Tags: []Tag{
+					{"relay", "wss://relay.example.com/"},
+					{"challenge", challenge},
+				},
+				Content: "",
+				Sig:     "valid-sig",
+			},
+		}
+
+		synctest.Wait()
+		<-send // Drain OK
+
+		// Authenticate as pubkey B
+		recv <- &ClientMsg{
+			Type: MsgTypeAuth,
+			Event: &Event{
+				ID:        "auth-b",
+				Pubkey:    "pubkey-b",
+				CreatedAt: time.Now(),
+				Kind:      22242,
+				Tags: []Tag{
+					{"relay", "wss://relay.example.com/"},
+					{"challenge", challenge},
+				},
+				Content: "",
+				Sig:     "valid-sig",
+			},
+		}
+
+		synctest.Wait()
+		<-send // Drain OK
+
+		// EVENT from pubkey A - should succeed
+		recv <- &ClientMsg{
+			Type: MsgTypeEvent,
+			Event: &Event{
+				ID:        "event-a",
+				Pubkey:    "pubkey-a",
+				CreatedAt: time.Now(),
+				Kind:      1,
+				Tags:      []Tag{},
+				Content:   "from A",
+				Sig:       "sig",
+			},
+		}
+
+		synctest.Wait()
+
+		msg := <-send
+		if !msg.Accepted {
+			t.Errorf("expected pubkey-a event accepted, got: %s", msg.Message)
+		}
+
+		// EVENT from pubkey B - should succeed
+		recv <- &ClientMsg{
+			Type: MsgTypeEvent,
+			Event: &Event{
+				ID:        "event-b",
+				Pubkey:    "pubkey-b",
+				CreatedAt: time.Now(),
+				Kind:      1,
+				Tags:      []Tag{},
+				Content:   "from B",
+				Sig:       "sig",
+			},
+		}
+
+		synctest.Wait()
+
+		msg = <-send
+		if !msg.Accepted {
+			t.Errorf("expected pubkey-b event accepted, got: %s", msg.Message)
+		}
+
+		// EVENT from pubkey C (not authenticated) - should be rejected
+		recv <- &ClientMsg{
+			Type: MsgTypeEvent,
+			Event: &Event{
+				ID:        "event-c",
+				Pubkey:    "pubkey-c",
+				CreatedAt: time.Now(),
+				Kind:      1,
+				Tags:      []Tag{},
+				Content:   "from C",
+				Sig:       "sig",
+			},
+		}
+
+		synctest.Wait()
+
+		msg = <-send
+		if msg.Accepted {
+			t.Error("expected pubkey-c event rejected")
+		}
+
+		cancel()
+	})
+}
+
 func TestAuthMiddleware_InvalidKind(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()

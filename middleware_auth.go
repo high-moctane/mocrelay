@@ -63,7 +63,7 @@ func (m *AuthMiddleware) HandleClientMsg(
 		return m.handleAuth(state, msg)
 
 	case MsgTypeEvent:
-		if !m.isAuthed(state) {
+		if !m.isAuthedPubkey(state, msg.Event.Pubkey) {
 			return nil, NewServerOKMsg(
 				msg.Event.ID,
 				false,
@@ -148,6 +148,13 @@ func (m *AuthMiddleware) isAuthed(state *authState) bool {
 	state.mu.RLock()
 	defer state.mu.RUnlock()
 	return len(state.authedPubkeys) > 0
+}
+
+func (m *AuthMiddleware) isAuthedPubkey(state *authState, pubkey string) bool {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	_, ok := state.authedPubkeys[pubkey]
+	return ok
 }
 
 // findTagValue finds the first tag with the given name and returns its value.
