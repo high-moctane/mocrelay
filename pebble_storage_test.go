@@ -637,7 +637,7 @@ func TestPebbleStorage_Query_MultipleFilters_Dedup(t *testing.T) {
 	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[0].ID)
 }
 
-// Step 5: AND queries (sort-merge join via combo hash indexes)
+// Step 5: AND queries (sort-merge join via field hash indexes)
 
 func TestPebbleStorage_Query_AuthorsAndKinds(t *testing.T) {
 	ctx := context.Background()

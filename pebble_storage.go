@@ -40,9 +40,9 @@ const (
 	// [0x05][addr_hash:32] -> [pubkey:32][created_at:8]
 	prefixDeletedAddr byte = 0x05
 
-	// Combo hash index (value is empty):
-	// [0x06][combo_hash:8][inverted_ts:8][event_id:32]
-	prefixCombo byte = 0x06
+	// Field hash index (value is empty):
+	// [0x06][field_hash:8][inverted_ts:8][event_id:32]
+	prefixField byte = 0x06
 )
 
 // PebbleStorage implements Storage using Pebble (LSM-tree based KV store).
@@ -242,14 +242,14 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 		return false, err
 	}
 
-	// Combo hash indexes
-	authorComboHash := comboHashAuthor(event.Pubkey)
-	if err := batch.Set(makeComboKey(authorComboHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
+	// Field hash indexes
+	authorHash := fieldHashAuthor(event.Pubkey)
+	if err := batch.Set(makeFieldKey(authorHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
 		return false, err
 	}
 
-	kindComboHash := comboHashKind(event.Kind)
-	if err := batch.Set(makeComboKey(kindComboHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
+	kindHash := fieldHashKind(event.Kind)
+	if err := batch.Set(makeFieldKey(kindHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
 		return false, err
 	}
 
@@ -257,8 +257,8 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 		if len(tag) < 2 || len(tag[0]) != 1 {
 			continue
 		}
-		tagComboHash := comboHashTag(tag[0][0], tag[1])
-		if err := batch.Set(makeComboKey(tagComboHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
+		tagHash := fieldHashTag(tag[0][0], tag[1])
+		if err := batch.Set(makeFieldKey(tagHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
 			return false, err
 		}
 	}
@@ -712,7 +712,7 @@ func (s *PebbleStorage) buildIDsCursor(snapshot *pebble.Snapshot, ids []string) 
 }
 
 // buildFilterCursor creates a queryCursor tree for a single filter.
-// Uses combo hash indexes (0x0A) with sort-merge join for AND conditions.
+// Uses field hash indexes (0x06) with sort-merge join for AND conditions.
 // Falls back to created_at index (0x02) when no conditions are specified.
 func (s *PebbleStorage) buildFilterCursor(snapshot *pebble.Snapshot, filter *ReqFilter, iters *[]*pebble.Iterator) (queryCursor, error) {
 	// If IDs are specified, use direct Get (most efficient path).
@@ -731,7 +731,7 @@ func (s *PebbleStorage) buildFilterCursor(snapshot *pebble.Snapshot, filter *Req
 			if len(author) != 64 {
 				continue
 			}
-			cur, err := s.newComboIndexCursor(snapshot, comboHashAuthor(author), filter, iters)
+			cur, err := s.newFieldIndexCursor(snapshot, fieldHashAuthor(author), filter, iters)
 			if err != nil {
 				return nil, err
 			}
@@ -746,7 +746,7 @@ func (s *PebbleStorage) buildFilterCursor(snapshot *pebble.Snapshot, filter *Req
 	if len(filter.Kinds) > 0 {
 		var cursors []queryCursor
 		for _, kind := range filter.Kinds {
-			cur, err := s.newComboIndexCursor(snapshot, comboHashKind(kind), filter, iters)
+			cur, err := s.newFieldIndexCursor(snapshot, fieldHashKind(kind), filter, iters)
 			if err != nil {
 				return nil, err
 			}
@@ -764,7 +764,7 @@ func (s *PebbleStorage) buildFilterCursor(snapshot *pebble.Snapshot, filter *Req
 		}
 		var cursors []queryCursor
 		for _, tagValue := range tagValues {
-			cur, err := s.newComboIndexCursor(snapshot, comboHashTag(tagName[0], tagValue), filter, iters)
+			cur, err := s.newFieldIndexCursor(snapshot, fieldHashTag(tagName[0], tagValue), filter, iters)
 			if err != nil {
 				return nil, err
 			}
@@ -797,10 +797,10 @@ func wrapCursors(cursors []queryCursor) queryCursor {
 	return newUnionCursor(cursors)
 }
 
-// newComboIndexCursor creates an indexCursor for a combo hash prefix with time bounds.
-func (s *PebbleStorage) newComboIndexCursor(snapshot *pebble.Snapshot, hash uint64, filter *ReqFilter, iters *[]*pebble.Iterator) (*indexCursor, error) {
+// newFieldIndexCursor creates an indexCursor for a field hash prefix with time bounds.
+func (s *PebbleStorage) newFieldIndexCursor(snapshot *pebble.Snapshot, hash uint64, filter *ReqFilter, iters *[]*pebble.Iterator) (*indexCursor, error) {
 	prefix := make([]byte, 9)
-	prefix[0] = prefixCombo
+	prefix[0] = prefixField
 	binary.BigEndian.PutUint64(prefix[1:9], hash)
 
 	lower := prefix
@@ -826,7 +826,7 @@ func (s *PebbleStorage) newComboIndexCursor(snapshot *pebble.Snapshot, hash uint
 		UpperBound: upper,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create combo iterator: %w", err)
+		return nil, fmt.Errorf("create field iterator: %w", err)
 	}
 	*iters = append(*iters, iter)
 
@@ -1094,14 +1094,14 @@ func (s *PebbleStorage) deleteEventFromBatch(batch *pebble.Batch, eventID []byte
 		return err
 	}
 
-	// Delete combo hash indexes
-	authorComboHash := comboHashAuthor(event.Pubkey)
-	if err := batch.Delete(makeComboKey(authorComboHash, invertedTS, eventID), pebble.Sync); err != nil {
+	// Delete field hash indexes
+	authorHash := fieldHashAuthor(event.Pubkey)
+	if err := batch.Delete(makeFieldKey(authorHash, invertedTS, eventID), pebble.Sync); err != nil {
 		return err
 	}
 
-	kindComboHash := comboHashKind(event.Kind)
-	if err := batch.Delete(makeComboKey(kindComboHash, invertedTS, eventID), pebble.Sync); err != nil {
+	kindHash := fieldHashKind(event.Kind)
+	if err := batch.Delete(makeFieldKey(kindHash, invertedTS, eventID), pebble.Sync); err != nil {
 		return err
 	}
 
@@ -1109,8 +1109,8 @@ func (s *PebbleStorage) deleteEventFromBatch(batch *pebble.Batch, eventID []byte
 		if len(tag) < 2 || len(tag[0]) != 1 {
 			continue
 		}
-		tagComboHash := comboHashTag(tag[0][0], tag[1])
-		if err := batch.Delete(makeComboKey(tagComboHash, invertedTS, eventID), pebble.Sync); err != nil {
+		tagHash := fieldHashTag(tag[0][0], tag[1])
+		if err := batch.Delete(makeFieldKey(tagHash, invertedTS, eventID), pebble.Sync); err != nil {
 			return err
 		}
 	}
@@ -1141,7 +1141,7 @@ func invertTimestamp(ts int64) uint64 {
 	return uint64(math.MaxInt64 - ts)
 }
 
-// Combo hash helpers using FNV-1a 64-bit.
+// Field hash helpers using FNV-1a 64-bit.
 // NUL (\x00) is used as delimiter to prevent injection attacks
 // (JSON strings cannot contain NUL bytes).
 
@@ -1151,23 +1151,23 @@ func fnvHash(input string) uint64 {
 	return h.Sum64()
 }
 
-func comboHashAuthor(pubkeyHex string) uint64 {
+func fieldHashAuthor(pubkeyHex string) uint64 {
 	return fnvHash("author\x00" + pubkeyHex)
 }
 
-func comboHashKind(kind int64) uint64 {
+func fieldHashKind(kind int64) uint64 {
 	return fnvHash("kind\x00" + strconv.FormatInt(kind, 10))
 }
 
-func comboHashTag(tagName byte, tagValue string) uint64 {
+func fieldHashTag(tagName byte, tagValue string) uint64 {
 	return fnvHash(string(tagName) + "\x00" + tagValue)
 }
 
-// makeComboKey constructs a combo hash index key.
-// Key format: [0x0A][combo_hash:8][inverted_ts:8][event_id:32] = 49 bytes
-func makeComboKey(hash uint64, invertedTS uint64, eventID []byte) []byte {
+// makeFieldKey constructs a field hash index key.
+// Key format: [0x06][field_hash:8][inverted_ts:8][event_id:32] = 49 bytes
+func makeFieldKey(hash uint64, invertedTS uint64, eventID []byte) []byte {
 	key := make([]byte, 49)
-	key[0] = prefixCombo
+	key[0] = prefixField
 	binary.BigEndian.PutUint64(key[1:9], hash)
 	binary.BigEndian.PutUint64(key[9:17], invertedTS)
 	copy(key[17:49], eventID)
