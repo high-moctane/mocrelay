@@ -9,8 +9,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"iter"
 	"math"
+	"strconv"
 	"sync"
 
 	"github.com/cockroachdb/pebble"
@@ -35,6 +37,10 @@ const (
 
 	// Replaceable/Addressable: [0x06][addr_hash:32] -> [event_id:32]
 	prefixAddr byte = 0x06
+
+	// Combo hash index (value is empty):
+	// [0x0A][combo_hash:8][inverted_ts:8][event_id:32]
+	prefixCombo byte = 0x0A
 
 	// Deletion markers:
 	// [0x08][event_id:32] -> [pubkey:32][created_at:8]
@@ -262,6 +268,27 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 		tagHash := hashTagValue(tag[1])
 		tagKey := makeTagKey(tagName, tagHash, invertedTS, eventIDBytes)
 		if err := batch.Set(tagKey, nil, pebble.Sync); err != nil {
+			return false, err
+		}
+	}
+
+	// Combo hash indexes
+	authorComboHash := comboHashAuthor(event.Pubkey)
+	if err := batch.Set(makeComboKey(authorComboHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
+		return false, err
+	}
+
+	kindComboHash := comboHashKind(event.Kind)
+	if err := batch.Set(makeComboKey(kindComboHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
+		return false, err
+	}
+
+	for _, tag := range event.Tags {
+		if len(tag) < 2 || len(tag[0]) != 1 {
+			continue
+		}
+		tagComboHash := comboHashTag(tag[0][0], tag[1])
+		if err := batch.Set(makeComboKey(tagComboHash, invertedTS, eventIDBytes), nil, pebble.Sync); err != nil {
 			return false, err
 		}
 	}
@@ -844,6 +871,27 @@ func (s *PebbleStorage) deleteEventFromBatch(batch *pebble.Batch, eventID []byte
 		}
 	}
 
+	// Delete combo hash indexes
+	authorComboHash := comboHashAuthor(event.Pubkey)
+	if err := batch.Delete(makeComboKey(authorComboHash, invertedTS, eventID), pebble.Sync); err != nil {
+		return err
+	}
+
+	kindComboHash := comboHashKind(event.Kind)
+	if err := batch.Delete(makeComboKey(kindComboHash, invertedTS, eventID), pebble.Sync); err != nil {
+		return err
+	}
+
+	for _, tag := range event.Tags {
+		if len(tag) < 2 || len(tag[0]) != 1 {
+			continue
+		}
+		tagComboHash := comboHashTag(tag[0][0], tag[1])
+		if err := batch.Delete(makeComboKey(tagComboHash, invertedTS, eventID), pebble.Sync); err != nil {
+			return err
+		}
+	}
+
 	// Note: We don't delete the addr index here because the caller will overwrite it
 
 	return nil
@@ -896,6 +944,39 @@ func makeTagKey(tagName byte, tagHash []byte, invertedTS uint64, eventID []byte)
 
 func invertTimestamp(ts int64) uint64 {
 	return uint64(math.MaxInt64 - ts)
+}
+
+// Combo hash helpers using FNV-1a 64-bit.
+// NUL (\x00) is used as delimiter to prevent injection attacks
+// (JSON strings cannot contain NUL bytes).
+
+func fnvHash(input string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(input))
+	return h.Sum64()
+}
+
+func comboHashAuthor(pubkeyHex string) uint64 {
+	return fnvHash("author\x00" + pubkeyHex)
+}
+
+func comboHashKind(kind int64) uint64 {
+	return fnvHash("kind\x00" + strconv.FormatInt(kind, 10))
+}
+
+func comboHashTag(tagName byte, tagValue string) uint64 {
+	return fnvHash(string(tagName) + "\x00" + tagValue)
+}
+
+// makeComboKey constructs a combo hash index key.
+// Key format: [0x0A][combo_hash:8][inverted_ts:8][event_id:32] = 49 bytes
+func makeComboKey(hash uint64, invertedTS uint64, eventID []byte) []byte {
+	key := make([]byte, 49)
+	key[0] = prefixCombo
+	binary.BigEndian.PutUint64(key[1:9], hash)
+	binary.BigEndian.PutUint64(key[9:17], invertedTS)
+	copy(key[17:49], eventID)
+	return key
 }
 
 func hashTagValue(value string) []byte {
