@@ -470,24 +470,28 @@ Primary data:
 
 Indexes (empty value):
 [0x02][inverted_ts:8][id:32]                          (41 bytes)
-[0x03][pubkey:32][inverted_ts:8][id:32]               (73 bytes)
-[0x04][kind:8][inverted_ts:8][id:32]                  (49 bytes)
-[0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32] (74 bytes)
+[0x06][field_hash:8][inverted_ts:8][id:32]            (49 bytes)
 
-Replaceable/Addressable specific (value is event_id:32):
-[0x06][addr_hash:32]  → [event_id:32]  (33 bytes key)
+Replaceable/Addressable (value is event_id:32):
+[0x03][addr_hash:32]  → [event_id:32]                 (33 bytes key)
 
 Deletion markers:
-[0x08][event_id:32]   → [pubkey:32][created_at:8]  (33 bytes key, 40 bytes value)
-[0x09][addr_hash:32]  → [pubkey:32][created_at:8]  (33 bytes key, 40 bytes value)
+[0x04][event_id:32]   → [pubkey:32][created_at:8]     (33 bytes key, 40 bytes value)
+[0x05][addr_hash:32]  → [pubkey:32][created_at:8]     (33 bytes key, 40 bytes value)
 ```
-
-- **addr_hash**: `SHA256("kind:pubkey:d-tag")` unified (replaceable uses empty d-tag)
 
 - **Binary fixed-length**: Simple parsing, predictable key length
 - **inverted_ts**: `math.MaxInt64 - created_at` (descending order in lexical sort)
-- **tag_hash**: SHA256(tag_value) fixed 32 bytes (collision negligible)
-- **No compound indexes**: Use Multi-Cursor Merge, add later if needed
+- **addr_hash**: `SHA256("kind:pubkey:d-tag")` unified (replaceable uses empty d-tag)
+- **field_hash**: FNV-1a 64-bit hash of each field (author, kind, tag). NUL delimiter to prevent injection
+
+**Query architecture (queryCursor tree)**:
+- **indexCursor**: Wraps a single Pebble iterator (leaf node)
+- **unionCursor**: Heap-based OR merge of multiple cursors
+- **intersectCursor**: Sort-merge join with SeekGE optimization (AND)
+- **sliceCursor**: Pre-sorted slice for IDs filter (direct Get, no scan)
+- Filter `{authors: [A,B], kinds: [1,7]}` → `intersect(union(A,B), union(kind1,kind7))`
+- IDs filter short-circuits to direct `[0x01][event_id]` Get (O(1) per event)
 
 **Full-text search (NIP-50)**:
 - Not supported in Pebble
