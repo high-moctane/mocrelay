@@ -13,6 +13,7 @@ import (
 	"hash/fnv"
 	"iter"
 	"math"
+	"sort"
 	"strconv"
 	"sync"
 
@@ -637,6 +638,44 @@ func (c *intersectCursor) SeekGE(invertedTS uint64, eventID []byte) bool {
 	return c.valid
 }
 
+// sliceCursor is a queryCursor backed by a pre-sorted slice of (invertedTS, eventID) pairs.
+// Used for IDs filter where events are fetched by direct Get and then sorted.
+type sliceCursor struct {
+	entries []sliceCursorEntry
+	pos     int
+}
+
+type sliceCursorEntry struct {
+	invertedTS uint64
+	eventID    []byte
+}
+
+func newSliceCursor(entries []sliceCursorEntry) *sliceCursor {
+	return &sliceCursor{entries: entries}
+}
+
+func (c *sliceCursor) Valid() bool        { return c.pos < len(c.entries) }
+func (c *sliceCursor) InvertedTS() uint64 { return c.entries[c.pos].invertedTS }
+func (c *sliceCursor) EventID() []byte    { return c.entries[c.pos].eventID }
+
+func (c *sliceCursor) Next() bool {
+	c.pos++
+	return c.pos < len(c.entries)
+}
+
+func (c *sliceCursor) SeekGE(invertedTS uint64, eventID []byte) bool {
+	remaining := c.entries[c.pos:]
+	idx := sort.Search(len(remaining), func(i int) bool {
+		e := remaining[i]
+		if e.invertedTS != invertedTS {
+			return e.invertedTS >= invertedTS
+		}
+		return bytes.Compare(e.eventID, eventID) >= 0
+	})
+	c.pos += idx
+	return c.pos < len(c.entries)
+}
+
 // filterCursorPair associates a queryCursor with its filter for Match checking.
 type filterCursorPair struct {
 	cursor queryCursor
@@ -666,10 +705,55 @@ func (h *filterCursorHeap) Pop() any {
 
 // --- Filter cursor builder ---
 
+// buildIDsCursor creates a sliceCursor by directly fetching events by their IDs.
+// This is the most efficient path for IDs filter — O(1) per event via Pebble Get.
+func (s *PebbleStorage) buildIDsCursor(snapshot *pebble.Snapshot, ids []string) (queryCursor, error) {
+	var entries []sliceCursorEntry
+
+	for _, id := range ids {
+		if len(id) != 64 {
+			continue
+		}
+		eventIDBytes := hexToBytes32(id)
+		event, err := s.getEventByIDFromSnapshot(snapshot, eventIDBytes)
+		if err != nil {
+			return nil, fmt.Errorf("get event by id: %w", err)
+		}
+		if event == nil {
+			continue // not found
+		}
+		entries = append(entries, sliceCursorEntry{
+			invertedTS: invertTimestamp(event.CreatedAt.Unix()),
+			eventID:    eventIDBytes,
+		})
+	}
+
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	// Sort by (invertedTS ASC, eventID ASC) = (created_at DESC, id ASC)
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].invertedTS != entries[j].invertedTS {
+			return entries[i].invertedTS < entries[j].invertedTS
+		}
+		return bytesLess(entries[i].eventID, entries[j].eventID)
+	})
+
+	return newSliceCursor(entries), nil
+}
+
 // buildFilterCursor creates a queryCursor tree for a single filter.
 // Uses combo hash indexes (0x0A) with sort-merge join for AND conditions.
 // Falls back to created_at index (0x02) when no conditions are specified.
 func (s *PebbleStorage) buildFilterCursor(snapshot *pebble.Snapshot, filter *ReqFilter, iters *[]*pebble.Iterator) (queryCursor, error) {
+	// If IDs are specified, use direct Get (most efficient path).
+	// Other conditions (authors, kinds, tags, since, until) are checked
+	// by filter.Match() in the outer Query loop.
+	if len(filter.IDs) > 0 {
+		return s.buildIDsCursor(snapshot, filter.IDs)
+	}
+
 	var conditionCursors []queryCursor
 
 	// Authors condition

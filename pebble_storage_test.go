@@ -806,3 +806,131 @@ func TestPebbleStorage_Query_MultipleAuthorsAndMultipleKinds(t *testing.T) {
 	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[1].ID) // 200
 	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[2].ID) // 100
 }
+
+// --- IDs direct Get tests ---
+
+func TestPebbleStorage_Query_FilterByIDs(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+
+	// Query specific IDs
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		IDs: []string{
+			"1111111111111111111111111111111111111111111111111111111111111111",
+			"3333333333333333333333333333333333333333333333333333333333333333",
+		},
+	}})
+	require.Len(t, events, 2)
+
+	// Should be sorted by created_at DESC
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[1].ID)
+}
+
+func TestPebbleStorage_Query_FilterByIDs_WithLimit(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		IDs: []string{
+			"1111111111111111111111111111111111111111111111111111111111111111",
+			"2222222222222222222222222222222222222222222222222222222222222222",
+			"3333333333333333333333333333333333333333333333333333333333333333",
+		},
+		Limit: toPtr[int64](2),
+	}})
+	require.Len(t, events, 2)
+
+	// Should be the 2 newest
+	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[1].ID)
+}
+
+func TestPebbleStorage_Query_FilterByIDs_NonExistent(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+
+	// Query with mix of existing and non-existing IDs
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		IDs: []string{
+			"1111111111111111111111111111111111111111111111111111111111111111",
+			"9999999999999999999999999999999999999999999999999999999999999999", // doesn't exist
+		},
+	}})
+	require.Len(t, events, 1)
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[0].ID)
+}
+
+func TestPebbleStorage_Query_FilterByIDs_AllNonExistent(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		IDs: []string{
+			"9999999999999999999999999999999999999999999999999999999999999999",
+		},
+	}})
+	assert.Nil(t, events)
+}
+
+func TestPebbleStorage_Query_FilterByIDsAndAuthors(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey1 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pubkey2 := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey1, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey2, 1, 200))
+
+	// IDs has both, but authors restricts to pubkey1 only
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		IDs: []string{
+			"1111111111111111111111111111111111111111111111111111111111111111",
+			"2222222222222222222222222222222222222222222222222222222222222222",
+		},
+		Authors: []string{pubkey1},
+	}})
+	require.Len(t, events, 1)
+	assert.Equal(t, "1111111111111111111111111111111111111111111111111111111111111111", events[0].ID)
+}
+
+func TestPebbleStorage_Query_FilterByIDsAndSinceUntil(t *testing.T) {
+	ctx := context.Background()
+	s := setupPebbleStorage(t)
+
+	pubkey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	_, _ = s.Store(ctx, makeEvent("1111111111111111111111111111111111111111111111111111111111111111", pubkey, 1, 100))
+	_, _ = s.Store(ctx, makeEvent("2222222222222222222222222222222222222222222222222222222222222222", pubkey, 1, 200))
+	_, _ = s.Store(ctx, makeEvent("3333333333333333333333333333333333333333333333333333333333333333", pubkey, 1, 300))
+
+	// IDs has all 3, but since/until restricts to created_at 150-250
+	events := queryPebble(t, s, ctx, []*ReqFilter{{
+		IDs: []string{
+			"1111111111111111111111111111111111111111111111111111111111111111",
+			"2222222222222222222222222222222222222222222222222222222222222222",
+			"3333333333333333333333333333333333333333333333333333333333333333",
+		},
+		Since: toPtr[int64](150),
+		Until: toPtr[int64](250),
+	}})
+	require.Len(t, events, 1)
+	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[0].ID)
+}
