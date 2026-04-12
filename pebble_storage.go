@@ -27,28 +27,22 @@ const (
 	// Main data: [0x01][event_id:32] -> event_json
 	prefixEvent byte = 0x01
 
-	// Indexes (value is empty):
+	// Index (value is empty):
 	// [0x02][inverted_ts:8][id:32]
 	prefixCreatedAt byte = 0x02
-	// [0x03][pubkey:32][inverted_ts:8][id:32]
-	prefixPubkey byte = 0x03
-	// [0x04][kind:8][inverted_ts:8][id:32]
-	prefixKind byte = 0x04
-	// [0x05][tag_name:1][tag_hash:32][inverted_ts:8][id:32]
-	prefixTag byte = 0x05
 
-	// Replaceable/Addressable: [0x06][addr_hash:32] -> [event_id:32]
-	prefixAddr byte = 0x06
-
-	// Combo hash index (value is empty):
-	// [0x0A][combo_hash:8][inverted_ts:8][event_id:32]
-	prefixCombo byte = 0x0A
+	// Replaceable/Addressable: [0x03][addr_hash:32] -> [event_id:32]
+	prefixAddr byte = 0x03
 
 	// Deletion markers:
-	// [0x08][event_id:32] -> [pubkey:32][created_at:8]
-	prefixDeletedID byte = 0x08
-	// [0x09][addr_hash:32] -> [pubkey:32][created_at:8]
-	prefixDeletedAddr byte = 0x09
+	// [0x04][event_id:32] -> [pubkey:32][created_at:8]
+	prefixDeletedID byte = 0x04
+	// [0x05][addr_hash:32] -> [pubkey:32][created_at:8]
+	prefixDeletedAddr byte = 0x05
+
+	// Combo hash index (value is empty):
+	// [0x06][combo_hash:8][inverted_ts:8][event_id:32]
+	prefixCombo byte = 0x06
 )
 
 // PebbleStorage implements Storage using Pebble (LSM-tree based KV store).
@@ -241,37 +235,11 @@ func (s *PebbleStorage) Store(ctx context.Context, event *Event) (bool, error) {
 
 	// Write indexes
 	invertedTS := invertTimestamp(event.CreatedAt.Unix())
-	pubkeyBytes := hexToBytes32(event.Pubkey)
 
 	// Created at index
 	createdAtKey := makeCreatedAtKey(invertedTS, eventIDBytes)
 	if err := batch.Set(createdAtKey, nil, pebble.Sync); err != nil {
 		return false, err
-	}
-
-	// Pubkey index
-	pubkeyKey := makePubkeyKey(pubkeyBytes, invertedTS, eventIDBytes)
-	if err := batch.Set(pubkeyKey, nil, pebble.Sync); err != nil {
-		return false, err
-	}
-
-	// Kind index
-	kindKey := makeKindKey(event.Kind, invertedTS, eventIDBytes)
-	if err := batch.Set(kindKey, nil, pebble.Sync); err != nil {
-		return false, err
-	}
-
-	// Tag indexes (single-letter tags only)
-	for _, tag := range event.Tags {
-		if len(tag) < 2 || len(tag[0]) != 1 {
-			continue
-		}
-		tagName := tag[0][0]
-		tagHash := hashTagValue(tag[1])
-		tagKey := makeTagKey(tagName, tagHash, invertedTS, eventIDBytes)
-		if err := batch.Set(tagKey, nil, pebble.Sync); err != nil {
-			return false, err
-		}
 	}
 
 	// Combo hash indexes
@@ -1113,7 +1081,6 @@ func (s *PebbleStorage) deleteEventFromBatch(batch *pebble.Batch, eventID []byte
 	}
 
 	invertedTS := invertTimestamp(event.CreatedAt.Unix())
-	pubkeyBytes := hexToBytes32(event.Pubkey)
 
 	// Delete main event data
 	eventKey := makeEventKey(eventID)
@@ -1125,31 +1092,6 @@ func (s *PebbleStorage) deleteEventFromBatch(batch *pebble.Batch, eventID []byte
 	createdAtKey := makeCreatedAtKey(invertedTS, eventID)
 	if err := batch.Delete(createdAtKey, pebble.Sync); err != nil {
 		return err
-	}
-
-	// Delete pubkey index
-	pubkeyKey := makePubkeyKey(pubkeyBytes, invertedTS, eventID)
-	if err := batch.Delete(pubkeyKey, pebble.Sync); err != nil {
-		return err
-	}
-
-	// Delete kind index
-	kindKey := makeKindKey(event.Kind, invertedTS, eventID)
-	if err := batch.Delete(kindKey, pebble.Sync); err != nil {
-		return err
-	}
-
-	// Delete tag indexes
-	for _, tag := range event.Tags {
-		if len(tag) < 2 || len(tag[0]) != 1 {
-			continue
-		}
-		tagName := tag[0][0]
-		tagHash := hashTagValue(tag[1])
-		tagKey := makeTagKey(tagName, tagHash, invertedTS, eventID)
-		if err := batch.Delete(tagKey, pebble.Sync); err != nil {
-			return err
-		}
 	}
 
 	// Delete combo hash indexes
@@ -1195,34 +1137,6 @@ func makeCreatedAtKey(invertedTS uint64, eventID []byte) []byte {
 	return key
 }
 
-func makePubkeyKey(pubkey []byte, invertedTS uint64, eventID []byte) []byte {
-	key := make([]byte, 73)
-	key[0] = prefixPubkey
-	copy(key[1:33], pubkey)
-	binary.BigEndian.PutUint64(key[33:41], invertedTS)
-	copy(key[41:], eventID)
-	return key
-}
-
-func makeKindKey(kind int64, invertedTS uint64, eventID []byte) []byte {
-	key := make([]byte, 49)
-	key[0] = prefixKind
-	binary.BigEndian.PutUint64(key[1:9], uint64(kind))
-	binary.BigEndian.PutUint64(key[9:17], invertedTS)
-	copy(key[17:], eventID)
-	return key
-}
-
-func makeTagKey(tagName byte, tagHash []byte, invertedTS uint64, eventID []byte) []byte {
-	key := make([]byte, 74)
-	key[0] = prefixTag
-	key[1] = tagName
-	copy(key[2:34], tagHash)
-	binary.BigEndian.PutUint64(key[34:42], invertedTS)
-	copy(key[42:], eventID)
-	return key
-}
-
 func invertTimestamp(ts int64) uint64 {
 	return uint64(math.MaxInt64 - ts)
 }
@@ -1258,11 +1172,6 @@ func makeComboKey(hash uint64, invertedTS uint64, eventID []byte) []byte {
 	binary.BigEndian.PutUint64(key[9:17], invertedTS)
 	copy(key[17:49], eventID)
 	return key
-}
-
-func hashTagValue(value string) []byte {
-	h := sha256.Sum256([]byte(value))
-	return h[:]
 }
 
 func makeAddrKey(addrHash []byte) []byte {
