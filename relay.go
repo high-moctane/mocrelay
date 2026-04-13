@@ -33,8 +33,8 @@ type Relay struct {
 	// Default: 30 seconds
 	PingInterval time.Duration
 
-	// PingTimeout is the timeout for WebSocket ping responses.
-	// If a pong is not received within this duration, the connection is closed.
+	// PingTimeout is the timeout for WebSocket ping responses and write operations.
+	// If a pong or write does not complete within this duration, the connection is closed.
 	// Default: 10 seconds
 	PingTimeout time.Duration
 
@@ -195,7 +195,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	recv := make(chan *ClientMsg)
-	send := make(chan *ServerMsg)
+	send := make(chan *ServerMsg, 128)
 
 	errs := make(chan error, 2)
 	var wg sync.WaitGroup
@@ -350,8 +350,13 @@ func (r *Relay) writeLoop(
 				continue
 			}
 
-			if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-				return err
+			writeCtx, writeCancel := context.WithTimeout(ctx, timeout)
+
+			err = conn.Write(writeCtx, websocket.MessageText, data)
+			writeCancel()
+
+			if err != nil {
+				return fmt.Errorf("write: %w", err)
 			}
 
 			// Metrics: message sent

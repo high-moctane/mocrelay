@@ -51,6 +51,27 @@ func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
 	return m
 }
 
+// RouterMetrics holds Prometheus metrics for Router.
+type RouterMetrics struct {
+	MessagesDropped prometheus.Counter
+}
+
+// NewRouterMetrics creates and registers Router metrics with the given registry.
+func NewRouterMetrics(reg prometheus.Registerer) *RouterMetrics {
+	m := &RouterMetrics{
+		MessagesDropped: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_router_messages_dropped_total",
+			Help: "Total number of messages dropped due to full send channel",
+		}),
+	}
+
+	reg.MustRegister(
+		m.MessagesDropped,
+	)
+
+	return m
+}
+
 // AuthMetrics holds Prometheus metrics for AuthMiddleware.
 type AuthMetrics struct {
 	AuthTotal                       *prometheus.CounterVec

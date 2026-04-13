@@ -16,6 +16,10 @@ type Router struct {
 
 	// connections maps connection ID to connection info.
 	connections map[string]*routerConnection
+
+	// Metrics is the Prometheus metrics collector for Router.
+	// If nil, no metrics are collected.
+	Metrics *RouterMetrics
 }
 
 // routerConnection represents a single client connection.
@@ -100,6 +104,9 @@ func (r *Router) Broadcast(event *Event) {
 				case conn.sendCh <- NewServerEventMsg(subID, event):
 				default:
 					// Channel full, drop message
+					if r.Metrics != nil {
+						r.Metrics.MessagesDropped.Inc()
+					}
 				}
 				// Don't break: same event could match multiple subscriptions
 				// But we only send once per subscription
