@@ -47,6 +47,10 @@ type Relay struct {
 	// If set, the relay will collect connection and message metrics.
 	Metrics *RelayMetrics
 
+	// ConnIDFunc generates a unique connection ID string.
+	// If nil, a default monotonic counter ("1", "2", ...) is used.
+	ConnIDFunc func() string
+
 	mu      sync.Mutex
 	wg      sync.WaitGroup
 	connID  uint64
@@ -152,9 +156,17 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	connID := r.registerConn(cancel)
-	defer r.unregisterConn(connID)
+	internalID := r.registerConn(cancel)
+	defer r.unregisterConn(internalID)
 
+	var connID string
+	if r.ConnIDFunc != nil {
+		connID = r.ConnIDFunc()
+	} else {
+		connID = strconv.FormatUint(internalID, 10)
+	}
+
+	ctx = ContextWithConnID(ctx, connID)
 	logger := r.logger().With("conn_id", connID)
 	ctx = ContextWithLogger(ctx, logger)
 

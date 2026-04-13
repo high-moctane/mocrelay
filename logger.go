@@ -22,3 +22,19 @@ func LoggerFromContext(ctx context.Context) *slog.Logger {
 	}
 	return slog.Default()
 }
+
+type connIDKey struct{}
+
+// ContextWithConnID returns a new context with the given connection ID.
+func ContextWithConnID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, connIDKey{}, id)
+}
+
+// ConnIDFromContext returns the connection ID from the context.
+// If no connection ID is found, it returns an empty string.
+func ConnIDFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(connIDKey{}).(string); ok {
+		return id
+	}
+	return ""
+}
