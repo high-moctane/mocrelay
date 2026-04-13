@@ -20,6 +20,10 @@ type AuthMiddleware struct {
 	// CreatedAtTolerance is the maximum age of auth events.
 	// Default: 10 minutes (as recommended by NIP-42)
 	CreatedAtTolerance time.Duration
+
+	// Metrics is the Prometheus metrics collector for authentication.
+	// If nil, no metrics are collected.
+	Metrics *AuthMetrics
 }
 
 // authState holds per-connection authentication state.
@@ -27,6 +31,7 @@ type authState struct {
 	mu            sync.RWMutex
 	challenge     string
 	authedPubkeys map[string]struct{}
+	authenticated bool // true after first successful auth (for gauge tracking)
 }
 
 type authCtxKey struct{}
@@ -49,6 +54,17 @@ func (m *AuthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerM
 }
 
 func (m *AuthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+	if m.Metrics != nil {
+		state := ctx.Value(authCtxKey{}).(*authState)
+		state.mu.RLock()
+		authenticated := state.authenticated
+		state.mu.RUnlock()
+
+		if authenticated {
+			m.Metrics.AuthenticatedConnectionsCurrent.Dec()
+		}
+	}
+
 	return nil, nil
 }
 
@@ -64,6 +80,9 @@ func (m *AuthMiddleware) HandleClientMsg(
 
 	case MsgTypeEvent:
 		if !m.isAuthedPubkey(state, msg.Event.Pubkey) {
+			if m.Metrics != nil {
+				m.Metrics.RejectionsTotal.WithLabelValues("event_unauthenticated").Inc()
+			}
 			return nil, NewServerOKMsg(
 				msg.Event.ID,
 				false,
@@ -74,6 +93,9 @@ func (m *AuthMiddleware) HandleClientMsg(
 
 	case MsgTypeReq:
 		if !m.isAuthed(state) {
+			if m.Metrics != nil {
+				m.Metrics.RejectionsTotal.WithLabelValues("req_unauthenticated").Inc()
+			}
 			return nil, NewServerClosedMsg(
 				msg.SubscriptionID,
 				"auth-required: authentication required to subscribe",
@@ -103,6 +125,9 @@ func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 
 	// Validate kind
 	if event.Kind != 22242 {
+		if m.Metrics != nil {
+			m.Metrics.AuthTotal.WithLabelValues("invalid_kind").Inc()
+		}
 		return nil, NewServerOKMsg(event.ID, false, "invalid: auth event must be kind 22242"), nil
 	}
 
@@ -113,6 +138,9 @@ func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 	}
 	now := time.Now()
 	if event.CreatedAt.Before(now.Add(-tolerance)) || event.CreatedAt.After(now.Add(tolerance)) {
+		if m.Metrics != nil {
+			m.Metrics.AuthTotal.WithLabelValues("expired").Inc()
+		}
 		return nil, NewServerOKMsg(event.ID, false, "invalid: auth event created_at out of range"), nil
 	}
 
@@ -123,6 +151,9 @@ func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 	state.mu.RUnlock()
 
 	if challengeTag != expectedChallenge {
+		if m.Metrics != nil {
+			m.Metrics.AuthTotal.WithLabelValues("challenge_mismatch").Inc()
+		}
 		return nil, NewServerOKMsg(event.ID, false, "invalid: challenge mismatch"), nil
 	}
 
@@ -132,13 +163,24 @@ func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 		// Simple check: just verify it's not empty for now
 		// More sophisticated URL normalization could be added
 		if relayTag == "" {
+			if m.Metrics != nil {
+				m.Metrics.AuthTotal.WithLabelValues("invalid_relay").Inc()
+			}
 			return nil, NewServerOKMsg(event.ID, false, "invalid: missing relay tag"), nil
 		}
 	}
 
 	// Authentication successful
+	if m.Metrics != nil {
+		m.Metrics.AuthTotal.WithLabelValues("success").Inc()
+	}
+
 	state.mu.Lock()
 	state.authedPubkeys[event.Pubkey] = struct{}{}
+	if m.Metrics != nil && !state.authenticated {
+		state.authenticated = true
+		m.Metrics.AuthenticatedConnectionsCurrent.Inc()
+	}
 	state.mu.Unlock()
 
 	return nil, NewServerOKMsg(event.ID, true, ""), nil
@@ -181,9 +223,11 @@ func generateChallenge() (string, error) {
 //
 // Parameters:
 //   - relayURL: the URL of this relay (used for relay tag validation)
-func NewAuthMiddlewareBase(relayURL string) SimpleMiddlewareBase {
+//   - metrics: Prometheus metrics collector (nil to disable metrics)
+func NewAuthMiddlewareBase(relayURL string, metrics *AuthMetrics) SimpleMiddlewareBase {
 	return &AuthMiddleware{
 		RelayURL:           relayURL,
 		CreatedAtTolerance: 10 * time.Minute,
+		Metrics:            metrics,
 	}
 }

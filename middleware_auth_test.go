@@ -13,7 +13,7 @@ import (
 func TestAuthMiddleware_ChallengeOnStart(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -50,7 +50,7 @@ func TestAuthMiddleware_ChallengeOnStart(t *testing.T) {
 func TestAuthMiddleware_UnauthenticatedEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -105,7 +105,7 @@ func TestAuthMiddleware_UnauthenticatedEvent(t *testing.T) {
 func TestAuthMiddleware_UnauthenticatedReq(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -153,7 +153,7 @@ func TestAuthMiddleware_UnauthenticatedReq(t *testing.T) {
 func TestAuthMiddleware_SuccessfulAuth(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -240,7 +240,7 @@ func TestAuthMiddleware_SuccessfulAuth(t *testing.T) {
 func TestAuthMiddleware_DifferentPubkeyEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -345,7 +345,7 @@ func TestAuthMiddleware_DifferentPubkeyEvent(t *testing.T) {
 func TestAuthMiddleware_MultiplePubkeyAuth(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -472,7 +472,7 @@ func TestAuthMiddleware_MultiplePubkeyAuth(t *testing.T) {
 func TestAuthMiddleware_InvalidKind(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -530,7 +530,7 @@ func TestAuthMiddleware_InvalidKind(t *testing.T) {
 func TestAuthMiddleware_InvalidChallenge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -587,7 +587,7 @@ func TestAuthMiddleware_InvalidChallenge(t *testing.T) {
 func TestAuthMiddleware_ExpiredCreatedAt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)
@@ -644,7 +644,7 @@ func TestAuthMiddleware_ExpiredCreatedAt(t *testing.T) {
 func TestAuthMiddleware_ClosePassesThrough(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		downstream := NewNopHandler()
-		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/"))
+		middleware := NewSimpleMiddleware(NewAuthMiddlewareBase("wss://relay.example.com/", nil))
 		handler := middleware(downstream)
 
 		recv := make(chan *ClientMsg, 1)

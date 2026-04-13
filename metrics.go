@@ -51,6 +51,39 @@ func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
 	return m
 }
 
+// AuthMetrics holds Prometheus metrics for AuthMiddleware.
+type AuthMetrics struct {
+	AuthTotal                       *prometheus.CounterVec
+	AuthenticatedConnectionsCurrent prometheus.Gauge
+	RejectionsTotal                 *prometheus.CounterVec
+}
+
+// NewAuthMetrics creates and registers AuthMiddleware metrics with the given registry.
+func NewAuthMetrics(reg prometheus.Registerer) *AuthMetrics {
+	m := &AuthMetrics{
+		AuthTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "mocrelay_auth_total",
+			Help: "Total number of authentication attempts",
+		}, []string{"result"}),
+		AuthenticatedConnectionsCurrent: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "mocrelay_auth_authenticated_connections_current",
+			Help: "Current number of authenticated WebSocket connections",
+		}),
+		RejectionsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "mocrelay_auth_rejections_total",
+			Help: "Total number of rejected messages due to missing authentication",
+		}, []string{"reason"}),
+	}
+
+	reg.MustRegister(
+		m.AuthTotal,
+		m.AuthenticatedConnectionsCurrent,
+		m.RejectionsTotal,
+	)
+
+	return m
+}
+
 // StorageMetrics holds Prometheus metrics for Storage.
 type StorageMetrics struct {
 	EventsStored  *prometheus.CounterVec
