@@ -19,6 +19,7 @@ go tool lefthook install  # Install git hooks
 - **LLM-assisted development**: Consistency and quality through collaboration
 - **Start minimal, grow incrementally**: Build the smallest working thing first
 - **Discuss as we go**: Design decisions made through conversation
+- **English throughout**: All commit messages, code comments, documentation, and CLAUDE.md in English
 
 ### Development Workflow
 
