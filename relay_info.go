@@ -3,7 +3,7 @@
 package mocrelay
 
 // RelayInfo represents NIP-11 Relay Information Document.
-// All fields are optional (omitempty).
+// All fields are optional and omitted from JSON when zero-valued.
 type RelayInfo struct {
 	// Basic information
 	Name        string `json:"name,omitzero"`

@@ -19,9 +19,20 @@ import (
 type EventType int
 
 const (
+	// EventTypeRegular represents standard events (kind 1, 2, 4-44, 1000-9999).
+	// All regular events are stored.
 	EventTypeRegular EventType = iota
+
+	// EventTypeReplaceable represents events where only the latest is kept per (pubkey, kind).
+	// Kinds: 0, 3, 10000-19999.
 	EventTypeReplaceable
+
+	// EventTypeEphemeral represents events that are not stored.
+	// Kinds: 20000-29999.
 	EventTypeEphemeral
+
+	// EventTypeAddressable represents events where only the latest is kept per (pubkey, kind, d-tag).
+	// Kinds: 30000-39999.
 	EventTypeAddressable
 )
 

@@ -10,17 +10,20 @@ import (
 	"regexp"
 )
 
-// Message type labels
+// Nostr message type labels as defined in NIP-01.
 const (
-	MsgTypeEvent  = "EVENT"
-	MsgTypeReq    = "REQ"
-	MsgTypeClose  = "CLOSE"
-	MsgTypeAuth   = "AUTH"
-	MsgTypeCount  = "COUNT"
-	MsgTypeOK     = "OK"
-	MsgTypeEOSE   = "EOSE"
-	MsgTypeClosed = "CLOSED"
-	MsgTypeNotice = "NOTICE"
+	// Client-to-relay message types.
+	MsgTypeEvent = "EVENT" // Submit an event
+	MsgTypeReq   = "REQ"   // Subscribe with filters
+	MsgTypeClose = "CLOSE" // Unsubscribe
+	MsgTypeAuth  = "AUTH"  // NIP-42 authentication
+	MsgTypeCount = "COUNT" // NIP-45 event counting
+
+	// Relay-to-client message types.
+	MsgTypeOK     = "OK"     // Event submission result
+	MsgTypeEOSE   = "EOSE"   // End of stored events
+	MsgTypeClosed = "CLOSED" // Subscription closed by relay
+	MsgTypeNotice = "NOTICE" // Human-readable message
 )
 
 // ClientMsg represents a message from client to relay.
