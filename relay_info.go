@@ -1,5 +1,3 @@
-//go:build goexperiment.jsonv2
-
 package mocrelay
 
 // RelayInfo represents NIP-11 Relay Information Document.

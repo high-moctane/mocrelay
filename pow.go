@@ -1,5 +1,3 @@
-//go:build goexperiment.jsonv2
-
 package mocrelay
 
 // CountLeadingZeroBits counts the number of leading zero bits in a hex string.

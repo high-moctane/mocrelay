@@ -1,5 +1,3 @@
-//go:build goexperiment.jsonv2
-
 package mocrelay
 
 import (
@@ -146,12 +144,12 @@ loop:
 
 // mergeSession manages the state for merging responses.
 type mergeSession struct {
-	mu              sync.Mutex
-	numHandlers     int
-	pendingOKs      map[string]*pendingOK    // eventID -> pending OK state
-	pendingEOSEs    map[string]*pendingEOSE  // subscriptionID -> pending EOSE state
-	pendingCounts   map[string]*pendingCount // subscriptionID -> pending COUNT state
-	completedSubs map[string]bool // subscriptionID -> true if EOSE already sent
+	mu            sync.Mutex
+	numHandlers   int
+	pendingOKs    map[string]*pendingOK    // eventID -> pending OK state
+	pendingEOSEs  map[string]*pendingEOSE  // subscriptionID -> pending EOSE state
+	pendingCounts map[string]*pendingCount // subscriptionID -> pending COUNT state
+	completedSubs map[string]bool          // subscriptionID -> true if EOSE already sent
 }
 
 type pendingOK struct {
@@ -182,7 +180,7 @@ type pendingEOSE struct {
 
 func newMergeSession(numHandlers int) *mergeSession {
 	return &mergeSession{
-		numHandlers:     numHandlers,
+		numHandlers:   numHandlers,
 		pendingOKs:    make(map[string]*pendingOK),
 		pendingEOSEs:  make(map[string]*pendingEOSE),
 		pendingCounts: make(map[string]*pendingCount),

@@ -1,5 +1,3 @@
-//go:build goexperiment.jsonv2
-
 // Package mocrelay implements a Nostr relay as a composable Go library.
 //
 // mocrelay provides a middleware-composable architecture for building Nostr relays.
