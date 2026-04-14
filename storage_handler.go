@@ -60,7 +60,8 @@ func (h *StorageHandler) handleEvent(ctx context.Context, msg *ClientMsg) (iter.
 
 		stored, err := h.storage.Store(ctx, msg.Event)
 		if err != nil {
-			yield(NewServerOKMsg(msg.Event.ID, false, "error: "+err.Error()))
+			LoggerFromContext(ctx).ErrorContext(ctx, "store error", "error", err, "event_id", msg.Event.ID)
+			yield(NewServerOKMsg(msg.Event.ID, false, "error: internal error"))
 			return
 		}
 
