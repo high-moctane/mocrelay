@@ -310,7 +310,6 @@ This is mocrelay's main value proposition.
 - NIP-22: Comment (kind 1111)
 - NIP-28: Public Chat (kind 40-44, note kind 41 replaceable-like behavior)
 
-See `docs/nips/` for detailed NIP analysis.
 
 #### Paid Relays
 
@@ -552,11 +551,6 @@ synctest.Test(t, func(t *testing.T) {
 ```
 
 **Note**: Goroutines blocked on network I/O are not covered by synctest. Use for channel-based tests.
-
-## Documentation
-
-- **docs/nips/**: NIPs relays should implement (categorized by MUST/SHOULD/MAY)
-- **docs/encoding-json-v2.md**: Go 1.25 `encoding/json/v2` notes (requires `GOEXPERIMENT=jsonv2`)
 
 ## NIP Support
 
