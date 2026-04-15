@@ -31,16 +31,15 @@ go get github.com/high-moctane/mocrelay
 
 ## Quick Start
 
-The simplest possible relay fits in a few lines:
+The simplest possible relay is a single line:
 
 ```go
 func main() {
-	log.Fatal(http.ListenAndServe(":7447",
-		mocrelay.NewRelay(mocrelay.NewNopHandler())))
+	log.Fatal(http.ListenAndServe(":7447", mocrelay.NewRelay(mocrelay.NewNopHandler())))
 }
 ```
 
-This accepts all events and returns EOSE for all subscriptions — a valid relay with zero storage.
+This accepts all events and returns EOSE for all subscriptions — a valid relay with zero storage, in one line.
 
 For a more practical starting point, see the [examples](cmd/examples/).
 
