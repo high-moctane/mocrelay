@@ -10,6 +10,9 @@ updates:
       prefix: "deps"
     reviewers:
       - high-moctane
+    ignore:
+      - dependency-name: "go"
+      - dependency-name: "toolchain"
     groups:
       all-dependencies:
         patterns:
