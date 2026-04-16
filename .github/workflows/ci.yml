@@ -17,10 +17,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
-        run: go build ./...
+      - name: Vet
+        run: go vet ./...
         env:
           GOEXPERIMENT: jsonv2
+
+      - name: Format check
+        run: test -z "$(gofmt -s -l .)"
 
       - name: Test
         run: go test ./...
