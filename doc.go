@@ -35,7 +35,7 @@
 //	handler := NewSimpleMiddleware(
 //	    NewMaxSubscriptionsMiddlewareBase(20),
 //	    NewMaxLimitMiddlewareBase(500, 100),
-//	    NewKindBlacklistMiddlewareBase([]int64{4, 1059}),
+//	    NewKindDenylistMiddlewareBase([]int64{4, 1059}),
 //	)(innerHandler)
 //
 // Built-in middleware corresponds to NIP-11 limitation and retention fields,

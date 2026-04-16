@@ -274,8 +274,8 @@ This is mocrelay's main value proposition.
 | `MaxEventTags` ✅ | `limitation.max_event_tags` | Tag count limit |
 | `MaxContentLength` ✅ | `limitation.max_content_length` | Content length limit (Unicode) |
 | `CreatedAtLimits` ✅ | `limitation.created_at_lower/upper_limit` | created_at range check |
-| `KindBlacklist` ✅ | `retention` (time=0) | Reject specific kinds (DMs etc.) |
-| `RestrictedWrites` ✅ | `limitation.restricted_writes` | Pubkey whitelist/blacklist |
+| `KindDenylist` ✅ | `retention` (time=0) | Reject specific kinds (DMs etc.) |
+| `RestrictedWrites` ✅ | `limitation.restricted_writes` | Pubkey allowlist/denylist |
 
 #### Tier 2: WebSocket/HTTP Level ✅ Complete
 
@@ -318,13 +318,13 @@ This is mocrelay's main value proposition.
 **Reason**: NIP-11 only specifies fee disclosure, actual payment protocol is not standardized.
 
 **How to implement paid relay**:
-- Use `RestrictedWrites` to whitelist paid pubkeys
+- Use `RestrictedWrites` to allowlist paid pubkeys
 - Integrate with external payment systems (Lightning, Stripe, etc.)
 - Publish fees via NIP-11 `fees` field
 
 #### Japan Telecommunications Business Act Compliance
 
-Use `KindBlacklist` to reject these DM-related kinds:
+Use `KindDenylist` to reject these DM-related kinds:
 - kind 4 (legacy DM)
 - kind 13 (Seal wrapper)
 - kind 14 (Chat Messages)

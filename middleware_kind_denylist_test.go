@@ -6,10 +6,10 @@ import (
 	"testing/synctest"
 )
 
-func TestKindBlacklistMiddleware_AllowNonBlacklisted(t *testing.T) {
+func TestKindDenylistMiddleware_AllowNonDenylisted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block DM-related kinds
-		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
+		middleware := NewSimpleMiddleware(NewKindDenylistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -52,10 +52,10 @@ func TestKindBlacklistMiddleware_AllowNonBlacklisted(t *testing.T) {
 	})
 }
 
-func TestKindBlacklistMiddleware_RejectBlacklisted(t *testing.T) {
+func TestKindDenylistMiddleware_RejectDenylisted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block DM-related kinds
-		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
+		middleware := NewSimpleMiddleware(NewKindDenylistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -98,10 +98,10 @@ func TestKindBlacklistMiddleware_RejectBlacklisted(t *testing.T) {
 	})
 }
 
-func TestKindBlacklistMiddleware_RejectGiftWrap(t *testing.T) {
+func TestKindDenylistMiddleware_RejectGiftWrap(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block DM-related kinds
-		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
+		middleware := NewSimpleMiddleware(NewKindDenylistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -144,10 +144,10 @@ func TestKindBlacklistMiddleware_RejectGiftWrap(t *testing.T) {
 	})
 }
 
-func TestKindBlacklistMiddleware_EmptyBlacklist(t *testing.T) {
+func TestKindDenylistMiddleware_EmptyDenylist(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		// Empty blacklist - all kinds allowed
-		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{}))
+		// Empty denylist - all kinds allowed
+		middleware := NewSimpleMiddleware(NewKindDenylistMiddlewareBase([]int64{}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -161,7 +161,7 @@ func TestKindBlacklistMiddleware_EmptyBlacklist(t *testing.T) {
 			done <- handler.ServeNostr(ctx, send, recv)
 		}()
 
-		// Send EVENT with kind 4 (should be allowed with empty blacklist)
+		// Send EVENT with kind 4 (should be allowed with empty denylist)
 		recv <- &ClientMsg{
 			Type: MsgTypeEvent,
 			Event: &Event{
@@ -179,7 +179,7 @@ func TestKindBlacklistMiddleware_EmptyBlacklist(t *testing.T) {
 				t.Errorf("expected OK, got %v", msg.Type)
 			}
 			if !msg.Accepted {
-				t.Error("expected Accepted=true with empty blacklist")
+				t.Error("expected Accepted=true with empty denylist")
 			}
 		default:
 			t.Error("expected message but got none")
@@ -190,10 +190,10 @@ func TestKindBlacklistMiddleware_EmptyBlacklist(t *testing.T) {
 	})
 }
 
-func TestKindBlacklistMiddleware_PassthroughNonEvent(t *testing.T) {
+func TestKindDenylistMiddleware_PassthroughNonEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Block all kinds (extreme case)
-		middleware := NewSimpleMiddleware(NewKindBlacklistMiddlewareBase([]int64{0, 1, 2, 3, 4, 5}))
+		middleware := NewSimpleMiddleware(NewKindDenylistMiddlewareBase([]int64{0, 1, 2, 3, 4, 5}))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)

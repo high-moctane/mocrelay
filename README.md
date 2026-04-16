@@ -94,7 +94,7 @@ The [`cmd/examples/`](cmd/examples/) directory provides three graduated examples
 | `MaxEventTags` | `max_event_tags` | Limit tags per event |
 | `MaxContentLength` | `max_content_length` | Limit content length |
 | `CreatedAtLimits` | `created_at_lower/upper_limit` | Restrict event timestamps |
-| `KindBlacklist` | `retention` | Block specific event kinds |
+| `KindDenylist` | `retention` | Block specific event kinds |
 | `RestrictedWrites` | `restricted_writes` | Pubkey allow/deny list |
 | `MinPowDifficulty` | `min_pow_difficulty` | Require proof-of-work (NIP-13) |
 | `Auth` | `auth_required` | Require authentication (NIP-42) |
@@ -107,7 +107,7 @@ Multiple middleware are composed into a single pipeline via [`NewSimpleMiddlewar
 handler = mocrelay.NewSimpleMiddleware(
     mocrelay.NewMaxSubscriptionsMiddlewareBase(20),
     mocrelay.NewMaxLimitMiddlewareBase(500, 100),
-    mocrelay.NewKindBlacklistMiddlewareBase([]int64{4, 1059}),
+    mocrelay.NewKindDenylistMiddlewareBase([]int64{4, 1059}),
 )(handler)
 ```
 

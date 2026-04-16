@@ -121,8 +121,8 @@ func main() {
 		mocrelay.NewCreatedAtLimitsMiddlewareBase(60*60*24*365, 60*60*24*365), // ±1 year
 		mocrelay.NewExpirationMiddlewareBase(),
 
-		// Kind blacklist: reject DM-related kinds (Japan Telecommunications Business Act).
-		mocrelay.NewKindBlacklistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}),
+		// Kind denylist: reject DM-related kinds (Japan Telecommunications Business Act).
+		mocrelay.NewKindDenylistMiddlewareBase([]int64{4, 13, 14, 1059, 10050}),
 	)(handler)
 
 	// --- Relay ---
