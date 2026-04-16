@@ -1,6 +1,6 @@
 module github.com/high-moctane/mocrelay
 
-go 1.25.5
+go 1.25
 
 require (
 	github.com/blevesearch/bleve/v2 v2.5.7

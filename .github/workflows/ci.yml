@@ -15,7 +15,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: Vet
         run: go vet ./...
@@ -24,6 +24,11 @@ jobs:
 
       - name: Format check
         run: test -z "$(gofmt -s -l .)"
+
+      - name: Fix check
+        run: test -z "$(go fix -diff ./...)"
+        env:
+          GOEXPERIMENT: jsonv2
 
       - name: Test
         run: go test ./...
