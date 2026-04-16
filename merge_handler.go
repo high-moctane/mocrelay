@@ -19,6 +19,7 @@ func NewMergeHandler(handlers ...Handler) Handler {
 	return &MergeHandler{handlers: handlers}
 }
 
+// ServeNostr implements [Handler].
 func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

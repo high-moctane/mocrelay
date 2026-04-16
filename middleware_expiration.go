@@ -20,14 +20,17 @@ func NewExpirationMiddlewareBase() SimpleMiddlewareBase {
 	}
 }
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *ExpirationMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *ExpirationMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *ExpirationMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent || msg.Event == nil {
 		return msg, nil, nil
@@ -41,6 +44,7 @@ func (m *ExpirationMiddleware) HandleClientMsg(ctx context.Context, msg *ClientM
 	return msg, nil, nil
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *ExpirationMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	// Drop expired events from being delivered
 	if msg.Type == MsgTypeEvent && msg.Event != nil {

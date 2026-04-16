@@ -16,14 +16,17 @@ func NewProtectedEventsMiddlewareBase() SimpleMiddlewareBase {
 	return &ProtectedEventsMiddleware{}
 }
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *ProtectedEventsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *ProtectedEventsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *ProtectedEventsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent || msg.Event == nil {
 		return msg, nil, nil
@@ -46,6 +49,7 @@ func (m *ProtectedEventsMiddleware) HandleClientMsg(ctx context.Context, msg *Cl
 	return msg, nil, nil
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *ProtectedEventsMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

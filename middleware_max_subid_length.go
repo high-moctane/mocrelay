@@ -18,14 +18,17 @@ func NewMaxSubidLengthMiddlewareBase(maxLen int) SimpleMiddlewareBase {
 	return &MaxSubidLengthMiddleware{maxLen: maxLen}
 }
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *MaxSubidLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *MaxSubidLengthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *MaxSubidLengthMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	switch msg.Type {
 	case MsgTypeReq, MsgTypeClose:
@@ -37,6 +40,7 @@ func (m *MaxSubidLengthMiddleware) HandleClientMsg(ctx context.Context, msg *Cli
 	return msg, nil, nil
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *MaxSubidLengthMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

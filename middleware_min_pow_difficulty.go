@@ -18,14 +18,17 @@ type MinPowDifficultyMiddleware struct {
 	CheckCommitment bool
 }
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *MinPowDifficultyMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *MinPowDifficultyMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *MinPowDifficultyMiddleware) HandleClientMsg(
 	ctx context.Context,
 	msg *ClientMsg,
@@ -61,6 +64,7 @@ func (m *MinPowDifficultyMiddleware) HandleClientMsg(
 	return msg, nil, nil
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *MinPowDifficultyMiddleware) HandleServerMsg(
 	ctx context.Context,
 	msg *ServerMsg,

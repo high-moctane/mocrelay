@@ -20,14 +20,17 @@ func NewMaxContentLengthMiddlewareBase(maxLen int) SimpleMiddlewareBase {
 	return &MaxContentLengthMiddleware{maxLen: maxLen}
 }
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *MaxContentLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *MaxContentLengthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *MaxContentLengthMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent {
 		return msg, nil, nil
@@ -41,6 +44,7 @@ func (m *MaxContentLengthMiddleware) HandleClientMsg(ctx context.Context, msg *C
 	return msg, nil, nil
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *MaxContentLengthMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

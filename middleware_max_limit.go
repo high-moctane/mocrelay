@@ -29,14 +29,17 @@ func NewMaxLimitMiddlewareBase(maxLimit, defaultLimit int64) SimpleMiddlewareBas
 	}
 }
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *MaxLimitMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *MaxLimitMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *MaxLimitMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeReq {
 		return msg, nil, nil
@@ -56,6 +59,7 @@ func (m *MaxLimitMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg
 	return msg, nil, nil
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *MaxLimitMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

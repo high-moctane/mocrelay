@@ -21,14 +21,17 @@ func NewKindBlacklistMiddlewareBase(kinds []int64) SimpleMiddlewareBase {
 	return &KindBlacklistMiddleware{blacklist: blacklist}
 }
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *KindBlacklistMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *KindBlacklistMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *KindBlacklistMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent {
 		return msg, nil, nil
@@ -46,6 +49,7 @@ func (m *KindBlacklistMiddleware) HandleClientMsg(ctx context.Context, msg *Clie
 	return msg, nil, nil
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *KindBlacklistMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

@@ -25,14 +25,17 @@ func NewStorageHandler(storage Storage) Handler {
 	return NewSimpleHandler(&StorageHandler{storage: storage})
 }
 
+// OnStart implements [SimpleHandlerBase].
 func (h *StorageHandler) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
+// OnEnd implements [SimpleHandlerBase].
 func (h *StorageHandler) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleMsg implements [SimpleHandlerBase].
 func (h *StorageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 	switch msg.Type {
 	case MsgTypeEvent:

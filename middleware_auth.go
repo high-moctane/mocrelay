@@ -34,6 +34,7 @@ type authState struct {
 
 type authCtxKey struct{}
 
+// OnStart implements [SimpleMiddlewareBase].
 func (m *AuthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	// Generate random challenge
 	challenge, err := generateChallenge()
@@ -51,6 +52,7 @@ func (m *AuthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerM
 	return ctx, NewServerAuthMsg(challenge), nil
 }
 
+// OnEnd implements [SimpleMiddlewareBase].
 func (m *AuthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	if m.Metrics != nil {
 		state := ctx.Value(authCtxKey{}).(*authState)
@@ -66,6 +68,7 @@ func (m *AuthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
+// HandleClientMsg implements [SimpleMiddlewareBase].
 func (m *AuthMiddleware) HandleClientMsg(
 	ctx context.Context,
 	msg *ClientMsg,
@@ -107,6 +110,7 @@ func (m *AuthMiddleware) HandleClientMsg(
 	}
 }
 
+// HandleServerMsg implements [SimpleMiddlewareBase].
 func (m *AuthMiddleware) HandleServerMsg(
 	ctx context.Context,
 	msg *ServerMsg,
