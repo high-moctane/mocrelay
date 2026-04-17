@@ -135,6 +135,44 @@ slog.WarnContext(ctx, "query error", "error", err)
 
 ### Design Decisions
 
+#### Constructor API
+
+All public constructors in mocrelay follow a single shape:
+
+```go
+NewX(required..., opts *XOptions) *X     // or (*X, error) for I/O
+```
+
+Rules:
+
+- **Positional args are required** (e.g. `handler`, `relayURL`, `path`).
+  If a value has no sensible zero default, it goes here.
+- **Optional config lives in `*XOptions`** — one Options struct per type,
+  right next to its constructor. `opts == nil` is always valid and means
+  "all defaults."
+- **Struct fields are unexported.** Post-construction mutation is not a
+  supported API; if a knob matters later, promote it into Options.
+- **Defaults are applied once, inside the constructor.** Runtime code
+  does not re-check for zero values. Writing `if x == 0 { x = default }`
+  at call sites is a smell — it means the constructor did not finish
+  its job.
+- **Metrics are a field of Options**, not a separate positional arg or
+  a post-construction field. Uniform with every other optional setting.
+
+This pattern is used by `NewRelay`, `NewRouter`, `NewAuthMiddlewareBase`,
+`NewPebbleStorage`, and `NewBleveIndex`. New Handlers / Middlewares /
+Storages added to mocrelay should follow the same shape so third-party
+code composing with mocrelay has a predictable surface.
+
+Exceptions:
+- `MetricsStorage` uses the decorator pattern (`NewMetricsStorage(storage, metrics)`)
+  because `Storage` is an interface with multiple implementations
+  (InMemory / Pebble / Composite) and a decorator is the natural way
+  to inject cross-cutting behavior.
+- Middlewares whose *entire* configuration is required (e.g.
+  `NewMaxLimitMiddlewareBase(maxLimit, defaultLimit int64)`) skip the
+  Options struct because there is nothing optional to collect.
+
 #### Handler Interface
 
 - Middleware-composable architecture (key feature of mocrelay)
