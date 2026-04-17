@@ -11,10 +11,14 @@ import (
 
 // AuthMiddleware is a middleware that requires NIP-42 authentication.
 type AuthMiddleware struct {
-	// RelayURL is the URL of this relay (used for validation).
-	// Example: "wss://relay.example.com/"
-	RelayURL string
+	relayURL           string
+	createdAtTolerance time.Duration
+	metrics            *AuthMetrics
+}
 
+// AuthMiddlewareOptions configures AuthMiddleware behavior.
+// All fields are optional; the zero value gives sensible defaults.
+type AuthMiddlewareOptions struct {
 	// CreatedAtTolerance is the maximum age of auth events.
 	// Default: 10 minutes (as recommended by NIP-42)
 	CreatedAtTolerance time.Duration
@@ -54,14 +58,14 @@ func (m *AuthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerM
 
 // OnEnd implements [SimpleMiddlewareBase].
 func (m *AuthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
-	if m.Metrics != nil {
+	if m.metrics != nil {
 		state := ctx.Value(authCtxKey{}).(*authState)
 		state.mu.RLock()
 		authenticated := state.authenticated
 		state.mu.RUnlock()
 
 		if authenticated {
-			m.Metrics.AuthenticatedConnectionsCurrent.Dec()
+			m.metrics.AuthenticatedConnectionsCurrent.Dec()
 		}
 	}
 
@@ -81,8 +85,8 @@ func (m *AuthMiddleware) HandleClientMsg(
 
 	case MsgTypeEvent:
 		if !m.isAuthedPubkey(state, msg.Event.Pubkey) {
-			if m.Metrics != nil {
-				m.Metrics.RejectionsTotal.WithLabelValues("event_unauthenticated").Inc()
+			if m.metrics != nil {
+				m.metrics.RejectionsTotal.WithLabelValues("event_unauthenticated").Inc()
 			}
 			return nil, NewServerOKMsg(
 				msg.Event.ID,
@@ -94,8 +98,8 @@ func (m *AuthMiddleware) HandleClientMsg(
 
 	case MsgTypeReq:
 		if !m.isAuthed(state) {
-			if m.Metrics != nil {
-				m.Metrics.RejectionsTotal.WithLabelValues("req_unauthenticated").Inc()
+			if m.metrics != nil {
+				m.metrics.RejectionsTotal.WithLabelValues("req_unauthenticated").Inc()
 			}
 			return nil, NewServerClosedMsg(
 				msg.SubscriptionID,
@@ -127,21 +131,17 @@ func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 
 	// Validate kind
 	if event.Kind != 22242 {
-		if m.Metrics != nil {
-			m.Metrics.AuthTotal.WithLabelValues("invalid_kind").Inc()
+		if m.metrics != nil {
+			m.metrics.AuthTotal.WithLabelValues("invalid_kind").Inc()
 		}
 		return nil, NewServerOKMsg(event.ID, false, "invalid: auth event must be kind 22242"), nil
 	}
 
 	// Validate created_at (within tolerance)
-	tolerance := m.CreatedAtTolerance
-	if tolerance == 0 {
-		tolerance = 10 * time.Minute
-	}
 	now := time.Now()
-	if event.CreatedAt.Before(now.Add(-tolerance)) || event.CreatedAt.After(now.Add(tolerance)) {
-		if m.Metrics != nil {
-			m.Metrics.AuthTotal.WithLabelValues("expired").Inc()
+	if event.CreatedAt.Before(now.Add(-m.createdAtTolerance)) || event.CreatedAt.After(now.Add(m.createdAtTolerance)) {
+		if m.metrics != nil {
+			m.metrics.AuthTotal.WithLabelValues("expired").Inc()
 		}
 		return nil, NewServerOKMsg(event.ID, false, "invalid: auth event created_at out of range"), nil
 	}
@@ -153,35 +153,35 @@ func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 	state.mu.RUnlock()
 
 	if challengeTag != expectedChallenge {
-		if m.Metrics != nil {
-			m.Metrics.AuthTotal.WithLabelValues("challenge_mismatch").Inc()
+		if m.metrics != nil {
+			m.metrics.AuthTotal.WithLabelValues("challenge_mismatch").Inc()
 		}
 		return nil, NewServerOKMsg(event.ID, false, "invalid: challenge mismatch"), nil
 	}
 
 	// Validate relay tag (simple domain check)
 	relayTag := findTagValue(event.Tags, "relay")
-	if m.RelayURL != "" && relayTag != m.RelayURL {
+	if m.relayURL != "" && relayTag != m.relayURL {
 		// Simple check: just verify it's not empty for now
 		// More sophisticated URL normalization could be added
 		if relayTag == "" {
-			if m.Metrics != nil {
-				m.Metrics.AuthTotal.WithLabelValues("invalid_relay").Inc()
+			if m.metrics != nil {
+				m.metrics.AuthTotal.WithLabelValues("invalid_relay").Inc()
 			}
 			return nil, NewServerOKMsg(event.ID, false, "invalid: missing relay tag"), nil
 		}
 	}
 
 	// Authentication successful
-	if m.Metrics != nil {
-		m.Metrics.AuthTotal.WithLabelValues("success").Inc()
+	if m.metrics != nil {
+		m.metrics.AuthTotal.WithLabelValues("success").Inc()
 	}
 
 	state.mu.Lock()
 	state.authedPubkeys[event.Pubkey] = struct{}{}
-	if m.Metrics != nil && !state.authenticated {
+	if m.metrics != nil && !state.authenticated {
 		state.authenticated = true
-		m.Metrics.AuthenticatedConnectionsCurrent.Inc()
+		m.metrics.AuthenticatedConnectionsCurrent.Inc()
 	}
 	state.mu.Unlock()
 
@@ -223,13 +223,21 @@ func generateChallenge() (string, error) {
 
 // NewAuthMiddlewareBase creates a middleware base that requires NIP-42 authentication.
 //
-// Parameters:
-//   - relayURL: the URL of this relay (used for relay tag validation)
-//   - metrics: Prometheus metrics collector (nil to disable metrics)
-func NewAuthMiddlewareBase(relayURL string, metrics *AuthMetrics) SimpleMiddlewareBase {
+// relayURL is the URL of this relay (used for relay tag validation).
+// opts can be nil for default options.
+func NewAuthMiddlewareBase(relayURL string, opts *AuthMiddlewareOptions) SimpleMiddlewareBase {
+	if opts == nil {
+		opts = &AuthMiddlewareOptions{}
+	}
+
+	tolerance := opts.CreatedAtTolerance
+	if tolerance == 0 {
+		tolerance = 10 * time.Minute
+	}
+
 	return &AuthMiddleware{
-		RelayURL:           relayURL,
-		CreatedAtTolerance: 10 * time.Minute,
-		Metrics:            metrics,
+		relayURL:           relayURL,
+		createdAtTolerance: tolerance,
+		metrics:            opts.Metrics,
 	}
 }

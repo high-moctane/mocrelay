@@ -101,7 +101,9 @@ func main() {
 
 	handler = mocrelay.NewSimpleMiddleware(
 		// Auth (NIP-42): challenge/response authentication.
-		mocrelay.NewAuthMiddlewareBase("wss://relay.example.com/", authMetrics),
+		mocrelay.NewAuthMiddlewareBase("wss://relay.example.com/", &mocrelay.AuthMiddlewareOptions{
+			Metrics: authMetrics,
+		}),
 
 		// Protected events (NIP-70): prevent republishing "-" tagged events.
 		mocrelay.NewProtectedEventsMiddlewareBase(),
