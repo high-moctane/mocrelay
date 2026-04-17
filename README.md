@@ -29,6 +29,19 @@ export GOEXPERIMENT=jsonv2
 go get github.com/high-moctane/mocrelay
 ```
 
+## Development
+
+Install the git hooks via [lefthook](https://github.com/evilmartians/lefthook),
+which is managed as a Go [tool dependency](https://go.dev/doc/modules/managing-dependencies#tools):
+
+```bash
+go tool lefthook install
+```
+
+This wires up `pre-commit` to run `go fix ./...` and `gofmt -s -w` on staged Go
+files. No separate lefthook binary installation is required — the version is
+pinned in `go.mod`.
+
 ## Quick Start
 
 The simplest possible relay is a single line:
