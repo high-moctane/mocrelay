@@ -1,0 +1,168 @@
+name: Auto Tag
+
+on:
+  schedule:
+    # Every day at 18:00 UTC = 03:00 JST
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (calculate bump but skip tag push)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Determine latest tag
+        id: latest
+        run: |
+          latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            echo "No existing v* tag found. Will run in bootstrap mode."
+            echo "latest=" >> "$GITHUB_OUTPUT"
+            echo "bootstrap=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Latest tag: $latest"
+            echo "latest=$latest" >> "$GITHUB_OUTPUT"
+            echo "bootstrap=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect commits since latest tag
+        id: commits
+        run: |
+          latest="${{ steps.latest.outputs.latest }}"
+          if [ -n "$latest" ]; then
+            range="${latest}..HEAD"
+          else
+            range="HEAD"
+          fi
+          git log "$range" --format=%H > /tmp/commits.txt
+          count=$(wc -l < /tmp/commits.txt | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "has_commits=false" >> "$GITHUB_OUTPUT"
+            echo "go_touched=false" >> "$GITHUB_OUTPUT"
+            echo "No new commits since ${latest:-repository start}."
+            exit 0
+          fi
+          echo "has_commits=true" >> "$GITHUB_OUTPUT"
+          echo "Found $count new commit(s):"
+          cat /tmp/commits.txt
+
+          # Determine whether any commit touched Go-relevant files.
+          # Only bump the version when consumers of the library could be affected.
+          if git diff --name-only "$range" \
+            | grep -qE '(^|/)[^/]+\.go$|(^|/)go\.(mod|sum)$'; then
+            echo "go_touched=true" >> "$GITHUB_OUTPUT"
+            echo "Go-relevant files changed — proceeding with bump."
+          else
+            echo "go_touched=false" >> "$GITHUB_OUTPUT"
+            echo "No Go-relevant files changed — skipping bump."
+          fi
+
+      - name: Classify commits (dependabot vs other)
+        id: classify
+        if: steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          non_dependabot=0
+          unknown=0
+          while read -r sha; do
+            [ -z "$sha" ] && continue
+            author=$(gh pr list \
+              --search "$sha" \
+              --state merged \
+              --json author \
+              --jq '.[0].author.login' 2>/dev/null || echo "")
+            if [ -z "$author" ]; then
+              # No PR found (e.g. direct push to main) — treat as human change
+              echo "  $sha -> (no PR found, treating as non-dependabot)"
+              non_dependabot=$((non_dependabot + 1))
+              unknown=$((unknown + 1))
+            elif [ "$author" = "dependabot[bot]" ]; then
+              echo "  $sha -> dependabot[bot]"
+            else
+              echo "  $sha -> $author (non-dependabot)"
+              non_dependabot=$((non_dependabot + 1))
+            fi
+          done < /tmp/commits.txt
+          echo "non_dependabot=$non_dependabot" >> "$GITHUB_OUTPUT"
+          echo "unknown=$unknown" >> "$GITHUB_OUTPUT"
+          if [ "$non_dependabot" -gt 0 ]; then
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "bump=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute next version
+        id: next
+        if: steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
+        run: |
+          latest="${{ steps.latest.outputs.latest }}"
+          bump="${{ steps.classify.outputs.bump }}"
+          base="${latest:-v0.0.0}"
+          version="${base#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+          case "$bump" in
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          next="v${major}.${minor}.${patch}"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "Base: $base → Next: $next ($bump bump)"
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "## Auto Tag Summary"
+            echo ""
+            echo "- Latest tag: \`${{ steps.latest.outputs.latest || '(none)' }}\`"
+            echo "- Commits since latest tag: ${{ steps.commits.outputs.count || 0 }}"
+            if [ "${{ steps.commits.outputs.has_commits }}" = "true" ]; then
+              echo "- Go-relevant files changed: \`${{ steps.commits.outputs.go_touched }}\`"
+            fi
+            if [ "${{ steps.commits.outputs.go_touched }}" = "true" ]; then
+              echo "- Non-dependabot commits: ${{ steps.classify.outputs.non_dependabot }}"
+              echo "- Commits without matching PR: ${{ steps.classify.outputs.unknown }}"
+              echo "- Bump: \`${{ steps.classify.outputs.bump }}\`"
+              echo "- Next tag: \`${{ steps.next.outputs.next }}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push tag
+        if: steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOOTSTRAP: ${{ steps.latest.outputs.bootstrap }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          NEXT: ${{ steps.next.outputs.next }}
+        run: |
+          if [ "$BOOTSTRAP" = "true" ]; then
+            echo "Bootstrap mode: no existing tag. Skipping tag push."
+            echo "Push \`v0.1.0\` manually when you are ready to start versioning." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run requested. Skipping tag push for $NEXT."
+            echo "- **Dry run**: tag push skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git tag "$NEXT"
+          git push origin "$NEXT"
+          echo "Pushed $NEXT"
+          echo "- ✅ Pushed \`$NEXT\`" >> "$GITHUB_STEP_SUMMARY"
