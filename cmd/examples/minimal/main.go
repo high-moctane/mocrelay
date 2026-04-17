@@ -39,7 +39,7 @@ func main() {
 	storage := mocrelay.NewInMemoryStorage()
 
 	// Router: routes events between connected clients in real-time.
-	router := mocrelay.NewRouter()
+	router := mocrelay.NewRouter(nil)
 
 	// Handler: merge storage (past events) and router (real-time).
 	handler := mocrelay.NewMergeHandler(

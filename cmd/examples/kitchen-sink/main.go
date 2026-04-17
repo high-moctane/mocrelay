@@ -86,8 +86,9 @@ func main() {
 
 	// --- Routing layer ---
 
-	router := mocrelay.NewRouter()
-	router.Metrics = routerMetrics
+	router := mocrelay.NewRouter(&mocrelay.RouterOptions{
+		Metrics: routerMetrics,
+	})
 
 	// --- Handler ---
 

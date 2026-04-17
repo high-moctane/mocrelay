@@ -64,7 +64,7 @@
 //	storage, _ := NewPebbleStorage("/path/to/db", nil)
 //	defer storage.Close()
 //
-//	router := NewRouter()
+//	router := NewRouter(nil)
 //	handler := NewMergeHandler(
 //	    NewStorageHandler(storage),
 //	    NewRouterHandler(router),

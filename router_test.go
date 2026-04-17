@@ -7,7 +7,7 @@ import (
 
 func TestRouter_RegisterUnregister(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh := make(chan *ServerMsg, 10)
 		connID := router.Register(sendCh)
@@ -29,7 +29,7 @@ func TestRouter_RegisterUnregister(t *testing.T) {
 
 func TestRouter_UniqueConnectionIDs(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh1 := make(chan *ServerMsg, 10)
 		sendCh2 := make(chan *ServerMsg, 10)
@@ -45,7 +45,7 @@ func TestRouter_UniqueConnectionIDs(t *testing.T) {
 
 func TestRouter_Broadcast_MatchingSubscription(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh := make(chan *ServerMsg, 10)
 		connID := router.Register(sendCh)
@@ -83,7 +83,7 @@ func TestRouter_Broadcast_MatchingSubscription(t *testing.T) {
 
 func TestRouter_Broadcast_NonMatchingSubscription(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh := make(chan *ServerMsg, 10)
 		connID := router.Register(sendCh)
@@ -113,7 +113,7 @@ func TestRouter_Broadcast_NonMatchingSubscription(t *testing.T) {
 
 func TestRouter_Broadcast_MultipleSubscriptions(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh := make(chan *ServerMsg, 10)
 		connID := router.Register(sendCh)
@@ -151,7 +151,7 @@ func TestRouter_Broadcast_MultipleSubscriptions(t *testing.T) {
 
 func TestRouter_Broadcast_MultipleConnections(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh1 := make(chan *ServerMsg, 10)
 		sendCh2 := make(chan *ServerMsg, 10)
@@ -189,7 +189,7 @@ func TestRouter_Broadcast_MultipleConnections(t *testing.T) {
 
 func TestRouter_Broadcast_BestEffort_DropWhenFull(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		// Channel with capacity 1
 		sendCh := make(chan *ServerMsg, 1)
@@ -228,7 +228,7 @@ func TestRouter_Broadcast_BestEffort_DropWhenFull(t *testing.T) {
 
 func TestRouter_Unsubscribe(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh := make(chan *ServerMsg, 10)
 		connID := router.Register(sendCh)
@@ -260,7 +260,7 @@ func TestRouter_Unsubscribe(t *testing.T) {
 
 func TestRouter_SubscriptionIDCollision_DifferentConnections(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		sendCh1 := make(chan *ServerMsg, 10)
 		sendCh2 := make(chan *ServerMsg, 10)

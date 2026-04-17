@@ -8,7 +8,7 @@ import (
 
 func TestRouterHandler_Event_ReturnsOK(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 		handler := NewRouterHandler(router)
 
 		send := make(chan *ServerMsg, 10)
@@ -51,7 +51,7 @@ func TestRouterHandler_Event_ReturnsOK(t *testing.T) {
 
 func TestRouterHandler_Req_ReturnsEOSE(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 		handler := NewRouterHandler(router)
 
 		send := make(chan *ServerMsg, 10)
@@ -88,7 +88,7 @@ func TestRouterHandler_Req_ReturnsEOSE(t *testing.T) {
 
 func TestRouterHandler_Count_ReturnsZero(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 		handler := NewRouterHandler(router)
 
 		send := make(chan *ServerMsg, 10)
@@ -125,7 +125,7 @@ func TestRouterHandler_Count_ReturnsZero(t *testing.T) {
 
 func TestRouterHandler_EventRouting_BetweenClients(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		// Client A (sender)
 		handlerA := NewRouterHandler(router)
@@ -192,7 +192,7 @@ func TestRouterHandler_EventRouting_BetweenClients(t *testing.T) {
 
 func TestRouterHandler_Close_Unsubscribes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		handlerA := NewRouterHandler(router)
 		sendA := make(chan *ServerMsg, 10)
@@ -253,7 +253,7 @@ func TestRouterHandler_Close_Unsubscribes(t *testing.T) {
 
 func TestRouterHandler_Disconnect_CleansUp(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := NewRouter()
+		router := NewRouter(nil)
 
 		handlerA := NewRouterHandler(router)
 		sendA := make(chan *ServerMsg, 10)

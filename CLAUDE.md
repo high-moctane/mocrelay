@@ -537,7 +537,7 @@ synctest.Test(t, func(t *testing.T) {
     // - fake clock (time advances automatically)
     // - synctest.Wait() waits until all goroutines block
 
-    router := NewRouter()
+    router := NewRouter(nil)
     sendCh := make(chan *ServerMsg, 10)
     connID := router.Register(sendCh)
 

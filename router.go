@@ -15,9 +15,7 @@ type Router struct {
 	// connections maps connection ID to connection info.
 	connections map[string]*routerConnection
 
-	// Metrics is the Prometheus metrics collector for Router.
-	// If nil, no metrics are collected.
-	Metrics *RouterMetrics
+	metrics *RouterMetrics
 }
 
 // routerConnection represents a single client connection.
@@ -29,10 +27,23 @@ type routerConnection struct {
 	subscriptions map[string][]*ReqFilter
 }
 
+// RouterOptions configures Router behavior.
+// All fields are optional; the zero value gives sensible defaults.
+type RouterOptions struct {
+	// Metrics is the Prometheus metrics collector for Router.
+	// If nil, no metrics are collected.
+	Metrics *RouterMetrics
+}
+
 // NewRouter creates a new Router.
-func NewRouter() *Router {
+// opts can be nil for default options.
+func NewRouter(opts *RouterOptions) *Router {
+	if opts == nil {
+		opts = &RouterOptions{}
+	}
 	return &Router{
 		connections: make(map[string]*routerConnection),
+		metrics:     opts.Metrics,
 	}
 }
 
@@ -102,8 +113,8 @@ func (r *Router) Broadcast(event *Event) {
 				case conn.sendCh <- NewServerEventMsg(subID, event):
 				default:
 					// Channel full, drop message
-					if r.Metrics != nil {
-						r.Metrics.MessagesDropped.Inc()
+					if r.metrics != nil {
+						r.metrics.MessagesDropped.Inc()
 					}
 				}
 				// Don't break: same event could match multiple subscriptions
