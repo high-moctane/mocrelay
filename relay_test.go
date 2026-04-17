@@ -12,7 +12,7 @@ import (
 
 func TestRelay_Shutdown(t *testing.T) {
 	t.Run("shutdown closes active connections", func(t *testing.T) {
-		relay := NewRelay(NewNopHandler())
+		relay := NewRelay(NewNopHandler(), nil)
 		server := httptest.NewServer(relay)
 		defer server.Close()
 
@@ -54,7 +54,7 @@ func TestRelay_Shutdown(t *testing.T) {
 	})
 
 	t.Run("shutdown rejects new connections", func(t *testing.T) {
-		relay := NewRelay(NewNopHandler())
+		relay := NewRelay(NewNopHandler(), nil)
 		server := httptest.NewServer(relay)
 		defer server.Close()
 
@@ -79,7 +79,7 @@ func TestRelay_Shutdown(t *testing.T) {
 	})
 
 	t.Run("shutdown timeout", func(t *testing.T) {
-		relay := NewRelay(NewNopHandler())
+		relay := NewRelay(NewNopHandler(), nil)
 		server := httptest.NewServer(relay)
 		defer server.Close()
 
@@ -107,7 +107,7 @@ func TestRelay_Shutdown(t *testing.T) {
 	})
 
 	t.Run("connection cleanup removes from map", func(t *testing.T) {
-		relay := NewRelay(NewNopHandler())
+		relay := NewRelay(NewNopHandler(), nil)
 		server := httptest.NewServer(relay)
 		defer server.Close()
 

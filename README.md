@@ -35,7 +35,7 @@ The simplest possible relay is a single line:
 
 ```go
 func main() {
-	log.Fatal(http.ListenAndServe(":7447", mocrelay.NewRelay(mocrelay.NewNopHandler())))
+	log.Fatal(http.ListenAndServe(":7447", mocrelay.NewRelay(mocrelay.NewNopHandler(), nil)))
 }
 ```
 

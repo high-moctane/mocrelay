@@ -59,23 +59,24 @@ func main() {
 	)(handler)
 
 	// Relay: serves HTTP/WebSocket.
-	relay := mocrelay.NewRelay(handler)
-	relay.Logger = logger
-	relay.Info = &mocrelay.RelayInfo{
-		Name:          "mocrelay-minimal",
-		Description:   "A minimal Nostr relay example with in-memory storage",
-		Software:      "https://github.com/high-moctane/mocrelay",
-		SupportedNIPs: []int{1, 9, 11, 40, 45},
-		Limitation: &mocrelay.RelayLimitation{
-			MaxMessageLength: 100_000,
-			MaxSubscriptions: 20,
-			MaxSubidLength:   256,
-			MaxLimit:         500,
-			DefaultLimit:     100,
-			MaxEventTags:     2000,
-			MaxContentLength: 100_000,
+	relay := mocrelay.NewRelay(handler, &mocrelay.RelayOptions{
+		Logger: logger,
+		Info: &mocrelay.RelayInfo{
+			Name:          "mocrelay-minimal",
+			Description:   "A minimal Nostr relay example with in-memory storage",
+			Software:      "https://github.com/high-moctane/mocrelay",
+			SupportedNIPs: []int{1, 9, 11, 40, 45},
+			Limitation: &mocrelay.RelayLimitation{
+				MaxMessageLength: 100_000,
+				MaxSubscriptions: 20,
+				MaxSubidLength:   256,
+				MaxLimit:         500,
+				DefaultLimit:     100,
+				MaxEventTags:     2000,
+				MaxContentLength: 100_000,
+			},
 		},
-	}
+	})
 
 	logger.Info("starting relay", "addr", addr)
 	if err := http.ListenAndServe(addr, relay); err != nil {

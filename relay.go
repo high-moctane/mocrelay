@@ -19,15 +19,36 @@ import (
 // Relay wraps a Handler to serve it over HTTP/WebSocket.
 // It implements http.Handler.
 type Relay struct {
-	Handler Handler
-	Logger  *slog.Logger
+	handler          Handler
+	logger           *slog.Logger
+	maxMessageLength int64
+	pingInterval     time.Duration
+	pingTimeout      time.Duration
+	info             *RelayInfo
+	metrics          *RelayMetrics
+	connIDFunc       func() string
 
-	// MaxMessageLength is the maximum size of a WebSocket message.
-	// Default: 100KB
+	mu      sync.Mutex
+	wg      sync.WaitGroup
+	connID  uint64
+	cancels map[uint64]context.CancelFunc
+	closed  bool
+}
+
+// RelayOptions configures Relay behavior.
+// All fields are optional; the zero value gives sensible defaults.
+type RelayOptions struct {
+	// Logger is the structured logger for connection and error events.
+	// Default: slog.Default()
+	Logger *slog.Logger
+
+	// MaxMessageLength is the maximum size of a WebSocket message in bytes.
+	// Set to a negative value to disable the limit.
+	// Default: 100_000 (100 KB)
 	MaxMessageLength int64
 
 	// PingInterval is the interval between WebSocket pings.
-	// Set to 0 to disable pings.
+	// Set to a negative value to disable pings.
 	// Default: 30 seconds
 	PingInterval time.Duration
 
@@ -48,19 +69,44 @@ type Relay struct {
 	// ConnIDFunc generates a unique connection ID string.
 	// If nil, a default monotonic counter ("1", "2", ...) is used.
 	ConnIDFunc func() string
-
-	mu      sync.Mutex
-	wg      sync.WaitGroup
-	connID  uint64
-	cancels map[uint64]context.CancelFunc
-	closed  bool
 }
 
 // NewRelay creates a new Relay with the given handler.
-func NewRelay(handler Handler) *Relay {
+// opts can be nil for default options.
+func NewRelay(handler Handler, opts *RelayOptions) *Relay {
+	if opts == nil {
+		opts = &RelayOptions{}
+	}
+
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	maxMessageLength := opts.MaxMessageLength
+	if maxMessageLength == 0 {
+		maxMessageLength = 100_000
+	}
+
+	pingInterval := opts.PingInterval
+	if pingInterval == 0 {
+		pingInterval = 30 * time.Second
+	}
+
+	pingTimeout := opts.PingTimeout
+	if pingTimeout == 0 {
+		pingTimeout = 10 * time.Second
+	}
+
 	return &Relay{
-		Handler:          handler,
-		MaxMessageLength: 100_000,
+		handler:          handler,
+		logger:           logger,
+		maxMessageLength: maxMessageLength,
+		pingInterval:     pingInterval,
+		pingTimeout:      pingTimeout,
+		info:             opts.Info,
+		metrics:          opts.Metrics,
+		connIDFunc:       opts.ConnIDFunc,
 	}
 }
 
@@ -127,7 +173,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// NIP-11: Respond with relay info if Accept header is application/nostr+json
-	if r.Info != nil && req.Header.Get("Accept") == "application/nostr+json" {
+	if r.info != nil && req.Header.Get("Accept") == "application/nostr+json" {
 		r.serveNIP11(w, req)
 		return
 	}
@@ -158,21 +204,21 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer r.unregisterConn(internalID)
 
 	var connID string
-	if r.ConnIDFunc != nil {
-		connID = r.ConnIDFunc()
+	if r.connIDFunc != nil {
+		connID = r.connIDFunc()
 	} else {
 		connID = strconv.FormatUint(internalID, 10)
 	}
 
 	ctx = ContextWithConnID(ctx, connID)
-	logger := r.logger().With("conn_id", connID)
+	logger := r.logger.With("conn_id", connID)
 	ctx = ContextWithLogger(ctx, logger)
 
 	// Metrics: connection tracking
-	if r.Metrics != nil {
-		r.Metrics.ConnectionsTotal.Inc()
-		r.Metrics.ConnectionsCurrent.Inc()
-		defer r.Metrics.ConnectionsCurrent.Dec()
+	if r.metrics != nil {
+		r.metrics.ConnectionsTotal.Inc()
+		r.metrics.ConnectionsCurrent.Inc()
+		defer r.metrics.ConnectionsCurrent.Dec()
 	}
 
 	logger.InfoContext(ctx, "connection start")
@@ -188,8 +234,8 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	defer conn.Close(websocket.StatusInternalError, "")
 
-	if r.MaxMessageLength > 0 {
-		conn.SetReadLimit(r.MaxMessageLength)
+	if r.maxMessageLength > 0 {
+		conn.SetReadLimit(r.maxMessageLength)
 	}
 
 	recv := make(chan *ClientMsg)
@@ -214,7 +260,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	})
 
 	// Run handler in current goroutine (saves 1 goroutine)
-	handlerErr := r.Handler.ServeNostr(ctx, send, recv)
+	handlerErr := r.handler.ServeNostr(ctx, send, recv)
 	cancel()
 	conn.Close(websocket.StatusNormalClosure, "")
 
@@ -290,11 +336,11 @@ func (r *Relay) readLoop(
 		}
 
 		// Metrics: message received
-		if r.Metrics != nil {
-			r.Metrics.MessagesReceived.WithLabelValues(string(msg.Type)).Inc()
+		if r.metrics != nil {
+			r.metrics.MessagesReceived.WithLabelValues(string(msg.Type)).Inc()
 			if msg.Type == MsgTypeEvent && msg.Event != nil {
 				kindStr := strconv.FormatInt(msg.Event.Kind, 10)
-				r.Metrics.EventsReceived.WithLabelValues(kindStr).Inc()
+				r.metrics.EventsReceived.WithLabelValues(kindStr).Inc()
 			}
 		}
 
@@ -315,22 +361,14 @@ func (r *Relay) writeLoop(
 	send <-chan *ServerMsg,
 ) error {
 	// Ping setup (nil channel pattern: tickerC stays nil when pings disabled)
-	interval := r.PingInterval
-	if interval == 0 {
-		interval = 30 * time.Second
-	}
-
 	var tickerC <-chan time.Time
-	if interval > 0 {
-		ticker := time.NewTicker(interval)
+	if r.pingInterval > 0 {
+		ticker := time.NewTicker(r.pingInterval)
 		defer ticker.Stop()
 		tickerC = ticker.C
 	}
 
-	timeout := r.PingTimeout
-	if timeout == 0 {
-		timeout = 10 * time.Second
-	}
+	timeout := r.pingTimeout
 
 	for {
 		select {
@@ -358,8 +396,8 @@ func (r *Relay) writeLoop(
 			}
 
 			// Metrics: message sent
-			if r.Metrics != nil {
-				r.Metrics.MessagesSent.WithLabelValues(string(msg.Type)).Inc()
+			if r.metrics != nil {
+				r.metrics.MessagesSent.WithLabelValues(string(msg.Type)).Inc()
 			}
 
 		case <-tickerC:
@@ -381,19 +419,12 @@ func (r *Relay) sendNotice(ctx context.Context, send chan<- *ServerMsg, message 
 	}
 }
 
-func (r *Relay) logger() *slog.Logger {
-	if r.Logger != nil {
-		return r.Logger
-	}
-	return slog.Default()
-}
-
 // serveWelcome responds with a simple welcome message for non-WebSocket requests.
 // If RelayInfo.Name is set, it returns the name. Otherwise, returns empty 200 OK.
 func (r *Relay) serveWelcome(w http.ResponseWriter, req *http.Request) {
-	if r.Info != nil && r.Info.Name != "" {
+	if r.info != nil && r.info.Name != "" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte(r.Info.Name))
+		w.Write([]byte(r.info.Name))
 		return
 	}
 	// Empty 200 OK
@@ -421,9 +452,9 @@ func (r *Relay) serveNIP11(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/nostr+json")
 
-	data, err := json.Marshal(r.Info)
+	data, err := json.Marshal(r.info)
 	if err != nil {
-		r.logger().WarnContext(req.Context(), "failed to marshal relay info", "error", err)
+		r.logger.WarnContext(req.Context(), "failed to marshal relay info", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

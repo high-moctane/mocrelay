@@ -16,4 +16,6 @@ import (
 	"github.com/high-moctane/mocrelay"
 )
 
-func main() { log.Fatal(http.ListenAndServe(":7447", mocrelay.NewRelay(mocrelay.NewNopHandler()))) }
+func main() {
+	log.Fatal(http.ListenAndServe(":7447", mocrelay.NewRelay(mocrelay.NewNopHandler(), nil)))
+}

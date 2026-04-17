@@ -127,28 +127,29 @@ func main() {
 
 	// --- Relay ---
 
-	relay := mocrelay.NewRelay(handler)
-	relay.Logger = logger
-	relay.Metrics = relayMetrics
-	relay.Info = &mocrelay.RelayInfo{
-		Name:          "mocrelay-kitchen-sink",
-		Description:   "A full-featured Nostr relay example",
-		Software:      "https://github.com/high-moctane/mocrelay",
-		SupportedNIPs: []int{1, 9, 11, 13, 40, 42, 45, 50, 70},
-		Limitation: &mocrelay.RelayLimitation{
-			MaxMessageLength: 100_000,
-			MaxSubscriptions: 20,
-			MaxSubidLength:   256,
-			MaxLimit:         500,
-			DefaultLimit:     100,
-			MaxEventTags:     2000,
-			MaxContentLength: 100_000,
-			AuthRequired:     true,
+	relay := mocrelay.NewRelay(handler, &mocrelay.RelayOptions{
+		Logger:  logger,
+		Metrics: relayMetrics,
+		Info: &mocrelay.RelayInfo{
+			Name:          "mocrelay-kitchen-sink",
+			Description:   "A full-featured Nostr relay example",
+			Software:      "https://github.com/high-moctane/mocrelay",
+			SupportedNIPs: []int{1, 9, 11, 13, 40, 42, 45, 50, 70},
+			Limitation: &mocrelay.RelayLimitation{
+				MaxMessageLength: 100_000,
+				MaxSubscriptions: 20,
+				MaxSubidLength:   256,
+				MaxLimit:         500,
+				DefaultLimit:     100,
+				MaxEventTags:     2000,
+				MaxContentLength: 100_000,
+				AuthRequired:     true,
+			},
+			Retention: []*mocrelay.RelayRetention{
+				{Kinds: []int64{4, 13, 14, 1059, 10050}, Time: intPtr(0)},
+			},
 		},
-		Retention: []*mocrelay.RelayRetention{
-			{Kinds: []int64{4, 13, 14, 1059, 10050}, Time: intPtr(0)},
-		},
-	}
+	})
 
 	// --- HTTP multiplexing ---
 	//

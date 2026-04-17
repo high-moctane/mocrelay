@@ -75,6 +75,6 @@
 //	    NewMaxLimitMiddlewareBase(500, 100),
 //	)(handler)
 //
-//	relay := NewRelay(handler)
+//	relay := NewRelay(handler, nil)
 //	http.ListenAndServe(":7447", relay)
 package mocrelay

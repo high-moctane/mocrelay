@@ -519,7 +519,7 @@ storage, _ := NewPebbleStorage("/path/to/db", nil)
 defer storage.Close()  // ← Don't forget!
 
 handler := NewStorageHandler(storage)
-relay := NewRelay(handler)
+relay := NewRelay(handler, nil)
 ```
 
 **Differential Testing**:
