@@ -30,7 +30,7 @@ jobs:
         run: |
           latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
           if [ -z "$latest" ]; then
-            echo "No existing v* tag found. Will run in bootstrap mode."
+            echo "No existing v* tag found. Bootstrap mode: skipping bump."
             echo "latest=" >> "$GITHUB_OUTPUT"
             echo "bootstrap=true" >> "$GITHUB_OUTPUT"
           else
@@ -39,22 +39,23 @@ jobs:
             echo "bootstrap=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # All subsequent steps are skipped in bootstrap mode. Once v0.1.0 is
+      # pushed manually, the daily run will start doing real work, and
+      # workflow_dispatch with dry_run=true can be used for simulation.
+
       - name: Collect commits since latest tag
         id: commits
+        if: steps.latest.outputs.bootstrap != 'true'
         run: |
           latest="${{ steps.latest.outputs.latest }}"
-          if [ -n "$latest" ]; then
-            range="${latest}..HEAD"
-          else
-            range="HEAD"
-          fi
+          range="${latest}..HEAD"
           git log "$range" --format=%H > /tmp/commits.txt
           count=$(wc -l < /tmp/commits.txt | tr -d ' ')
           echo "count=$count" >> "$GITHUB_OUTPUT"
           if [ "$count" -eq 0 ]; then
             echo "has_commits=false" >> "$GITHUB_OUTPUT"
             echo "go_touched=false" >> "$GITHUB_OUTPUT"
-            echo "No new commits since ${latest:-repository start}."
+            echo "No new commits since $latest."
             exit 0
           fi
           echo "has_commits=true" >> "$GITHUB_OUTPUT"
@@ -74,7 +75,7 @@ jobs:
 
       - name: Classify commits (dependabot vs other)
         id: classify
-        if: steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
+        if: steps.latest.outputs.bootstrap != 'true' && steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -109,12 +110,11 @@ jobs:
 
       - name: Compute next version
         id: next
-        if: steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
+        if: steps.latest.outputs.bootstrap != 'true' && steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
         run: |
           latest="${{ steps.latest.outputs.latest }}"
           bump="${{ steps.classify.outputs.bump }}"
-          base="${latest:-v0.0.0}"
-          version="${base#v}"
+          version="${latest#v}"
           IFS='.' read -r major minor patch <<< "$version"
           case "$bump" in
             minor) minor=$((minor + 1)); patch=0 ;;
@@ -122,7 +122,7 @@ jobs:
           esac
           next="v${major}.${minor}.${patch}"
           echo "next=$next" >> "$GITHUB_OUTPUT"
-          echo "Base: $base → Next: $next ($bump bump)"
+          echo "Base: $latest → Next: $next ($bump bump)"
 
       - name: Summarize
         if: always()
@@ -130,33 +130,32 @@ jobs:
           {
             echo "## Auto Tag Summary"
             echo ""
-            echo "- Latest tag: \`${{ steps.latest.outputs.latest || '(none)' }}\`"
-            echo "- Commits since latest tag: ${{ steps.commits.outputs.count || 0 }}"
-            if [ "${{ steps.commits.outputs.has_commits }}" = "true" ]; then
-              echo "- Go-relevant files changed: \`${{ steps.commits.outputs.go_touched }}\`"
-            fi
-            if [ "${{ steps.commits.outputs.go_touched }}" = "true" ]; then
-              echo "- Non-dependabot commits: ${{ steps.classify.outputs.non_dependabot }}"
-              echo "- Commits without matching PR: ${{ steps.classify.outputs.unknown }}"
-              echo "- Bump: \`${{ steps.classify.outputs.bump }}\`"
-              echo "- Next tag: \`${{ steps.next.outputs.next }}\`"
+            if [ "${{ steps.latest.outputs.bootstrap }}" = "true" ]; then
+              echo "- **Bootstrap mode**: no \`v*\` tag exists yet."
+              echo "- Push \`v0.1.0\` manually to start versioning."
+              echo "- Once tagged, future runs will compute bumps automatically;"
+              echo "  use \`workflow_dispatch\` with \`dry_run=true\` to simulate."
+            else
+              echo "- Latest tag: \`${{ steps.latest.outputs.latest }}\`"
+              echo "- Commits since latest tag: ${{ steps.commits.outputs.count || 0 }}"
+              if [ "${{ steps.commits.outputs.has_commits }}" = "true" ]; then
+                echo "- Go-relevant files changed: \`${{ steps.commits.outputs.go_touched }}\`"
+              fi
+              if [ "${{ steps.commits.outputs.go_touched }}" = "true" ]; then
+                echo "- Non-dependabot commits: ${{ steps.classify.outputs.non_dependabot }}"
+                echo "- Commits without matching PR: ${{ steps.classify.outputs.unknown }}"
+                echo "- Bump: \`${{ steps.classify.outputs.bump }}\`"
+                echo "- Next tag: \`${{ steps.next.outputs.next }}\`"
+              fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Push tag
-        if: steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
+        if: steps.latest.outputs.bootstrap != 'true' && steps.commits.outputs.has_commits == 'true' && steps.commits.outputs.go_touched == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BOOTSTRAP: ${{ steps.latest.outputs.bootstrap }}
           DRY_RUN: ${{ inputs.dry_run }}
           NEXT: ${{ steps.next.outputs.next }}
         run: |
-          if [ "$BOOTSTRAP" = "true" ]; then
-            echo "Bootstrap mode: no existing tag. Skipping tag push."
-            echo "Push \`v0.1.0\` manually when you are ready to start versioning." \
-              >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           if [ "$DRY_RUN" = "true" ]; then
             echo "Dry run requested. Skipping tag push for $NEXT."
             echo "- **Dry run**: tag push skipped." >> "$GITHUB_STEP_SUMMARY"
