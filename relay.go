@@ -121,10 +121,13 @@ func (r *Relay) Wait() {
 func (r *Relay) Shutdown(ctx context.Context) error {
 	r.mu.Lock()
 	r.closed = true
+	numConns := len(r.cancels)
 	for _, cancel := range r.cancels {
 		cancel()
 	}
 	r.mu.Unlock()
+
+	r.logger.InfoContext(ctx, "relay: shutdown initiated", "active_conns", numConns)
 
 	done := make(chan struct{})
 	go func() {
@@ -134,8 +137,10 @@ func (r *Relay) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-done:
+		r.logger.InfoContext(ctx, "relay: shutdown complete")
 		return nil
 	case <-ctx.Done():
+		r.logger.WarnContext(ctx, "relay: shutdown deadline exceeded, some connections may not have drained")
 		return ctx.Err()
 	}
 }

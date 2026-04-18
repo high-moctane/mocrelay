@@ -33,6 +33,9 @@ func (m *expirationMiddleware) HandleClientMsg(ctx context.Context, msg *ClientM
 	}
 
 	if m.isExpired(msg.Event) {
+		logRejection(ctx, "expiration", "expired",
+			"event_id", msg.Event.ID,
+		)
 		resp := NewServerOKMsg(msg.Event.ID, false, "invalid: event has expired")
 		return nil, resp, nil
 	}
@@ -44,6 +47,9 @@ func (m *expirationMiddleware) HandleServerMsg(ctx context.Context, msg *ServerM
 	// Drop expired events from being delivered
 	if msg.Type == MsgTypeEvent && msg.Event != nil {
 		if m.isExpired(msg.Event) {
+			logRejection(ctx, "expiration", "expired_on_send",
+				"event_id", msg.Event.ID,
+			)
 			return nil, nil // drop
 		}
 	}

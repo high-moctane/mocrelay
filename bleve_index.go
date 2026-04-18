@@ -2,6 +2,7 @@ package mocrelay
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/analysis/lang/cjk"
@@ -61,6 +62,11 @@ func NewBleveIndex(opts *BleveIndexOptions) (*BleveIndex, error) {
 		return nil, err
 	}
 
+	if opts.Path == "" {
+		slog.Info("bleve index: opened (in-memory)")
+	} else {
+		slog.Info("bleve index: opened", "path", opts.Path)
+	}
 	return &BleveIndex{index: index}, nil
 }
 
@@ -162,7 +168,13 @@ func (b *BleveIndex) Delete(ctx context.Context, eventID string) error {
 
 // Close implements SearchIndex.Close.
 func (b *BleveIndex) Close() error {
-	return b.index.Close()
+	err := b.index.Close()
+	if err != nil {
+		slog.Warn("bleve index: close returned error", "error", err)
+	} else {
+		slog.Info("bleve index: closed")
+	}
+	return err
 }
 
 func (b *BleveIndex) docCount() (uint64, error) {

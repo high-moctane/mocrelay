@@ -57,11 +57,19 @@ func (m *restrictedWritesMiddleware) HandleClientMsg(ctx context.Context, msg *C
 	switch m.mode {
 	case RestrictedWritesModeAllowlist:
 		if !inList {
+			logRejection(ctx, "restricted_writes", "not_in_allowlist",
+				"event_id", msg.Event.ID,
+				"pubkey", msg.Event.Pubkey,
+			)
 			resp := NewServerOKMsg(msg.Event.ID, false, "restricted: pubkey not allowed")
 			return nil, resp, nil
 		}
 	case RestrictedWritesModeBlocklist:
 		if inList {
+			logRejection(ctx, "restricted_writes", "in_blocklist",
+				"event_id", msg.Event.ID,
+				"pubkey", msg.Event.Pubkey,
+			)
 			resp := NewServerOKMsg(msg.Event.ID, false, "restricted: pubkey blocked")
 			return nil, resp, nil
 		}

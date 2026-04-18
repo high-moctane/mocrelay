@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"iter"
+	"log/slog"
 	"math"
 	"sort"
 	"strconv"
@@ -111,6 +112,7 @@ func NewPebbleStorage(path string, opts *PebbleStorageOptions) (*PebbleStorage, 
 		}
 		return nil, fmt.Errorf("open pebble database: %w", err)
 	}
+	slog.Info("pebble storage: opened", "path", path, "cache_size", opts.CacheSize)
 	return &PebbleStorage{db: db, cache: cache}, nil
 }
 
@@ -119,6 +121,11 @@ func (s *PebbleStorage) Close() error {
 	err := s.db.Close()
 	if s.cache != nil {
 		s.cache.Unref()
+	}
+	if err != nil {
+		slog.Warn("pebble storage: close returned error", "error", err)
+	} else {
+		slog.Info("pebble storage: closed")
 	}
 	return err
 }
