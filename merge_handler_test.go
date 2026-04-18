@@ -936,6 +936,145 @@ func TestMergeHandler_Req_DedupAcrossHandlerEOSE_RegularThenPassThrough(t *testi
 	})
 }
 
+// triggeredEOSEHandler emits EOSE on trigger (rather than immediately on REQ).
+// Useful for landing EOSE after a CLOSE has cleared subscription state.
+type triggeredEOSEHandler struct {
+	triggerCh <-chan struct{}
+}
+
+func (h *triggeredEOSEHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+	var subID string
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-recv:
+			if !ok {
+				return nil
+			}
+			if msg.Type == MsgTypeReq {
+				subID = msg.SubscriptionID
+			}
+		case <-h.triggerCh:
+			if subID != "" {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case send <- NewServerEOSEMsg(subID):
+				}
+				h.triggerCh = nil
+			}
+		}
+	}
+}
+
+// TestMergeHandler_Req_LateEventAfterCloseDropped tests that an EVENT arriving
+// from a child Handler after CLOSE has cleared subscription state is dropped
+// silently — it must NOT resurrect pendingEOSEs or leak to the client. This
+// guards against contract-violating downstreams (e.g. third-party relays
+// proxied via MergeHandler) and against C3 cases where CLOSE failed to reach
+// the child in time.
+func TestMergeHandler_Req_LateEventAfterCloseDropped(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		trigger := make(chan struct{})
+		event := makeEvent("event-late", "pubkey01", 1, 100)
+		// Never sends EOSE; emits the event only on trigger.
+		handler := &realTimeOnlyHandler{triggerCh: trigger, event: event}
+
+		mergeHandler := NewMergeHandler(handler)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// CLOSE before the handler emits anything.
+		recv <- &ClientMsg{
+			Type:           MsgTypeClose,
+			SubscriptionID: "sub1",
+		}
+
+		synctest.Wait()
+
+		// The event arrives AFTER subscription state was cleared.
+		close(trigger)
+
+		synctest.Wait()
+
+		for {
+			select {
+			case msg := <-send:
+				t.Fatalf("late message after CLOSE leaked to client: %+v", msg)
+			default:
+				return
+			}
+		}
+	})
+}
+
+// TestMergeHandler_Req_LateEOSEAfterCloseDropped tests the same guarantee for
+// EOSE: a delayed EOSE from a child must not surface to the client after
+// CLOSE has retired the subscription.
+func TestMergeHandler_Req_LateEOSEAfterCloseDropped(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		trigger := make(chan struct{})
+		handler := &triggeredEOSEHandler{triggerCh: trigger}
+
+		mergeHandler := NewMergeHandler(handler)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeClose,
+			SubscriptionID: "sub1",
+		}
+
+		synctest.Wait()
+
+		close(trigger)
+
+		synctest.Wait()
+
+		for {
+			select {
+			case msg := <-send:
+				t.Fatalf("late message after CLOSE leaked to client: %+v", msg)
+			default:
+				return
+			}
+		}
+	})
+}
+
 // errorHandler is a handler that returns an error.
 type errorHandler struct {
 	err error

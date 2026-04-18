@@ -281,17 +281,14 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 
 		pending, ok := s.pendingEOSEs[subID]
 		if !ok {
-			// First event for this subscription, create pending state
-			s.pendingEOSEs[subID] = &pendingEOSE{
-				received:        0,
-				seenEventIDs:    map[string]bool{eventID: true},
-				lastCreatedAt:   eventCreatedAt,
-				lastID:          eventID,
-				hasSentEvent:    true,
-				eventCount:      1,
-				handlerEOSESent: make([]bool, s.numHandlers),
-			}
-			return []*ServerMsg{msg}
+			// Unknown sub_id: no REQ has registered this subscription, or it
+			// was already CLOSE'd. A well-behaved Handler only emits EVENTs
+			// for active subscriptions, so this is either a stale message
+			// arriving after CLOSE cleanup or a contract violation. Drop
+			// silently — never resurrect subscription state from a child
+			// message, otherwise CLOSE could not actually stop the flow and
+			// limit/dedup state would be initialized without filter info.
+			return nil
 		}
 
 		// If EOSE already sent (due to limit), drop the event
@@ -359,19 +356,9 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 
 		pending, ok := s.pendingEOSEs[subID]
 		if !ok {
-			// First EOSE for this subscription (no events received yet)
-			handlerEOSESent := make([]bool, s.numHandlers)
-			handlerEOSESent[handlerIndex] = true
-			s.pendingEOSEs[subID] = &pendingEOSE{
-				received:        1,
-				seenEventIDs:    make(map[string]bool),
-				handlerEOSESent: handlerEOSESent,
-			}
-			if s.numHandlers == 1 {
-				delete(s.pendingEOSEs, subID)
-				s.completedSubs[subID] = true
-				return []*ServerMsg{msg}
-			}
+			// Unknown sub_id: no active REQ, or already CLOSE'd. Drop the
+			// stale/late EOSE so it can't resurrect subscription state.
+			// startReqResponse is the only place that creates pendingEOSEs.
 			return nil
 		}
 		// If EOSE already sent (due to limit), ignore
