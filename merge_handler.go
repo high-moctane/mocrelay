@@ -188,11 +188,22 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 			defer wg.Done()
 			defer close(childSends[i])
 			if err := handler.ServeNostr(ctx, childSends[i], childRecvs[i]); err != nil {
-				LoggerFromContext(ctx).WarnContext(ctx,
-					"merge handler: child returned error",
-					"handler_index", i,
-					"error", err,
-				)
+				logger := LoggerFromContext(ctx)
+				if errors.Is(err, context.Canceled) {
+					// Normal shutdown path: parent ctx was canceled and the
+					// child propagated it back. Not worth a Warn — Relay
+					// already logs "connection end (canceled)" at Info.
+					logger.DebugContext(ctx,
+						"merge handler: child canceled",
+						"handler_index", i,
+					)
+				} else {
+					logger.WarnContext(ctx,
+						"merge handler: child returned error",
+						"handler_index", i,
+						"error", err,
+					)
+				}
 				errs <- fmt.Errorf("handler %d: %w", i, err)
 			}
 		}(i, handler)
