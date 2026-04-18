@@ -46,7 +46,7 @@ func (m *minPowDifficultyMiddleware) HandleClientMsg(
 	event := msg.Event
 
 	// Check actual difficulty
-	actualDifficulty := CountLeadingZeroBits(event.ID)
+	actualDifficulty := countLeadingZeroBits(event.ID)
 	if actualDifficulty < m.minDifficulty {
 		return nil, NewServerOKMsg(
 			event.ID,

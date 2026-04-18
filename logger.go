@@ -23,8 +23,9 @@ func LoggerFromContext(ctx context.Context) *slog.Logger {
 
 type connIDKey struct{}
 
-// ContextWithConnID returns a new context with the given connection ID.
-func ContextWithConnID(ctx context.Context, id string) context.Context {
+// contextWithConnID returns a new context with the given connection ID.
+// It is internal; callers retrieve the value through [ConnIDFromContext].
+func contextWithConnID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, connIDKey{}, id)
 }
 

@@ -210,7 +210,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		connID = strconv.FormatUint(internalID, 10)
 	}
 
-	ctx = ContextWithConnID(ctx, connID)
+	ctx = contextWithConnID(ctx, connID)
 	logger := r.logger.With("conn_id", connID)
 	ctx = ContextWithLogger(ctx, logger)
 

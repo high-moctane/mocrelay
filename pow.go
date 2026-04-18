@@ -1,13 +1,13 @@
 package mocrelay
 
-// CountLeadingZeroBits counts the number of leading zero bits in a hex string.
-// This is used for NIP-13 Proof of Work validation.
+// countLeadingZeroBits counts the number of leading zero bits in a hex string.
+// Used internally for NIP-13 Proof of Work validation.
 //
 // Example:
 //
-//	CountLeadingZeroBits("000000000e9d97a1ab09fc381030b346cdd7a142ad57e6df0b46dc9bef6c7e2d") // returns 36
-//	CountLeadingZeroBits("002f...") // returns 10 (0000 0000 0010 1111...)
-func CountLeadingZeroBits(hex string) int {
+//	countLeadingZeroBits("000000000e9d97a1ab09fc381030b346cdd7a142ad57e6df0b46dc9bef6c7e2d") // returns 36
+//	countLeadingZeroBits("002f...") // returns 10 (0000 0000 0010 1111...)
+func countLeadingZeroBits(hex string) int {
 	count := 0
 
 	for i := 0; i < len(hex); i++ {

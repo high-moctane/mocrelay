@@ -67,9 +67,9 @@ func TestCountLeadingZeroBits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CountLeadingZeroBits(tt.hex)
+			got := countLeadingZeroBits(tt.hex)
 			if got != tt.want {
-				t.Errorf("CountLeadingZeroBits(%q) = %d, want %d", tt.hex, got, tt.want)
+				t.Errorf("countLeadingZeroBits(%q) = %d, want %d", tt.hex, got, tt.want)
 			}
 		})
 	}

@@ -34,7 +34,7 @@ func TestConnIDFromContext(t *testing.T) {
 	})
 
 	t.Run("returns conn ID from context", func(t *testing.T) {
-		ctx := ContextWithConnID(context.Background(), "abc-123")
+		ctx := contextWithConnID(context.Background(), "abc-123")
 		if got := ConnIDFromContext(ctx); got != "abc-123" {
 			t.Fatalf("expected %q, got %q", "abc-123", got)
 		}
