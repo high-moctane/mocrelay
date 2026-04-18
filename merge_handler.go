@@ -22,6 +22,14 @@ const (
 	DefaultMergeHandlerChildRecvBuffer = 10
 )
 
+// MergeHandlerOKLostHandlerMessage is the OK message text returned to the
+// client when [MergeHandler] cannot account for every downstream handler's
+// verdict on an EVENT — typically because a child timed out on broadcast or
+// exited before responding. The OK is forced to accepted=false so a
+// well-behaved client retries the event, which can then be re-fanned to
+// any downstream that has since recovered.
+const MergeHandlerOKLostHandlerMessage = "error: a downstream handler is unavailable, please retry"
+
 // sendAll forwards every message to send, honoring ctx cancellation. Returns
 // false if ctx was cancelled before all messages were delivered.
 func sendAll(ctx context.Context, send chan<- *ServerMsg, msgs []*ServerMsg) bool {
@@ -310,6 +318,23 @@ type pendingOK struct {
 	accepted         bool
 	message          string
 	handlerResponded []bool // per-handler dedup; also used by handlerClosed
+	// hadHandlerLoss is set when at least one handler's verdict was filled
+	// in by handlerClosed (timeout / early exit) instead of an actual OK
+	// response. The merged OK is then forced to accepted=false so the
+	// client retries — see MergeHandlerOKLostHandlerMessage.
+	hadHandlerLoss bool
+}
+
+// finalizeOKMsg builds the merged OK ServerMsg for a now-complete pendingOK.
+// If any handler's verdict was synthesized (handlerClosed fill-in), the OK
+// is forced to accepted=false regardless of what the responding handlers
+// said: mocrelay can't honestly claim "stored" when a downstream's view is
+// unknown.
+func (s *mergeSession) finalizeOKMsg(eventID string, p *pendingOK) *ServerMsg {
+	if p.hadHandlerLoss {
+		return NewServerOKMsg(eventID, false, MergeHandlerOKLostHandlerMessage)
+	}
+	return NewServerOKMsg(eventID, p.accepted, p.message)
 }
 
 type pendingCount struct {
@@ -421,9 +446,13 @@ func (s *mergeSession) handlerClosed(handlerIndex int) []*ServerMsg {
 		}
 		pending.handlerResponded[handlerIndex] = true
 		pending.received++
+		// Mark the loss so finalizeOKMsg forces accepted=false, even if
+		// the responding handlers said "true". The client retries; the
+		// dead handler stays out of the picture until it (or a wrapping
+		// reconnect-aware Handler) recovers.
+		pending.hadHandlerLoss = true
 		if pending.received >= s.numHandlers {
-			results = append(results,
-				NewServerOKMsg(eventID, pending.accepted, pending.message))
+			results = append(results, s.finalizeOKMsg(eventID, pending))
 			delete(s.pendingOKs, eventID)
 		}
 	}
@@ -481,8 +510,9 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 		}
 		// Check if all handlers have responded
 		if pending.received >= s.numHandlers {
+			out := s.finalizeOKMsg(msg.EventID, pending)
 			delete(s.pendingOKs, msg.EventID)
-			return []*ServerMsg{NewServerOKMsg(msg.EventID, pending.accepted, pending.message)}
+			return []*ServerMsg{out}
 		}
 		return nil // Still waiting for more responses
 

@@ -1158,6 +1158,12 @@ func TestMergeHandler_HandlerCloses_EOSEAdvances(t *testing.T) {
 }
 
 // TestMergeHandler_HandlerCloses_OKAdvances tests the same advancement for OK.
+//
+// When a child handler exits before responding to an EVENT, MergeHandler
+// must still emit the merged OK so the client isn't left hanging — but it
+// must say accepted=false, because the lost handler's view of the event is
+// unknown. A well-behaved client retries on accepted=false, which then has
+// a chance to land at any downstream that has since recovered.
 func TestMergeHandler_HandlerCloses_OKAdvances(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
@@ -1197,7 +1203,8 @@ func TestMergeHandler_HandlerCloses_OKAdvances(t *testing.T) {
 		case msg := <-send:
 			assert.Equal(t, MsgTypeOK, msg.Type)
 			assert.Equal(t, "event-1", msg.EventID)
-			assert.True(t, msg.Accepted)
+			assert.False(t, msg.Accepted, "OK should be forced to accepted=false on handler loss")
+			assert.Equal(t, MergeHandlerOKLostHandlerMessage, msg.Message)
 		default:
 			t.Fatal("expected merged OK after handler exit")
 		}
@@ -1560,6 +1567,79 @@ func TestMergeHandler_Broadcast_REQTimeoutAdvances(t *testing.T) {
 
 		assert.True(t, eoseSubs["sub1"], "expected EOSE for sub1 after stuck child timed out")
 		assert.True(t, eoseSubs["sub2"], "expected EOSE for sub2 after stuck child timed out")
+
+		cancel()
+		synctest.Wait()
+		<-errCh
+	})
+}
+
+// TestMergeHandler_Broadcast_OKForcedFalseOnTimeout tests that when a child
+// handler stalls on broadcast (as opposed to exiting), the merged OK for an
+// already-in-flight EVENT is forced to accepted=false once the stall is
+// detected. This ties death-detection from broadcast timeout to client-
+// visible truth: mocrelay cannot honestly claim "stored" when a
+// downstream's view of the EVENT is unknown.
+func TestMergeHandler_Broadcast_OKForcedFalseOnTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		stuck := &stuckHandler{}
+		nop := NewNopHandler()
+
+		mergeHandler := NewMergeHandler(
+			[]Handler{stuck, nop},
+			&MergeHandlerOptions{
+				BroadcastTimeout: 100 * time.Millisecond,
+				ChildRecvBuffer:  1,
+			},
+		)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		send := make(chan *ServerMsg, 32)
+		recv := make(chan *ClientMsg, 32)
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- mergeHandler.ServeNostr(ctx, send, recv)
+		}()
+
+		// EVENT fans out best-effort: stuck's buffer fills (0/1 -> 1/1),
+		// nop ACKs it. The pending OK still waits on stuck, which never
+		// responds.
+		event := makeEvent("evt1", "pubkey01", 1, 100)
+		recv <- &ClientMsg{Type: MsgTypeEvent, Event: event}
+
+		// REQ can't fit in stuck's full buffer → broadcastAll waits
+		// BroadcastTimeout, retires stuck, and handlerClosed finalizes
+		// the pending OK for evt1 with accepted=false.
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		time.Sleep(200 * time.Millisecond)
+		synctest.Wait()
+
+		var okMsg *ServerMsg
+	drain:
+		for {
+			select {
+			case msg := <-send:
+				if msg.Type == MsgTypeOK && msg.EventID == "evt1" {
+					okMsg = msg
+				}
+			default:
+				break drain
+			}
+		}
+
+		assert.NotNil(t, okMsg, "expected OK for evt1 after stuck child timed out")
+		if okMsg != nil {
+			assert.False(t, okMsg.Accepted, "OK should be forced to accepted=false on broadcast timeout")
+			assert.Equal(t, MergeHandlerOKLostHandlerMessage, okMsg.Message)
+		}
 
 		cancel()
 		synctest.Wait()
