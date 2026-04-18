@@ -63,13 +63,21 @@ func (h *mergeHandler) broadcastAll(
 	childRecvs []chan *ClientMsg,
 ) (dead []int, ctxDone bool) {
 	if msg.Type == MsgTypeEvent {
-		for _, ch := range childRecvs {
+		for i, ch := range childRecvs {
 			if ch == nil {
 				continue
 			}
 			select {
 			case ch <- msg:
 			default:
+				// Best-effort: child recv buffer is full. The client
+				// will learn of the loss via OK accepted=false (see
+				// handlerClosed / hadHandlerLoss).
+				LoggerFromContext(ctx).DebugContext(ctx,
+					"merge handler: EVENT dropped to child (recv buffer full)",
+					"handler_index", i,
+					"event_id", msg.Event.ID,
+				)
 			}
 		}
 		return nil, false
@@ -93,6 +101,12 @@ func (h *mergeHandler) broadcastAll(
 		case ch <- msg:
 			t.Stop()
 		case <-t.C:
+			LoggerFromContext(ctx).WarnContext(ctx,
+				"merge handler: child broadcast timed out, retiring child",
+				"handler_index", i,
+				"msg_type", msg.Type,
+				"timeout", h.broadcastTimeout,
+			)
 			dead = append(dead, i)
 		case <-ctx.Done():
 			t.Stop()
@@ -149,6 +163,9 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 
 	numHandlers := len(h.handlers)
 
+	logger := LoggerFromContext(ctx)
+	logger.DebugContext(ctx, "merge handler: started", "num_handlers", numHandlers)
+
 	// Create channels for each child handler. childRecvs uses an internal
 	// default buffer size; childSends is fixed because the merger drains it
 	// directly from the main loop and no buffering matters beyond a small
@@ -171,6 +188,11 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 			defer wg.Done()
 			defer close(childSends[i])
 			if err := handler.ServeNostr(ctx, childSends[i], childRecvs[i]); err != nil {
+				LoggerFromContext(ctx).WarnContext(ctx,
+					"merge handler: child returned error",
+					"handler_index", i,
+					"error", err,
+				)
 				errs <- fmt.Errorf("handler %d: %w", i, err)
 			}
 		}(i, handler)
@@ -254,6 +276,10 @@ loop:
 				// Child closed: disable this case and advance any pending
 				// state still waiting on this handler so the client isn't
 				// left hanging on OK / EOSE / COUNT.
+				LoggerFromContext(ctx).WarnContext(ctx,
+					"merge handler: child closed its send channel",
+					"handler_index", handlerIndex,
+				)
 				cases[chosen].Chan = reflect.ValueOf(nil)
 				results := session.handlerClosed(handlerIndex)
 				if !sendAll(ctx, send, results) {
@@ -280,7 +306,13 @@ loop:
 		handlerErrs = errors.Join(handlerErrs, e)
 	}
 
-	return errors.Join(loopErr, handlerErrs)
+	finalErr := errors.Join(loopErr, handlerErrs)
+	if finalErr != nil {
+		logger.DebugContext(ctx, "merge handler: stopped", "error", finalErr)
+	} else {
+		logger.DebugContext(ctx, "merge handler: stopped")
+	}
+	return finalErr
 }
 
 // mergeSession manages the state for merging responses.

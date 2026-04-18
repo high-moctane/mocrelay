@@ -29,6 +29,10 @@ func (m *maxSubidLengthMiddleware) HandleClientMsg(ctx context.Context, msg *Cli
 	switch msg.Type {
 	case MsgTypeReq, MsgTypeClose:
 		if len(msg.SubscriptionID) > m.maxLen {
+			logRejection(ctx, "max_subid_length", "subid_too_long",
+				"sub_id_length", len(msg.SubscriptionID),
+				"limit", m.maxLen,
+			)
 			resp := NewServerClosedMsg(msg.SubscriptionID, "error: subscription ID too long")
 			return nil, resp, nil
 		}

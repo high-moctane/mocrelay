@@ -42,7 +42,7 @@ func (m *maxSubscriptionsMiddleware) HandleClientMsg(ctx context.Context, msg *C
 
 	switch msg.Type {
 	case MsgTypeReq:
-		return m.handleReq(state, msg)
+		return m.handleReq(ctx, state, msg)
 	case MsgTypeClose:
 		return m.handleClose(state, msg)
 	default:
@@ -50,7 +50,7 @@ func (m *maxSubscriptionsMiddleware) HandleClientMsg(ctx context.Context, msg *C
 	}
 }
 
-func (m *maxSubscriptionsMiddleware) handleReq(state *maxSubsState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *maxSubscriptionsMiddleware) handleReq(ctx context.Context, state *maxSubsState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
@@ -63,6 +63,11 @@ func (m *maxSubscriptionsMiddleware) handleReq(state *maxSubsState, msg *ClientM
 
 	// Check if we've reached the limit
 	if len(state.subs) >= m.maxSubs {
+		logRejection(ctx, "max_subscriptions", "too_many_subscriptions",
+			"sub_id", subID,
+			"current", len(state.subs),
+			"limit", m.maxSubs,
+		)
 		// Reject with CLOSED message
 		resp := NewServerClosedMsg(subID, "error: too many subscriptions")
 		return nil, resp, nil

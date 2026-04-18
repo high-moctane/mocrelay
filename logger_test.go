@@ -1,8 +1,10 @@
 package mocrelay
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +23,50 @@ func TestLoggerFromContext(t *testing.T) {
 		got := LoggerFromContext(ctx)
 		if got != logger {
 			t.Fatal("expected the same logger")
+		}
+	})
+}
+
+func TestLogRejection(t *testing.T) {
+	t.Run("emits debug log with uniform keys", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
+		ctx := ContextWithLogger(context.Background(), logger)
+
+		logRejection(ctx, "max_event_tags", "too_many_tags",
+			"event_id", "abc123",
+			"count", 100,
+		)
+
+		out := buf.String()
+		for _, want := range []string{
+			`level=DEBUG`,
+			`msg="message rejected"`,
+			`middleware=max_event_tags`,
+			`reason=too_many_tags`,
+			`event_id=abc123`,
+			`count=100`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("output missing %q\nfull output: %s", want, out)
+			}
+		}
+	})
+
+	t.Run("default logger skips debug by default", func(t *testing.T) {
+		// logRejection is Debug level, so it should be silent under the
+		// default logger (Info level). This guards against accidentally
+		// promoting it to a higher level.
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, nil)) // default: Info
+		ctx := ContextWithLogger(context.Background(), logger)
+
+		logRejection(ctx, "auth", "event_unauthenticated", "event_id", "x")
+
+		if buf.Len() != 0 {
+			t.Errorf("expected no output at Info level, got: %s", buf.String())
 		}
 	})
 }

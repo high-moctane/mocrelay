@@ -31,6 +31,11 @@ func (m *maxEventTagsMiddleware) HandleClientMsg(ctx context.Context, msg *Clien
 	}
 
 	if msg.Event != nil && len(msg.Event.Tags) > m.maxTags {
+		logRejection(ctx, "max_event_tags", "too_many_tags",
+			"event_id", msg.Event.ID,
+			"tags", len(msg.Event.Tags),
+			"limit", m.maxTags,
+		)
 		resp := NewServerOKMsg(msg.Event.ID, false, "invalid: too many tags")
 		return nil, resp, nil
 	}

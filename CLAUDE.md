@@ -133,6 +133,39 @@ LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", err)
 slog.WarnContext(ctx, "query error", "error", err)
 ```
 
+**Log level policy**:
+
+| Level | What goes here | Examples |
+|---|---|---|
+| **Error** | Data loss / corruption; operator must act now. | Storage.Store failure, unrecoverable I/O. |
+| **Warn** | Unexpected / externally-caused failures; individually tolerable but worth watching. | WebSocket parse / verify failure, MergeHandler lost child (timeout / early close), child handler returned error, Shutdown deadline exceeded. |
+| **Info** | Structural lifecycle events — one per connection or per relay, not per message. | Connection start / end, PebbleStorage / BleveIndex open / close, Relay shutdown progress. |
+| **Debug** | Hot-path events: every accepted EVENT, every REQ, every middleware rejection, every dropped broadcast. Off in production. | `logRejection` output, routerHandler per-message events, MergeHandler EVENT drop. |
+
+Rule of thumb: if the log fires "at Info or higher and would be noisy in
+production under normal load", it is at the wrong level.
+
+**Middleware rejection log helper** (`logRejection`):
+
+Every middleware in mocrelay that drops / rejects a client message calls the
+internal `logRejection` helper so operators can find all rejections with a
+single grep:
+
+```
+grep "message rejected" relay.log
+```
+
+Emitted keys are uniform: `middleware`, `reason`, and message-specific
+extras (e.g. `event_id`, `pubkey`, `sub_id`, `kind`). The `reason` string is
+stable and intentionally aligned with the corresponding Prometheus
+`rejections_total{reason=…}` label where one exists, so logs and metrics are
+cross-indexable.
+
+Rejections are **Debug**, not Warn: they are an expected outcome of normal
+middleware policy (`MaxEventTags` dropping oversized events, `AuthRequired`
+rejecting unauthenticated REQs, …). Enable Debug when investigating why a
+specific client is being dropped; rely on metrics day-to-day.
+
 ### Design Decisions
 
 #### Constructor API

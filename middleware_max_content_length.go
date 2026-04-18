@@ -34,6 +34,11 @@ func (m *maxContentLengthMiddleware) HandleClientMsg(ctx context.Context, msg *C
 	}
 
 	if msg.Event != nil && utf8.RuneCountInString(msg.Event.Content) > m.maxLen {
+		logRejection(ctx, "max_content_length", "content_too_long",
+			"event_id", msg.Event.ID,
+			"length", utf8.RuneCountInString(msg.Event.Content),
+			"limit", m.maxLen,
+		)
 		resp := NewServerOKMsg(msg.Event.ID, false, "invalid: content too long")
 		return nil, resp, nil
 	}

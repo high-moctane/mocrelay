@@ -54,6 +54,11 @@ func (m *createdAtLimitsMiddleware) HandleClientMsg(ctx context.Context, msg *Cl
 	// Check lower limit (too old)
 	oldest := now.Add(-time.Duration(m.lowerLimit) * time.Second)
 	if createdAt.Before(oldest) {
+		logRejection(ctx, "created_at_limits", "too_old",
+			"event_id", msg.Event.ID,
+			"created_at", createdAt.Unix(),
+			"lower_limit_sec", m.lowerLimit,
+		)
 		resp := NewServerOKMsg(msg.Event.ID, false, "invalid: created_at too old")
 		return nil, resp, nil
 	}
@@ -61,6 +66,11 @@ func (m *createdAtLimitsMiddleware) HandleClientMsg(ctx context.Context, msg *Cl
 	// Check upper limit (too far in the future)
 	newest := now.Add(time.Duration(m.upperLimit) * time.Second)
 	if createdAt.After(newest) {
+		logRejection(ctx, "created_at_limits", "too_far_future",
+			"event_id", msg.Event.ID,
+			"created_at", createdAt.Unix(),
+			"upper_limit_sec", m.upperLimit,
+		)
 		resp := NewServerOKMsg(msg.Event.ID, false, "invalid: created_at too far in the future")
 		return nil, resp, nil
 	}

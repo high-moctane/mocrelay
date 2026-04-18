@@ -21,6 +21,19 @@ func LoggerFromContext(ctx context.Context) *slog.Logger {
 	return slog.Default()
 }
 
+// logRejection logs a middleware-level message rejection at Debug level with
+// a uniform key set. All middleware drops in mocrelay call this helper so
+// operators can find them with a single grep of "message rejected".
+//
+// Rejections are Debug (not Warn) because they are an expected outcome of
+// normal middleware policy and would otherwise flood the log. Enable Debug
+// logging when investigating why a specific client's messages are being
+// dropped.
+func logRejection(ctx context.Context, middleware, reason string, attrs ...any) {
+	base := []any{"middleware", middleware, "reason", reason}
+	LoggerFromContext(ctx).DebugContext(ctx, "message rejected", append(base, attrs...)...)
+}
+
 type connIDKey struct{}
 
 // contextWithConnID returns a new context with the given connection ID.

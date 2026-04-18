@@ -36,6 +36,10 @@ func (m *protectedEventsMiddleware) HandleClientMsg(ctx context.Context, msg *Cl
 
 	// Check if the authenticated pubkey matches the event pubkey
 	if !isAuthedAsPubkey(ctx, msg.Event.Pubkey) {
+		logRejection(ctx, "protected_events", "not_authed_as_author",
+			"event_id", msg.Event.ID,
+			"pubkey", msg.Event.Pubkey,
+		)
 		resp := NewServerOKMsg(
 			msg.Event.ID,
 			false,

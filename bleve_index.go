@@ -2,6 +2,7 @@ package mocrelay
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/analysis/lang/cjk"
@@ -26,19 +27,31 @@ type SearchIndex interface {
 
 // BleveIndex implements SearchIndex using Bleve with CJK analyzer.
 type BleveIndex struct {
-	index bleve.Index
+	index  bleve.Index
+	logger *slog.Logger // For Open/Close/lifecycle logs (never nil; falls back to slog.Default()).
 }
 
 // BleveIndexOptions configures BleveIndex behavior.
 type BleveIndexOptions struct {
 	// Path to store the index. If empty, uses in-memory index.
 	Path string
+
+	// Logger is used for lifecycle events (Open, Close) that happen outside
+	// of any request context. Per-request errors continue to use the context
+	// logger via [LoggerFromContext].
+	// Default: [slog.Default]
+	Logger *slog.Logger
 }
 
 // NewBleveIndex creates a new Bleve-based search index.
 func NewBleveIndex(opts *BleveIndexOptions) (*BleveIndex, error) {
 	if opts == nil {
 		opts = &BleveIndexOptions{}
+	}
+
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	indexMapping := buildIndexMapping()
@@ -61,7 +74,12 @@ func NewBleveIndex(opts *BleveIndexOptions) (*BleveIndex, error) {
 		return nil, err
 	}
 
-	return &BleveIndex{index: index}, nil
+	if opts.Path == "" {
+		logger.Info("bleve index: opened (in-memory)")
+	} else {
+		logger.Info("bleve index: opened", "path", opts.Path)
+	}
+	return &BleveIndex{index: index, logger: logger}, nil
 }
 
 // buildIndexMapping creates the Bleve index mapping for Nostr events.
@@ -162,7 +180,13 @@ func (b *BleveIndex) Delete(ctx context.Context, eventID string) error {
 
 // Close implements SearchIndex.Close.
 func (b *BleveIndex) Close() error {
-	return b.index.Close()
+	err := b.index.Close()
+	if err != nil {
+		b.logger.Warn("bleve index: close returned error", "error", err)
+	} else {
+		b.logger.Info("bleve index: closed")
+	}
+	return err
 }
 
 func (b *BleveIndex) docCount() (uint64, error) {

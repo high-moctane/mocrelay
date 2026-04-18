@@ -100,13 +100,17 @@ func (m *authMiddleware) HandleClientMsg(
 
 	switch msg.Type {
 	case MsgTypeAuth:
-		return m.handleAuth(state, msg)
+		return m.handleAuth(ctx, state, msg)
 
 	case MsgTypeEvent:
 		if !m.isAuthedPubkey(state, msg.Event.Pubkey) {
 			if m.metrics != nil {
 				m.metrics.RejectionsTotal.WithLabelValues("event_unauthenticated").Inc()
 			}
+			logRejection(ctx, "auth", "event_unauthenticated",
+				"event_id", msg.Event.ID,
+				"pubkey", msg.Event.Pubkey,
+			)
 			return nil, NewServerOKMsg(
 				msg.Event.ID,
 				false,
@@ -120,6 +124,9 @@ func (m *authMiddleware) HandleClientMsg(
 			if m.metrics != nil {
 				m.metrics.RejectionsTotal.WithLabelValues("req_unauthenticated").Inc()
 			}
+			logRejection(ctx, "auth", "req_unauthenticated",
+				"sub_id", msg.SubscriptionID,
+			)
 			return nil, NewServerClosedMsg(
 				msg.SubscriptionID,
 				"auth-required: authentication required to subscribe",
@@ -140,8 +147,9 @@ func (m *authMiddleware) HandleServerMsg(
 	return msg, nil
 }
 
-func (m *authMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Event == nil {
+		logRejection(ctx, "auth", "missing_auth_event")
 		return nil, NewServerOKMsg("", false, "invalid: missing auth event"), nil
 	}
 
@@ -152,6 +160,10 @@ func (m *authMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 		if m.metrics != nil {
 			m.metrics.AuthTotal.WithLabelValues("invalid_kind").Inc()
 		}
+		logRejection(ctx, "auth", "invalid_kind",
+			"event_id", event.ID,
+			"kind", event.Kind,
+		)
 		return nil, NewServerOKMsg(event.ID, false, "invalid: auth event must be kind 22242"), nil
 	}
 
@@ -161,6 +173,10 @@ func (m *authMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 		if m.metrics != nil {
 			m.metrics.AuthTotal.WithLabelValues("expired").Inc()
 		}
+		logRejection(ctx, "auth", "expired",
+			"event_id", event.ID,
+			"created_at", event.CreatedAt.Unix(),
+		)
 		return nil, NewServerOKMsg(event.ID, false, "invalid: auth event created_at out of range"), nil
 	}
 
@@ -174,6 +190,9 @@ func (m *authMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 		if m.metrics != nil {
 			m.metrics.AuthTotal.WithLabelValues("challenge_mismatch").Inc()
 		}
+		logRejection(ctx, "auth", "challenge_mismatch",
+			"event_id", event.ID,
+		)
 		return nil, NewServerOKMsg(event.ID, false, "invalid: challenge mismatch"), nil
 	}
 
@@ -186,6 +205,9 @@ func (m *authMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 			if m.metrics != nil {
 				m.metrics.AuthTotal.WithLabelValues("invalid_relay").Inc()
 			}
+			logRejection(ctx, "auth", "missing_relay_tag",
+				"event_id", event.ID,
+			)
 			return nil, NewServerOKMsg(event.ID, false, "invalid: missing relay tag"), nil
 		}
 	}

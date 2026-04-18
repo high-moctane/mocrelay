@@ -48,6 +48,11 @@ func (m *minPowDifficultyMiddleware) HandleClientMsg(
 	// Check actual difficulty
 	actualDifficulty := countLeadingZeroBits(event.ID)
 	if actualDifficulty < m.minDifficulty {
+		logRejection(ctx, "min_pow_difficulty", "insufficient_difficulty",
+			"event_id", event.ID,
+			"actual", actualDifficulty,
+			"required", m.minDifficulty,
+		)
 		return nil, NewServerOKMsg(
 			event.ID,
 			false,
@@ -59,6 +64,11 @@ func (m *minPowDifficultyMiddleware) HandleClientMsg(
 	if m.checkCommitment {
 		committedTarget := getCommittedPowTarget(event)
 		if committedTarget >= 0 && committedTarget < m.minDifficulty {
+			logRejection(ctx, "min_pow_difficulty", "insufficient_committed_target",
+				"event_id", event.ID,
+				"committed", committedTarget,
+				"required", m.minDifficulty,
+			)
 			return nil, NewServerOKMsg(
 				event.ID,
 				false,

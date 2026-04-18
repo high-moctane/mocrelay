@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"iter"
+	"log/slog"
 	"math"
 	"sort"
 	"strconv"
@@ -45,9 +46,10 @@ const (
 
 // PebbleStorage implements Storage using Pebble (LSM-tree based KV store).
 type PebbleStorage struct {
-	db    *pebble.DB
-	cache *pebble.Cache // Keep reference to close on Close()
-	mu    sync.RWMutex  // For atomic operations spanning multiple keys
+	db     *pebble.DB
+	cache  *pebble.Cache // Keep reference to close on Close()
+	logger *slog.Logger  // For Open/Close/lifecycle logs (never nil; falls back to slog.Default()).
+	mu     sync.RWMutex  // For atomic operations spanning multiple keys
 }
 
 // PebbleStorageOptions configures PebbleStorage behavior.
@@ -57,6 +59,12 @@ type PebbleStorageOptions struct {
 	// SSTable blocks in memory.
 	// Default: 8MB (Pebble's default). Recommended: 64MB-256MB for production.
 	CacheSize int64
+
+	// Logger is used for lifecycle events (Open, Close) that happen outside
+	// of any request context. Per-request errors (Store / Query) continue to
+	// use the context logger via [LoggerFromContext].
+	// Default: [slog.Default]
+	Logger *slog.Logger
 
 	// fs provides the interface for persistent file storage (unexported: test use only).
 	// Use vfs.NewMem() for in-memory storage.
@@ -70,6 +78,11 @@ type PebbleStorageOptions struct {
 func NewPebbleStorage(path string, opts *PebbleStorageOptions) (*PebbleStorage, error) {
 	if opts == nil {
 		opts = &PebbleStorageOptions{}
+	}
+
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	// Configure Bloom filter for efficient negative lookups.
@@ -111,7 +124,8 @@ func NewPebbleStorage(path string, opts *PebbleStorageOptions) (*PebbleStorage, 
 		}
 		return nil, fmt.Errorf("open pebble database: %w", err)
 	}
-	return &PebbleStorage{db: db, cache: cache}, nil
+	logger.Info("pebble storage: opened", "path", path, "cache_size", opts.CacheSize)
+	return &PebbleStorage{db: db, cache: cache, logger: logger}, nil
 }
 
 // Close closes the Pebble database.
@@ -119,6 +133,11 @@ func (s *PebbleStorage) Close() error {
 	err := s.db.Close()
 	if s.cache != nil {
 		s.cache.Unref()
+	}
+	if err != nil {
+		s.logger.Warn("pebble storage: close returned error", "error", err)
+	} else {
+		s.logger.Info("pebble storage: closed")
 	}
 	return err
 }

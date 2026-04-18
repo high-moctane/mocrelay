@@ -37,6 +37,10 @@ func (m *kindDenylistMiddleware) HandleClientMsg(ctx context.Context, msg *Clien
 	}
 
 	if _, denied := m.denylist[msg.Event.Kind]; denied {
+		logRejection(ctx, "kind_denylist", "kind_blocked",
+			"event_id", msg.Event.ID,
+			"kind", msg.Event.Kind,
+		)
 		resp := NewServerOKMsg(msg.Event.ID, false, "blocked: kind not allowed")
 		return nil, resp, nil
 	}
