@@ -54,18 +54,17 @@ type SimpleHandlerBase interface {
 	HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error)
 }
 
-// SimpleHandler wraps a SimpleHandlerBase to implement Handler.
-type SimpleHandler struct {
+// NewSimpleHandler wraps a [SimpleHandlerBase] as a [Handler]. See
+// [SimpleHandlerBase] for the lifecycle contract.
+func NewSimpleHandler(base SimpleHandlerBase) Handler {
+	return &simpleHandler{base: base}
+}
+
+type simpleHandler struct {
 	base SimpleHandlerBase
 }
 
-// NewSimpleHandler creates a new SimpleHandler from a SimpleHandlerBase.
-func NewSimpleHandler(base SimpleHandlerBase) Handler {
-	return &SimpleHandler{base: base}
-}
-
-// ServeNostr implements Handler.
-func (h *SimpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) (err error) {
+func (h *simpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) (err error) {
 	ctx, startMsg, startErr := h.base.OnStart(ctx)
 	if startErr != nil {
 		return startErr

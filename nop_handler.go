@@ -4,18 +4,16 @@ import (
 	"context"
 )
 
-// NopHandler is a handler that does nothing but respond correctly.
-// It accepts all events and returns EOSE for all subscriptions.
-// Useful for connection testing and as a base for custom handlers.
-type NopHandler struct{}
-
-// NewNopHandler creates a new NopHandler.
+// NewNopHandler returns a [Handler] that accepts every EVENT and immediately
+// returns EOSE for every REQ. It is useful for connection testing and as a
+// starting point for custom handlers.
 func NewNopHandler() Handler {
-	return &NopHandler{}
+	return &nopHandler{}
 }
 
-// ServeNostr implements Handler.
-func (h *NopHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+type nopHandler struct{}
+
+func (h *nopHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
 	for {
 		select {
 		case <-ctx.Done():

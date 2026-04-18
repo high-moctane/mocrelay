@@ -4,19 +4,19 @@ import (
 	"context"
 )
 
-// RouterHandler is a Handler that routes events between clients.
-// It uses a shared Router to manage subscriptions and broadcast events.
-type RouterHandler struct {
+// NewRouterHandler returns a [Handler] backed by router that broadcasts
+// events between clients. The connection is registered with router on
+// start and unregistered on return, so subscription lifecycle is managed
+// automatically.
+func NewRouterHandler(router *Router) Handler {
+	return &routerHandler{router: router}
+}
+
+type routerHandler struct {
 	router *Router
 }
 
-// NewRouterHandler creates a new RouterHandler with the given Router.
-func NewRouterHandler(router *Router) Handler {
-	return &RouterHandler{router: router}
-}
-
-// ServeNostr implements Handler.
-func (h *RouterHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+func (h *routerHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
 	// Register this connection
 	connID := h.router.Register(send)
 	defer h.router.Unregister(connID)

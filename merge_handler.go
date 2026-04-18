@@ -12,18 +12,18 @@ import (
 // Defaults for [MergeHandlerOptions].
 const (
 	// DefaultMergeHandlerBroadcastTimeout is the default per-child broadcast
-	// timeout used by [MergeHandler] when [MergeHandlerOptions.BroadcastTimeout]
-	// is zero.
+	// timeout used by the merge handler when
+	// [MergeHandlerOptions.BroadcastTimeout] is zero.
 	DefaultMergeHandlerBroadcastTimeout = 30 * time.Second
 
 	// DefaultMergeHandlerChildRecvBuffer is the default per-child recv
-	// channel capacity used by [MergeHandler] when
+	// channel capacity used by the merge handler when
 	// [MergeHandlerOptions.ChildRecvBuffer] is zero.
 	DefaultMergeHandlerChildRecvBuffer = 10
 )
 
 // MergeHandlerOKLostHandlerMessage is the OK message text returned to the
-// client when [MergeHandler] cannot account for every downstream handler's
+// client when the merge handler cannot account for every downstream handler's
 // verdict on an EVENT — typically because a child timed out on broadcast or
 // exited before responding. The OK is forced to accepted=false so a
 // well-behaved client retries the event, which can then be re-fanned to
@@ -58,7 +58,7 @@ func sendAll(ctx context.Context, send chan<- *ServerMsg, msgs []*ServerMsg) boo
 //
 // The second return value is true if ctx was cancelled mid-broadcast — the
 // caller should exit the main loop.
-func (h *MergeHandler) broadcastAll(
+func (h *mergeHandler) broadcastAll(
 	ctx context.Context,
 	msg *ClientMsg,
 	childRecvs []chan *ClientMsg,
@@ -103,7 +103,7 @@ func (h *MergeHandler) broadcastAll(
 	return dead, false
 }
 
-// MergeHandlerOptions configures a [MergeHandler].
+// MergeHandlerOptions configures a merge handler returned by [NewMergeHandler].
 //
 // All fields are optional. A nil *MergeHandlerOptions is equivalent to a
 // zero-valued MergeHandlerOptions and means "use defaults for everything".
@@ -133,17 +133,8 @@ type MergeHandlerOptions struct {
 	ChildRecvBuffer int
 }
 
-// MergeHandler merges multiple handlers into one.
-// It runs all handlers in parallel and merges their responses.
-type MergeHandler struct {
-	handlers         []Handler
-	broadcastTimeout time.Duration
-	childRecvBuffer  int
-}
-
-// NewMergeHandler creates a new MergeHandler that fans messages out to every
-// handler in handlers and merges their responses. Pass nil for opts to use
-// defaults.
+// NewMergeHandler returns a [Handler] that fans messages out to every handler
+// in handlers and merges their responses. Pass nil for opts to use defaults.
 func NewMergeHandler(handlers []Handler, opts *MergeHandlerOptions) Handler {
 	timeout := DefaultMergeHandlerBroadcastTimeout
 	buf := DefaultMergeHandlerChildRecvBuffer
@@ -155,15 +146,20 @@ func NewMergeHandler(handlers []Handler, opts *MergeHandlerOptions) Handler {
 			buf = opts.ChildRecvBuffer
 		}
 	}
-	return &MergeHandler{
+	return &mergeHandler{
 		handlers:         handlers,
 		broadcastTimeout: timeout,
 		childRecvBuffer:  buf,
 	}
 }
 
-// ServeNostr implements [Handler].
-func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+type mergeHandler struct {
+	handlers         []Handler
+	broadcastTimeout time.Duration
+	childRecvBuffer  int
+}
+
+func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

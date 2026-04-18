@@ -5,38 +5,35 @@ import (
 	"iter"
 )
 
-// StorageHandler wraps a Storage as a Handler.
-// It handles EVENT and REQ messages using the underlying storage.
+// NewStorageHandler returns a [Handler] that serves EVENT and REQ messages
+// against storage.
 //
 // Behavior:
 //   - EVENT: Store the event, return OK
 //   - REQ: Query the storage, return EVENT messages + EOSE
-//   - CLOSE: No-op (StorageHandler doesn't manage subscriptions)
+//   - CLOSE: No-op — the handler does not manage subscriptions; pair with
+//     [NewRouterHandler] via [NewMergeHandler] to deliver real-time events
 //   - COUNT: Query the storage, return COUNT with the count
 //
-// Note: StorageHandler does NOT manage subscriptions. Once EOSE is sent,
-// its job is done for that REQ. Use RouterHandler for live subscriptions.
-type StorageHandler struct {
+// Once EOSE is sent for a REQ, the handler's job is done for that
+// subscription.
+func NewStorageHandler(storage Storage) Handler {
+	return NewSimpleHandler(&storageHandler{storage: storage})
+}
+
+type storageHandler struct {
 	storage Storage
 }
 
-// NewStorageHandler creates a new StorageHandler.
-func NewStorageHandler(storage Storage) Handler {
-	return NewSimpleHandler(&StorageHandler{storage: storage})
-}
-
-// OnStart implements [SimpleHandlerBase].
-func (h *StorageHandler) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+func (h *storageHandler) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleHandlerBase].
-func (h *StorageHandler) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (h *storageHandler) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleMsg implements [SimpleHandlerBase].
-func (h *StorageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+func (h *storageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 	switch msg.Type {
 	case MsgTypeEvent:
 		return h.handleEvent(ctx, msg)
@@ -52,7 +49,7 @@ func (h *StorageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Se
 	}
 }
 
-func (h *StorageHandler) handleEvent(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+func (h *storageHandler) handleEvent(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 	return func(yield func(*ServerMsg) bool) {
 		if msg.Event == nil {
 			yield(NewServerOKMsg("", false, "error: no event provided"))
@@ -75,7 +72,7 @@ func (h *StorageHandler) handleEvent(ctx context.Context, msg *ClientMsg) (iter.
 	}, nil
 }
 
-func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+func (h *storageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 	return func(yield func(*ServerMsg) bool) {
 		if msg.SubscriptionID == "" {
 			return
@@ -103,7 +100,7 @@ func (h *StorageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Se
 	}, nil
 }
 
-func (h *StorageHandler) handleCount(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+func (h *storageHandler) handleCount(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
 	return func(yield func(*ServerMsg) bool) {
 		if msg.SubscriptionID == "" {
 			return
