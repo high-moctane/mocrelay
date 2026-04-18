@@ -8,6 +8,19 @@ import (
 	"sync"
 )
 
+// sendAll forwards every message to send, honoring ctx cancellation. Returns
+// false if ctx was cancelled before all messages were delivered.
+func sendAll(ctx context.Context, send chan<- *ServerMsg, msgs []*ServerMsg) bool {
+	for _, m := range msgs {
+		select {
+		case send <- m:
+		case <-ctx.Done():
+			return false
+		}
+	}
+	return true
+}
+
 // MergeHandler merges multiple handlers into one.
 // It runs all handlers in parallel and merges their responses.
 type MergeHandler struct {
@@ -111,22 +124,24 @@ loop:
 			}
 
 		default: // childSends[chosen-2]
-			if !ok {
-				// Child closed, disable this case
-				cases[chosen].Chan = reflect.ValueOf(nil)
-				continue
-			}
-			msg := value.Interface().(*ServerMsg)
 			handlerIndex := chosen - 2
-			// Process merged response
-			results := session.processResponse(msg, handlerIndex)
-			for _, result := range results {
-				select {
-				case send <- result:
-				case <-ctx.Done():
+			if !ok {
+				// Child closed: disable this case and advance any pending
+				// state still waiting on this handler so the client isn't
+				// left hanging on OK / EOSE / COUNT.
+				cases[chosen].Chan = reflect.ValueOf(nil)
+				results := session.handlerClosed(handlerIndex)
+				if !sendAll(ctx, send, results) {
 					loopErr = ctx.Err()
 					break loop
 				}
+				continue
+			}
+			msg := value.Interface().(*ServerMsg)
+			results := session.processResponse(msg, handlerIndex)
+			if !sendAll(ctx, send, results) {
+				loopErr = ctx.Err()
+				break loop
 			}
 		}
 	}
@@ -154,14 +169,16 @@ type mergeSession struct {
 }
 
 type pendingOK struct {
-	received int
-	accepted bool
-	message  string
+	received         int
+	accepted         bool
+	message          string
+	handlerResponded []bool // per-handler dedup; also used by handlerClosed
 }
 
 type pendingCount struct {
-	received int
-	maxCount uint64
+	received         int
+	maxCount         uint64
+	handlerResponded []bool // per-handler dedup; also used by handlerClosed
 }
 
 type pendingEOSE struct {
@@ -193,9 +210,10 @@ func (s *mergeSession) startEventResponse(eventID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pendingOKs[eventID] = &pendingOK{
-		received: 0,
-		accepted: true, // Start optimistic
-		message:  "",
+		received:         0,
+		accepted:         true, // Start optimistic
+		message:          "",
+		handlerResponded: make([]bool, s.numHandlers),
 	}
 }
 
@@ -203,8 +221,9 @@ func (s *mergeSession) startCountResponse(subID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pendingCounts[subID] = &pendingCount{
-		received: 0,
-		maxCount: 0,
+		received:         0,
+		maxCount:         0,
+		handlerResponded: make([]bool, s.numHandlers),
 	}
 }
 
@@ -246,6 +265,61 @@ func (s *mergeSession) closeSubscription(subID string) {
 	delete(s.completedSubs, subID)
 }
 
+// handlerClosed accounts for a child Handler that terminated before completing
+// its share of the pending responses. Any pending OK / EOSE / COUNT still
+// waiting on this handler is advanced as if "no further response will come";
+// if that brings the response count up to numHandlers, the merged message is
+// emitted now. Without this, a single child Handler returning early (disk
+// error, network drop in a proxy setup, ...) would leave the client waiting
+// forever for OK / EOSE / COUNT.
+func (s *mergeSession) handlerClosed(handlerIndex int) []*ServerMsg {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var results []*ServerMsg
+
+	for eventID, pending := range s.pendingOKs {
+		if pending.handlerResponded[handlerIndex] {
+			continue
+		}
+		pending.handlerResponded[handlerIndex] = true
+		pending.received++
+		if pending.received >= s.numHandlers {
+			results = append(results,
+				NewServerOKMsg(eventID, pending.accepted, pending.message))
+			delete(s.pendingOKs, eventID)
+		}
+	}
+
+	for subID, pending := range s.pendingEOSEs {
+		if pending.eoseSent || pending.handlerEOSESent[handlerIndex] {
+			continue
+		}
+		pending.handlerEOSESent[handlerIndex] = true
+		pending.received++
+		if pending.received >= s.numHandlers {
+			results = append(results, NewServerEOSEMsg(subID))
+			delete(s.pendingEOSEs, subID)
+			s.completedSubs[subID] = true
+		}
+	}
+
+	for subID, pending := range s.pendingCounts {
+		if pending.handlerResponded[handlerIndex] {
+			continue
+		}
+		pending.handlerResponded[handlerIndex] = true
+		pending.received++
+		if pending.received >= s.numHandlers {
+			results = append(results,
+				NewServerCountMsg(subID, pending.maxCount, nil))
+			delete(s.pendingCounts, subID)
+		}
+	}
+
+	return results
+}
+
 func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*ServerMsg {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -256,6 +330,13 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 		if !ok {
 			return nil // Unexpected OK
 		}
+		// Guard against duplicate responses from the same handler (contract
+		// violation), and required so handlerClosed can advance pending state
+		// without double-counting.
+		if pending.handlerResponded[handlerIndex] {
+			return nil
+		}
+		pending.handlerResponded[handlerIndex] = true
 		pending.received++
 		if !msg.Accepted {
 			pending.accepted = false
@@ -365,6 +446,10 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 		if pending.eoseSent {
 			return nil
 		}
+		// Guard against duplicate EOSE from the same handler.
+		if pending.handlerEOSESent[handlerIndex] {
+			return nil
+		}
 		pending.handlerEOSESent[handlerIndex] = true
 		pending.received++
 		// Check if all handlers have sent EOSE
@@ -379,17 +464,17 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 		subID := msg.SubscriptionID
 		pending, ok := s.pendingCounts[subID]
 		if !ok {
-			// First COUNT for this subscription
-			s.pendingCounts[subID] = &pendingCount{
-				received: 1,
-				maxCount: msg.Count,
-			}
-			if s.numHandlers == 1 {
-				delete(s.pendingCounts, subID)
-				return []*ServerMsg{msg}
-			}
+			// Unknown sub_id: no COUNT request was registered, or it was
+			// already CLOSE'd. Same reasoning as the EVENT/EOSE branches —
+			// startCountResponse is the only place that creates
+			// pendingCounts.
 			return nil
 		}
+		// Guard against duplicate responses from the same handler.
+		if pending.handlerResponded[handlerIndex] {
+			return nil
+		}
+		pending.handlerResponded[handlerIndex] = true
 		pending.received++
 		if msg.Count > pending.maxCount {
 			pending.maxCount = msg.Count

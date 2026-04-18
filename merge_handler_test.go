@@ -1075,6 +1075,167 @@ func TestMergeHandler_Req_LateEOSEAfterCloseDropped(t *testing.T) {
 	})
 }
 
+// abandoningHandler returns nil (clean exit) when triggerCh is closed.
+// It does not consume recv, simulating a child Handler that drops out
+// before completing its share of OK / EOSE / COUNT responses.
+type abandoningHandler struct {
+	triggerCh <-chan struct{}
+}
+
+func (h *abandoningHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-h.triggerCh:
+		return nil
+	}
+}
+
+// TestMergeHandler_HandlerCloses_EOSEAdvances tests that when a child Handler
+// exits before sending EOSE, MergeHandler advances the pending state and emits
+// the merged EOSE so the client isn't left hanging. Critical for proxy-style
+// usage where a downstream relay can drop out mid-subscription.
+func TestMergeHandler_HandlerCloses_EOSEAdvances(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		triggerExit := make(chan struct{})
+		abandoning := &abandoningHandler{triggerCh: triggerExit}
+		nop := NewNopHandler()
+
+		mergeHandler := NewMergeHandler(abandoning, nop)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// nop has sent EOSE; abandoning hasn't responded.
+		// No merged EOSE yet — still waiting on abandoning.
+		select {
+		case msg := <-send:
+			t.Fatalf("unexpected message before handler exit: %+v", msg)
+		default:
+		}
+
+		close(triggerExit)
+		synctest.Wait()
+
+		select {
+		case msg := <-send:
+			assert.Equal(t, MsgTypeEOSE, msg.Type)
+			assert.Equal(t, "sub1", msg.SubscriptionID)
+		default:
+			t.Fatal("expected merged EOSE after handler exit")
+		}
+	})
+}
+
+// TestMergeHandler_HandlerCloses_OKAdvances tests the same advancement for OK.
+func TestMergeHandler_HandlerCloses_OKAdvances(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		triggerExit := make(chan struct{})
+		abandoning := &abandoningHandler{triggerCh: triggerExit}
+		nop := NewNopHandler()
+
+		mergeHandler := NewMergeHandler(abandoning, nop)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		event := makeEvent("event-1", "pubkey01", 1, 100)
+		recv <- &ClientMsg{
+			Type:  MsgTypeEvent,
+			Event: event,
+		}
+
+		synctest.Wait()
+
+		select {
+		case msg := <-send:
+			t.Fatalf("unexpected message before handler exit: %+v", msg)
+		default:
+		}
+
+		close(triggerExit)
+		synctest.Wait()
+
+		select {
+		case msg := <-send:
+			assert.Equal(t, MsgTypeOK, msg.Type)
+			assert.Equal(t, "event-1", msg.EventID)
+			assert.True(t, msg.Accepted)
+		default:
+			t.Fatal("expected merged OK after handler exit")
+		}
+	})
+}
+
+// TestMergeHandler_HandlerCloses_COUNTAdvances tests the same advancement for COUNT.
+func TestMergeHandler_HandlerCloses_COUNTAdvances(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		triggerExit := make(chan struct{})
+		abandoning := &abandoningHandler{triggerCh: triggerExit}
+		nop := NewNopHandler() // returns count=0
+
+		mergeHandler := NewMergeHandler(abandoning, nop)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeCount,
+			SubscriptionID: "count1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		select {
+		case msg := <-send:
+			t.Fatalf("unexpected message before handler exit: %+v", msg)
+		default:
+		}
+
+		close(triggerExit)
+		synctest.Wait()
+
+		select {
+		case msg := <-send:
+			assert.Equal(t, MsgTypeCount, msg.Type)
+			assert.Equal(t, "count1", msg.SubscriptionID)
+			assert.Equal(t, uint64(0), msg.Count)
+		default:
+			t.Fatal("expected merged COUNT after handler exit")
+		}
+	})
+}
+
 // errorHandler is a handler that returns an error.
 type errorHandler struct {
 	err error
