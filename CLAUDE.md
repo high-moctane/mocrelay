@@ -101,7 +101,7 @@ default:
 
 | Handler | State | Cleanup |
 |---------|-------|---------|
-| **MergeHandler** | `pendingEOSEs`, `completedSubs`, `limitReachedSub` | Deleted on CLOSE |
+| **MergeHandler** | `pendingOKs`, `pendingEOSEs`, `pendingCounts`, `completedSubs` | Per-subscription state cleared on CLOSE; lost-handler pendings advanced via `handlerClosed`. |
 | **Router** | `connections[connID].subscriptions` | Deleted on CLOSE; on disconnect, Unregister removes entire connection |
 
 **Stateless Handlers** (no concern):
@@ -389,13 +389,19 @@ default:
 
 ### MergeHandler Design ✅
 
-Runs multiple Handlers in parallel and merges responses.
+Runs multiple Handlers in parallel and merges responses. Designed to remain
+correct even when a downstream Handler stalls, exits early, or otherwise
+deviates from contract — important for proxy-style use cases where one
+child wraps an external relay.
 
 **Typical usage**:
 ```go
 handler := NewMergeHandler(
-    NewStorageHandler(storage),  // Fetch past events
-    NewRouterHandler(router),    // Real-time delivery
+    []Handler{
+        NewStorageHandler(storage),  // Fetch past events
+        NewRouterHandler(router),    // Real-time delivery
+    },
+    nil, // *MergeHandlerOptions; nil = defaults
 )
 ```
 
@@ -403,11 +409,18 @@ handler := NewMergeHandler(
 
 | Message | Rule |
 |---------|------|
-| **OK** | Wait for all handlers, merge (any rejection = rejection, indicates failure) |
-| **EOSE** | Wait for all handlers' EOSE before sending |
+| **OK** | Wait for all handlers, merge (any `accepted=false` => merged `false`). If any handler is lost mid-flight (timeout / early exit), forced to `accepted=false` with `MergeHandlerOKLostHandlerMessage` so the client retries. |
+| **EOSE** | Wait for all handlers' EOSE before sending. A lost handler's contribution is filled in by `handlerClosed` so the client isn't stranded. |
 | **EVENT (before EOSE)** | Deduplicate + drop events that break sort order |
 | **EVENT (after handler EOSE)** | Pass through from that handler (real-time events) |
-| **COUNT** | Take max across all handlers |
+| **COUNT** | Take max across all handlers. A lost handler's contribution is filled in by `handlerClosed`. |
+
+**Broadcast semantics (parent recv → children)**:
+
+| Message type | Delivery |
+|---|---|
+| **EVENT** | Best-effort drop on full child recv buffer. EVENT loss is signalled to the client via OK `accepted=false` (driven by `hadHandlerLoss`), which prompts a retry. |
+| **REQ / COUNT / CLOSE** | Guaranteed delivery, capped per child by `MergeHandlerOptions.BroadcastTimeout` (default 30s). A child that fails to drain in time is treated as dead — its case is removed, its slot in `childRecvs` is nil'd, and `handlerClosed` advances any merged response that depended on it. |
 
 **limit handling**:
 - **Uses first filter's limit** (mocrelay's stance)
@@ -424,8 +437,8 @@ handler := NewMergeHandler(
 // Check if event breaks sort order
 if newEvent.CreatedAt > lastSentCreatedAt {
     // drop
-} else if newEvent.CreatedAt == lastSentCreatedAt && newEvent.ID > lastSentID {
-    // drop
+} else if newEvent.CreatedAt == lastSentCreatedAt && newEvent.ID < lastSentID {
+    // drop (id ASC tiebreak — newer id is lower lexically)
 } else {
     // send
 }
@@ -434,10 +447,30 @@ if newEvent.CreatedAt > lastSentCreatedAt {
 **Design decisions**:
 - Use `sync.Mutex` (not channel-based mutex)
 - Cannot use SimpleHandlerBase (requires 1:N transformation)
+- Phase-1 death detection is single-shot timeout. N-of-M streaks /
+  metrics-driven scoring are intentionally deferred until real data
+  argues for them (YAGNI).
+- Reconnect / retry of a flapping downstream is **the Handler's own
+  responsibility**, not MergeHandler's. MergeHandler retires a stalled
+  child and never restarts it; a Handler that wraps a recoverable
+  external resource (e.g. an upstream relay) should absorb short-term
+  contention and reconnect internally.
+
+**Handler contract for use under MergeHandler**:
+- A Handler MUST drain its `recv` channel in a timely fashion. Brief
+  stalls are absorbed by `MergeHandlerOptions.ChildRecvBuffer`; sustained
+  stalls trip `BroadcastTimeout` and the Handler is retired.
+- If a Handler wraps a slow external resource, it should buffer / retry
+  internally. MergeHandler is intentionally not the only buffer in the
+  chain.
+- A Handler that exits early (`return err`) leaves its child recv channel
+  alive but unread; MergeHandler sees the close-of-childSends and runs
+  `handlerClosed`. No additional cleanup is required from the Handler.
 
 **Considerations**:
-- If a handler never sends EOSE, session maps grow indefinitely
-- Countermeasures: timeout, CLOSE cleanup, subscription limits
+- If a handler never sends EOSE *and* never gets retired, session maps
+  grow per subscription. Countermeasures: BroadcastTimeout, CLOSE cleanup,
+  subscription limits.
 
 ### Storage Interface ✅
 
