@@ -812,6 +812,90 @@ func TestMergeHandler_Error_OneHandlerFails(t *testing.T) {
 	})
 }
 
+// TestMergeHandler_Req_SubIDReuseWithoutClose tests that re-issuing REQ with the
+// same sub_id WITHOUT sending CLOSE in between properly resets dedup/sort/limit
+// state. NIP-01 lets clients reuse a sub_id (the new REQ supersedes the previous
+// subscription); a regression here would let the second query bypass dedup,
+// sort enforcement, and limit because events would fall into the
+// completedSubs pass-through path.
+func TestMergeHandler_Req_SubIDReuseWithoutClose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		storage := NewInMemoryStorage()
+		storage.Store(ctx, makeEvent("event-1", "pubkey01", 1, 500))
+		storage.Store(ctx, makeEvent("event-2", "pubkey01", 1, 400))
+		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
+
+		handler := NewStorageHandler(storage)
+		mergeHandler := NewMergeHandler(handler)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 20)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		limit := int64(2)
+
+		// 1st REQ: limit=2 hits, EOSE is sent.
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{Limit: &limit}},
+		}
+
+		synctest.Wait()
+
+		var first []*ServerMsg
+		for {
+			select {
+			case msg := <-send:
+				first = append(first, msg)
+			default:
+				goto firstDone
+			}
+		}
+	firstDone:
+		if len(first) != 3 {
+			t.Fatalf("1st REQ: expected 3 messages (2 events + EOSE), got %d", len(first))
+		}
+		assert.Equal(t, MsgTypeEvent, first[0].Type)
+		assert.Equal(t, MsgTypeEvent, first[1].Type)
+		assert.Equal(t, MsgTypeEOSE, first[2].Type)
+
+		// 2nd REQ on the same sub_id WITHOUT a CLOSE in between.
+		// Limit must still apply (would not without C2 fix).
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{Limit: &limit}},
+		}
+
+		synctest.Wait()
+
+		var second []*ServerMsg
+		for {
+			select {
+			case msg := <-send:
+				second = append(second, msg)
+			default:
+				goto secondDone
+			}
+		}
+	secondDone:
+		if len(second) != 3 {
+			t.Fatalf("2nd REQ (sub_id reuse without CLOSE): expected 3 messages "+
+				"(2 events + EOSE), got %d: %+v", len(second), second)
+		}
+		assert.Equal(t, MsgTypeEvent, second[0].Type)
+		assert.Equal(t, MsgTypeEvent, second[1].Type)
+		assert.Equal(t, MsgTypeEOSE, second[2].Type)
+	})
+}
+
 // TestMergeHandler_Close_CleansUpState tests that CLOSE message cleans up subscription state.
 func TestMergeHandler_Close_CleansUpState(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

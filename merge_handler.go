@@ -212,6 +212,13 @@ func (s *mergeSession) startReqResponse(subID string, filters []*ReqFilter) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Clear any previous completion state for this subID. NIP-01 allows
+	// clients to re-use a sub_id without sending CLOSE first; the new REQ
+	// supersedes the previous subscription. Without this, dedup/sort/limit
+	// would be bypassed on the second query because events would fall into
+	// the completedSubs pass-through path.
+	delete(s.completedSubs, subID)
+
 	// Extract limit from the first filter (mocrelay's convention)
 	var limit int64
 	if len(filters) > 0 && filters[0].Limit != nil {
