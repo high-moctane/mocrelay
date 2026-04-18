@@ -5,9 +5,24 @@ import (
 	"errors"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// stuckHandler never reads from recv. It only exits when ctx is cancelled.
+// Used to verify that MergeHandler times out broadcast on a stalled child
+// rather than blocking the whole fan-out forever.
+type stuckHandler struct{}
+
+func (h *stuckHandler) ServeNostr(
+	ctx context.Context,
+	send chan<- *ServerMsg,
+	recv <-chan *ClientMsg,
+) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
 
 // rejectingHandler is a handler that always rejects events.
 type rejectingHandler struct{}
@@ -1466,5 +1481,88 @@ func TestMergeHandler_Close_CleansUpState(t *testing.T) {
 		msg = <-send
 		assert.Equal(t, MsgTypeEOSE, msg.Type)
 		assert.Equal(t, "sub1", msg.SubscriptionID)
+	})
+}
+
+// TestMergeHandler_Broadcast_REQTimeoutAdvances tests that when a child
+// handler stops draining its recv buffer, MergeHandler times out the REQ
+// broadcast, retires the stalled child, and emits the merged EOSE via
+// handlerClosed. Critical for proxy-style usage where a slow upstream relay
+// must not stall the entire fan-out forever.
+//
+// Setup: a single stuck child + ChildRecvBuffer=1 saturates after one REQ,
+// so the second REQ trips BroadcastTimeout deterministically. handlerClosed
+// then advances both pendings, and since numHandlers=1 they immediately
+// resolve as merged EOSE messages.
+//
+// COUNT and CLOSE share the same broadcast path; this single test exercises
+// the mechanism for all three control message types.
+func TestMergeHandler_Broadcast_REQTimeoutAdvances(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		stuck := &stuckHandler{}
+
+		mergeHandler := NewMergeHandler(
+			[]Handler{stuck},
+			&MergeHandlerOptions{
+				BroadcastTimeout: 100 * time.Millisecond,
+				ChildRecvBuffer:  1,
+			},
+		)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		send := make(chan *ServerMsg, 32)
+		recv := make(chan *ClientMsg, 32)
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- mergeHandler.ServeNostr(ctx, send, recv)
+		}()
+
+		// sub1 fills stuck's recv buffer (cap=1) — broadcast succeeds
+		// fast-path, stuck pendings just sit there waiting on stuck
+		// (which never responds).
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+		// sub2 cannot fit; broadcastAll waits BroadcastTimeout, then
+		// declares stuck dead. handlerClosed advances both pendings;
+		// numHandlers=1 means each immediately resolves as an EOSE.
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub2",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		// time.Sleep is required (not just synctest.Wait): synctest.Wait
+		// returns once all goroutines are durably blocked but does NOT
+		// auto-advance the fake clock. Sleeping past BroadcastTimeout puts
+		// this test goroutine into a durable block too, which lets the
+		// bubble fast-forward time and fire the slow-path timer.
+		time.Sleep(200 * time.Millisecond)
+		synctest.Wait()
+
+		eoseSubs := map[string]bool{}
+	drain:
+		for {
+			select {
+			case msg := <-send:
+				if msg.Type == MsgTypeEOSE {
+					eoseSubs[msg.SubscriptionID] = true
+				}
+			default:
+				break drain
+			}
+		}
+
+		assert.True(t, eoseSubs["sub1"], "expected EOSE for sub1 after stuck child timed out")
+		assert.True(t, eoseSubs["sub2"], "expected EOSE for sub2 after stuck child timed out")
+
+		cancel()
+		synctest.Wait()
+		<-errCh
 	})
 }

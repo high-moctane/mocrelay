@@ -9,10 +9,18 @@ import (
 	"time"
 )
 
-// DefaultMergeHandlerBroadcastTimeout is the default per-child broadcast
-// timeout used by [MergeHandler] when [MergeHandlerOptions.BroadcastTimeout]
-// is zero. See [MergeHandlerOptions] for details on why a timeout exists.
-const DefaultMergeHandlerBroadcastTimeout = 30 * time.Second
+// Defaults for [MergeHandlerOptions].
+const (
+	// DefaultMergeHandlerBroadcastTimeout is the default per-child broadcast
+	// timeout used by [MergeHandler] when [MergeHandlerOptions.BroadcastTimeout]
+	// is zero.
+	DefaultMergeHandlerBroadcastTimeout = 30 * time.Second
+
+	// DefaultMergeHandlerChildRecvBuffer is the default per-child recv
+	// channel capacity used by [MergeHandler] when
+	// [MergeHandlerOptions.ChildRecvBuffer] is zero.
+	DefaultMergeHandlerChildRecvBuffer = 10
+)
 
 // sendAll forwards every message to send, honoring ctx cancellation. Returns
 // false if ctx was cancelled before all messages were delivered.
@@ -25,6 +33,66 @@ func sendAll(ctx context.Context, send chan<- *ServerMsg, msgs []*ServerMsg) boo
 		}
 	}
 	return true
+}
+
+// broadcastAll fans msg out to every live child (entries where childRecvs[i]
+// is nil have already been disabled and are skipped).
+//
+// EVENT messages are best-effort: a full child recv buffer drops the message
+// silently, and the client learns of the loss via OK accepted=false (see
+// handlerClosed) which prompts a retry.
+//
+// REQ / COUNT / CLOSE are control messages and must not be silently dropped:
+// losing them desynchronizes downstream subscription state. broadcastAll
+// blocks up to MergeHandlerOptions.BroadcastTimeout per child; a child that
+// fails to drain in time is reported back as dead so the caller can retire it
+// (close its case and advance any merged response that depended on it).
+//
+// The second return value is true if ctx was cancelled mid-broadcast — the
+// caller should exit the main loop.
+func (h *MergeHandler) broadcastAll(
+	ctx context.Context,
+	msg *ClientMsg,
+	childRecvs []chan *ClientMsg,
+) (dead []int, ctxDone bool) {
+	if msg.Type == MsgTypeEvent {
+		for _, ch := range childRecvs {
+			if ch == nil {
+				continue
+			}
+			select {
+			case ch <- msg:
+			default:
+			}
+		}
+		return nil, false
+	}
+
+	// Control message: guaranteed delivery with per-child timeout.
+	for i, ch := range childRecvs {
+		if ch == nil {
+			continue
+		}
+		// Fast path: try non-blocking send first to avoid allocating a
+		// timer in the common case where the child is keeping up.
+		select {
+		case ch <- msg:
+			continue
+		default:
+		}
+		// Slow path: wait up to BroadcastTimeout.
+		t := time.NewTimer(h.broadcastTimeout)
+		select {
+		case ch <- msg:
+			t.Stop()
+		case <-t.C:
+			dead = append(dead, i)
+		case <-ctx.Done():
+			t.Stop()
+			return dead, true
+		}
+	}
+	return dead, false
 }
 
 // MergeHandlerOptions configures a [MergeHandler].
@@ -44,6 +112,17 @@ type MergeHandlerOptions struct {
 	//
 	// A zero value selects [DefaultMergeHandlerBroadcastTimeout] (30s).
 	BroadcastTimeout time.Duration
+
+	// ChildRecvBuffer sizes the per-child recv channel that MergeHandler
+	// uses to fan client messages out. A larger buffer absorbs brief
+	// bursts; a smaller buffer surfaces stuck downstreams sooner via
+	// BroadcastTimeout. Handlers that wrap slow external resources (e.g.
+	// proxying upstream relays) should still absorb short-term contention
+	// internally — MergeHandler's role is to detect persistent stalls,
+	// not to be the only buffer in the chain.
+	//
+	// A zero value selects [DefaultMergeHandlerChildRecvBuffer] (10).
+	ChildRecvBuffer int
 }
 
 // MergeHandler merges multiple handlers into one.
@@ -51,6 +130,7 @@ type MergeHandlerOptions struct {
 type MergeHandler struct {
 	handlers         []Handler
 	broadcastTimeout time.Duration
+	childRecvBuffer  int
 }
 
 // NewMergeHandler creates a new MergeHandler that fans messages out to every
@@ -58,12 +138,19 @@ type MergeHandler struct {
 // defaults.
 func NewMergeHandler(handlers []Handler, opts *MergeHandlerOptions) Handler {
 	timeout := DefaultMergeHandlerBroadcastTimeout
-	if opts != nil && opts.BroadcastTimeout > 0 {
-		timeout = opts.BroadcastTimeout
+	buf := DefaultMergeHandlerChildRecvBuffer
+	if opts != nil {
+		if opts.BroadcastTimeout > 0 {
+			timeout = opts.BroadcastTimeout
+		}
+		if opts.ChildRecvBuffer > 0 {
+			buf = opts.ChildRecvBuffer
+		}
 	}
 	return &MergeHandler{
 		handlers:         handlers,
 		broadcastTimeout: timeout,
+		childRecvBuffer:  buf,
 	}
 }
 
@@ -74,11 +161,14 @@ func (h *MergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 
 	numHandlers := len(h.handlers)
 
-	// Create channels for each child handler
+	// Create channels for each child handler. childRecvs is sized by
+	// MergeHandlerOptions.ChildRecvBuffer; childSends is fixed because the
+	// merger drains it directly from the main loop and no buffering matters
+	// beyond a small absorber.
 	childRecvs := make([]chan *ClientMsg, numHandlers)
 	childSends := make([]chan *ServerMsg, numHandlers)
 	for i := range h.handlers {
-		childRecvs[i] = make(chan *ClientMsg, 10)
+		childRecvs[i] = make(chan *ClientMsg, h.childRecvBuffer)
 		childSends[i] = make(chan *ServerMsg, 10)
 	}
 
@@ -137,25 +227,37 @@ loop:
 				break loop
 			}
 			msg := value.Interface().(*ClientMsg)
-			// Broadcast to all children
-			for _, ch := range childRecvs {
-				select {
-				case ch <- msg:
-				default:
-				}
-			}
-			// Track pending responses
-			if msg.Type == MsgTypeEvent {
+			// Track pending responses BEFORE broadcasting. This ordering
+			// matters: if broadcastAll declares a child dead (timeout), we
+			// immediately call session.handlerClosed which advances any
+			// pending OK/EOSE/COUNT for that handler. Those pendings must
+			// already be registered.
+			switch msg.Type {
+			case MsgTypeEvent:
 				session.startEventResponse(msg.Event.ID)
-			}
-			if msg.Type == MsgTypeReq {
+			case MsgTypeReq:
 				session.startReqResponse(msg.SubscriptionID, msg.Filters)
-			}
-			if msg.Type == MsgTypeCount {
+			case MsgTypeCount:
 				session.startCountResponse(msg.SubscriptionID)
-			}
-			if msg.Type == MsgTypeClose {
+			case MsgTypeClose:
 				session.closeSubscription(msg.SubscriptionID)
+			}
+			// Fan out to all live children. Dead indices come back so we
+			// can disable their cases and free the client from any pending
+			// merged response that was waiting on them.
+			deadIndices, ctxDone := h.broadcastAll(ctx, msg, childRecvs)
+			if ctxDone {
+				loopErr = ctx.Err()
+				break loop
+			}
+			for _, idx := range deadIndices {
+				cases[2+idx].Chan = reflect.ValueOf(nil)
+				childRecvs[idx] = nil
+				results := session.handlerClosed(idx)
+				if !sendAll(ctx, send, results) {
+					loopErr = ctx.Err()
+					break loop
+				}
 			}
 
 		default: // childSends[chosen-2]
