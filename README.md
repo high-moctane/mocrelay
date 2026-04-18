@@ -31,16 +31,16 @@ go get github.com/high-moctane/mocrelay
 
 ## Development
 
-Install the git hooks via [lefthook](https://github.com/evilmartians/lefthook),
-which is managed as a Go [tool dependency](https://go.dev/doc/modules/managing-dependencies#tools):
+Git hooks are optional. To run `go fix` and `gofmt` automatically on staged Go
+files before each commit, install [lefthook](https://github.com/evilmartians/lefthook)
+and run:
 
 ```bash
-go tool lefthook install
+lefthook install
 ```
 
-This wires up `pre-commit` to run `go fix ./...` and `gofmt -s -w` on staged Go
-files. No separate lefthook binary installation is required — the version is
-pinned in `go.mod`.
+The `lefthook.yml` in the repository configures the hooks. CI runs the same
+checks, so skipping local hooks will not bypass them.
 
 ## Quick Start
 

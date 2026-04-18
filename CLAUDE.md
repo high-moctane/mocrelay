@@ -11,7 +11,7 @@ Production-ready.
 ```bash
 go build ./...     # Build
 go test ./...      # Test
-go tool lefthook install  # Install git hooks
+lefthook install  # Install git hooks (optional; requires lefthook binary)
 ```
 
 ## Development Principles
