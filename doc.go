@@ -19,10 +19,10 @@
 //
 // mocrelay provides several built-in handlers:
 //
-//   - [StorageHandler] wraps a [Storage] to handle EVENT and REQ messages
-//   - [RouterHandler] wraps a [Router] to route events between clients
-//   - [MergeHandler] runs multiple handlers in parallel and merges responses
-//   - [NopHandler] is a minimal handler for testing
+//   - [NewStorageHandler] wraps a [Storage] to handle EVENT and REQ messages
+//   - [NewRouterHandler] wraps a [Router] to route events between clients
+//   - [NewMergeHandler] runs multiple handlers in parallel and merges responses
+//   - [NewNopHandler] is a minimal handler for testing
 //
 // Most handlers can be implemented using [SimpleHandlerBase], which provides
 // a simpler message-at-a-time interface instead of managing channels directly.

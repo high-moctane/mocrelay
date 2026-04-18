@@ -458,7 +458,7 @@ if newEvent.CreatedAt > lastSentCreatedAt {
 
 **Handler contract for use under MergeHandler**:
 - A Handler MUST drain its `recv` channel in a timely fashion. Brief
-  stalls are absorbed by `MergeHandlerOptions.ChildRecvBuffer`; sustained
+  stalls are absorbed by an internal per-child recv buffer; sustained
   stalls trip `BroadcastTimeout` and the Handler is retired.
 - If a Handler wraps a slow external resource, it should buffer / retry
   internally. MergeHandler is intentionally not the only buffer in the
