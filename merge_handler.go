@@ -9,18 +9,17 @@ import (
 	"time"
 )
 
-// Defaults for [MergeHandlerOptions].
-const (
-	// DefaultMergeHandlerBroadcastTimeout is the default per-child broadcast
-	// timeout used by the merge handler when
-	// [MergeHandlerOptions.BroadcastTimeout] is zero.
-	DefaultMergeHandlerBroadcastTimeout = 30 * time.Second
+// DefaultMergeHandlerBroadcastTimeout is the default per-child broadcast
+// timeout used by the merge handler when [MergeHandlerOptions.BroadcastTimeout]
+// is zero.
+const DefaultMergeHandlerBroadcastTimeout = 30 * time.Second
 
-	// DefaultMergeHandlerChildRecvBuffer is the default per-child recv
-	// channel capacity used by the merge handler when
-	// [MergeHandlerOptions.ChildRecvBuffer] is zero.
-	DefaultMergeHandlerChildRecvBuffer = 10
-)
+// defaultChildRecvBuffer sizes the per-child recv channel that the merge
+// handler uses to fan client messages out. It is an internal detail: a
+// larger buffer absorbs brief bursts before [MergeHandlerOptions.BroadcastTimeout]
+// fires, but the correct knob for tuning staleness detection is the timeout,
+// not the buffer.
+const defaultChildRecvBuffer = 10
 
 // MergeHandlerOKLostHandlerMessage is the OK message text returned to the
 // client when the merge handler cannot account for every downstream handler's
@@ -120,36 +119,21 @@ type MergeHandlerOptions struct {
 	//
 	// A zero value selects [DefaultMergeHandlerBroadcastTimeout] (30s).
 	BroadcastTimeout time.Duration
-
-	// ChildRecvBuffer sizes the per-child recv channel that MergeHandler
-	// uses to fan client messages out. A larger buffer absorbs brief
-	// bursts; a smaller buffer surfaces stuck downstreams sooner via
-	// BroadcastTimeout. Handlers that wrap slow external resources (e.g.
-	// proxying upstream relays) should still absorb short-term contention
-	// internally — MergeHandler's role is to detect persistent stalls,
-	// not to be the only buffer in the chain.
-	//
-	// A zero value selects [DefaultMergeHandlerChildRecvBuffer] (10).
-	ChildRecvBuffer int
 }
 
 // NewMergeHandler returns a [Handler] that fans messages out to every handler
 // in handlers and merges their responses. Pass nil for opts to use defaults.
 func NewMergeHandler(handlers []Handler, opts *MergeHandlerOptions) Handler {
 	timeout := DefaultMergeHandlerBroadcastTimeout
-	buf := DefaultMergeHandlerChildRecvBuffer
 	if opts != nil {
 		if opts.BroadcastTimeout > 0 {
 			timeout = opts.BroadcastTimeout
-		}
-		if opts.ChildRecvBuffer > 0 {
-			buf = opts.ChildRecvBuffer
 		}
 	}
 	return &mergeHandler{
 		handlers:         handlers,
 		broadcastTimeout: timeout,
-		childRecvBuffer:  buf,
+		childRecvBuffer:  defaultChildRecvBuffer,
 	}
 }
 
@@ -165,10 +149,10 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 
 	numHandlers := len(h.handlers)
 
-	// Create channels for each child handler. childRecvs is sized by
-	// MergeHandlerOptions.ChildRecvBuffer; childSends is fixed because the
-	// merger drains it directly from the main loop and no buffering matters
-	// beyond a small absorber.
+	// Create channels for each child handler. childRecvs uses an internal
+	// default buffer size; childSends is fixed because the merger drains it
+	// directly from the main loop and no buffering matters beyond a small
+	// absorber.
 	childRecvs := make([]chan *ClientMsg, numHandlers)
 	childSends := make([]chan *ServerMsg, numHandlers)
 	for i := range h.handlers {

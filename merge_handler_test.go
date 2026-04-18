@@ -1497,10 +1497,12 @@ func TestMergeHandler_Close_CleansUpState(t *testing.T) {
 // handlerClosed. Critical for proxy-style usage where a slow upstream relay
 // must not stall the entire fan-out forever.
 //
-// Setup: a single stuck child + ChildRecvBuffer=1 saturates after one REQ,
+// Setup: a single stuck child + a 1-slot recv buffer saturates after one REQ,
 // so the second REQ trips BroadcastTimeout deterministically. handlerClosed
 // then advances both pendings, and since numHandlers=1 they immediately
-// resolve as merged EOSE messages.
+// resolve as merged EOSE messages. The recv buffer is a package-internal
+// knob, so the test constructs mergeHandler directly instead of routing
+// through NewMergeHandler.
 //
 // COUNT and CLOSE share the same broadcast path; this single test exercises
 // the mechanism for all three control message types.
@@ -1508,13 +1510,11 @@ func TestMergeHandler_Broadcast_REQTimeoutAdvances(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		stuck := &stuckHandler{}
 
-		mergeHandler := NewMergeHandler(
-			[]Handler{stuck},
-			&MergeHandlerOptions{
-				BroadcastTimeout: 100 * time.Millisecond,
-				ChildRecvBuffer:  1,
-			},
-		)
+		mergeHandler := &mergeHandler{
+			handlers:         []Handler{stuck},
+			broadcastTimeout: 100 * time.Millisecond,
+			childRecvBuffer:  1,
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -1585,13 +1585,11 @@ func TestMergeHandler_Broadcast_OKForcedFalseOnTimeout(t *testing.T) {
 		stuck := &stuckHandler{}
 		nop := NewNopHandler()
 
-		mergeHandler := NewMergeHandler(
-			[]Handler{stuck, nop},
-			&MergeHandlerOptions{
-				BroadcastTimeout: 100 * time.Millisecond,
-				ChildRecvBuffer:  1,
-			},
-		)
+		mergeHandler := &mergeHandler{
+			handlers:         []Handler{stuck, nop},
+			broadcastTimeout: 100 * time.Millisecond,
+			childRecvBuffer:  1,
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
