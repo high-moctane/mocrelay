@@ -47,7 +47,7 @@ func main() {
 			mocrelay.NewStorageHandler(storage),
 			mocrelay.NewRouterHandler(router),
 		},
-		nil,
+		nil, // default options
 	)
 
 	// Middleware: basic limits.
