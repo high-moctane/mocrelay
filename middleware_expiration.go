@@ -6,32 +6,28 @@ import (
 	"time"
 )
 
-// ExpirationMiddleware implements NIP-40: Expiration Timestamp.
-// Events with an "expiration" tag are rejected if expired on receipt,
-// and dropped (not delivered) if expired on send.
-type ExpirationMiddleware struct {
-	now func() time.Time
-}
-
-// NewExpirationMiddlewareBase creates a new ExpirationMiddleware.
+// NewExpirationMiddlewareBase returns a middleware base implementing NIP-40
+// (Expiration Timestamp). Events with an "expiration" tag are rejected if
+// expired on receipt, and dropped (not delivered) if expired on send.
 func NewExpirationMiddlewareBase() SimpleMiddlewareBase {
-	return &ExpirationMiddleware{
+	return &expirationMiddleware{
 		now: time.Now,
 	}
 }
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *ExpirationMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+type expirationMiddleware struct {
+	now func() time.Time
+}
+
+func (m *expirationMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *ExpirationMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *expirationMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *ExpirationMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *expirationMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent || msg.Event == nil {
 		return msg, nil, nil
 	}
@@ -44,8 +40,7 @@ func (m *ExpirationMiddleware) HandleClientMsg(ctx context.Context, msg *ClientM
 	return msg, nil, nil
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *ExpirationMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
+func (m *expirationMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	// Drop expired events from being delivered
 	if msg.Type == MsgTypeEvent && msg.Event != nil {
 		if m.isExpired(msg.Event) {
@@ -57,7 +52,7 @@ func (m *ExpirationMiddleware) HandleServerMsg(ctx context.Context, msg *ServerM
 }
 
 // isExpired checks if the event has an expiration tag and is expired.
-func (m *ExpirationMiddleware) isExpired(event *Event) bool {
+func (m *expirationMiddleware) isExpired(event *Event) bool {
 	for _, tag := range event.Tags {
 		if len(tag) >= 2 && tag[0] == "expiration" {
 			expiration, err := strconv.ParseInt(tag[1], 10, 64)

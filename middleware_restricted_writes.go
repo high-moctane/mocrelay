@@ -14,13 +14,9 @@ const (
 	RestrictedWritesModeBlocklist
 )
 
-// RestrictedWritesMiddleware restricts which pubkeys can write events.
-type RestrictedWritesMiddleware struct {
-	pubkeys map[string]struct{}
-	mode    RestrictedWritesMode
-}
-
-// NewRestrictedWritesMiddlewareBase creates a new RestrictedWritesMiddleware.
+// NewRestrictedWritesMiddlewareBase returns a middleware base that restricts
+// which pubkeys can write events.
+//
 // mode determines whether the list is an allowlist or blocklist.
 // pubkeys is the list of pubkeys to allow or block.
 func NewRestrictedWritesMiddlewareBase(mode RestrictedWritesMode, pubkeys []string) SimpleMiddlewareBase {
@@ -28,24 +24,26 @@ func NewRestrictedWritesMiddlewareBase(mode RestrictedWritesMode, pubkeys []stri
 	for _, pk := range pubkeys {
 		set[pk] = struct{}{}
 	}
-	return &RestrictedWritesMiddleware{
+	return &restrictedWritesMiddleware{
 		pubkeys: set,
 		mode:    mode,
 	}
 }
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *RestrictedWritesMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+type restrictedWritesMiddleware struct {
+	pubkeys map[string]struct{}
+	mode    RestrictedWritesMode
+}
+
+func (m *restrictedWritesMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *RestrictedWritesMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *restrictedWritesMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *RestrictedWritesMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *restrictedWritesMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent {
 		return msg, nil, nil
 	}
@@ -72,7 +70,6 @@ func (m *RestrictedWritesMiddleware) HandleClientMsg(ctx context.Context, msg *C
 	return msg, nil, nil
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *RestrictedWritesMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
+func (m *restrictedWritesMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

@@ -9,15 +9,9 @@ import (
 	"time"
 )
 
-// AuthMiddleware is a middleware that requires NIP-42 authentication.
-type AuthMiddleware struct {
-	relayURL           string
-	createdAtTolerance time.Duration
-	metrics            *AuthMetrics
-}
-
-// AuthMiddlewareOptions configures AuthMiddleware behavior.
-// All fields are optional; the zero value gives sensible defaults.
+// AuthMiddlewareOptions configures the middleware returned by
+// [NewAuthMiddlewareBase]. All fields are optional; the zero value gives
+// sensible defaults.
 type AuthMiddlewareOptions struct {
 	// CreatedAtTolerance is the maximum age of auth events.
 	// Default: 10 minutes (as recommended by NIP-42)
@@ -26,6 +20,34 @@ type AuthMiddlewareOptions struct {
 	// Metrics is the Prometheus metrics collector for authentication.
 	// If nil, no metrics are collected.
 	Metrics *AuthMetrics
+}
+
+// NewAuthMiddlewareBase creates a middleware base that requires NIP-42
+// authentication.
+//
+// relayURL is the URL of this relay (used for relay tag validation).
+// opts can be nil for default options.
+func NewAuthMiddlewareBase(relayURL string, opts *AuthMiddlewareOptions) SimpleMiddlewareBase {
+	if opts == nil {
+		opts = &AuthMiddlewareOptions{}
+	}
+
+	tolerance := opts.CreatedAtTolerance
+	if tolerance == 0 {
+		tolerance = 10 * time.Minute
+	}
+
+	return &authMiddleware{
+		relayURL:           relayURL,
+		createdAtTolerance: tolerance,
+		metrics:            opts.Metrics,
+	}
+}
+
+type authMiddleware struct {
+	relayURL           string
+	createdAtTolerance time.Duration
+	metrics            *AuthMetrics
 }
 
 // authState holds per-connection authentication state.
@@ -38,8 +60,7 @@ type authState struct {
 
 type authCtxKey struct{}
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *AuthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+func (m *authMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	// Generate random challenge
 	challenge, err := generateChallenge()
 	if err != nil {
@@ -56,8 +77,7 @@ func (m *AuthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerM
 	return ctx, NewServerAuthMsg(challenge), nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *AuthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *authMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	if m.metrics != nil {
 		state := ctx.Value(authCtxKey{}).(*authState)
 		state.mu.RLock()
@@ -72,8 +92,7 @@ func (m *AuthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *AuthMiddleware) HandleClientMsg(
+func (m *authMiddleware) HandleClientMsg(
 	ctx context.Context,
 	msg *ClientMsg,
 ) (*ClientMsg, *ServerMsg, error) {
@@ -114,15 +133,14 @@ func (m *AuthMiddleware) HandleClientMsg(
 	}
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *AuthMiddleware) HandleServerMsg(
+func (m *authMiddleware) HandleServerMsg(
 	ctx context.Context,
 	msg *ServerMsg,
 ) (*ServerMsg, error) {
 	return msg, nil
 }
 
-func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *authMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Event == nil {
 		return nil, NewServerOKMsg("", false, "invalid: missing auth event"), nil
 	}
@@ -188,13 +206,13 @@ func (m *AuthMiddleware) handleAuth(state *authState, msg *ClientMsg) (*ClientMs
 	return nil, NewServerOKMsg(event.ID, true, ""), nil
 }
 
-func (m *AuthMiddleware) isAuthed(state *authState) bool {
+func (m *authMiddleware) isAuthed(state *authState) bool {
 	state.mu.RLock()
 	defer state.mu.RUnlock()
 	return len(state.authedPubkeys) > 0
 }
 
-func (m *AuthMiddleware) isAuthedPubkey(state *authState, pubkey string) bool {
+func (m *authMiddleware) isAuthedPubkey(state *authState, pubkey string) bool {
 	state.mu.RLock()
 	defer state.mu.RUnlock()
 	_, ok := state.authedPubkeys[pubkey]
@@ -219,25 +237,4 @@ func generateChallenge() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
-}
-
-// NewAuthMiddlewareBase creates a middleware base that requires NIP-42 authentication.
-//
-// relayURL is the URL of this relay (used for relay tag validation).
-// opts can be nil for default options.
-func NewAuthMiddlewareBase(relayURL string, opts *AuthMiddlewareOptions) SimpleMiddlewareBase {
-	if opts == nil {
-		opts = &AuthMiddlewareOptions{}
-	}
-
-	tolerance := opts.CreatedAtTolerance
-	if tolerance == 0 {
-		tolerance = 10 * time.Minute
-	}
-
-	return &AuthMiddleware{
-		relayURL:           relayURL,
-		createdAtTolerance: tolerance,
-		metrics:            opts.Metrics,
-	}
 }

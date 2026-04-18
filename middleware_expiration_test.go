@@ -11,7 +11,7 @@ func TestExpirationMiddleware_RejectExpiredEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Create middleware with fixed time
 		fixedTime := time.Unix(1000000, 0)
-		mw := &ExpirationMiddleware{now: func() time.Time { return fixedTime }}
+		mw := &expirationMiddleware{now: func() time.Time { return fixedTime }}
 		middleware := NewSimpleMiddleware(mw)
 
 		downstream := HandlerFunc(func(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
@@ -69,7 +69,7 @@ func TestExpirationMiddleware_RejectExpiredEvent(t *testing.T) {
 func TestExpirationMiddleware_AcceptNonExpiredEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fixedTime := time.Unix(1000000, 0)
-		mw := &ExpirationMiddleware{now: func() time.Time { return fixedTime }}
+		mw := &expirationMiddleware{now: func() time.Time { return fixedTime }}
 		middleware := NewSimpleMiddleware(mw)
 
 		received := make(chan *ClientMsg, 1)
@@ -119,7 +119,7 @@ func TestExpirationMiddleware_AcceptNonExpiredEvent(t *testing.T) {
 func TestExpirationMiddleware_AcceptEventWithoutExpiration(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fixedTime := time.Unix(1000000, 0)
-		mw := &ExpirationMiddleware{now: func() time.Time { return fixedTime }}
+		mw := &expirationMiddleware{now: func() time.Time { return fixedTime }}
 		middleware := NewSimpleMiddleware(mw)
 
 		received := make(chan *ClientMsg, 1)
@@ -169,7 +169,7 @@ func TestExpirationMiddleware_AcceptEventWithoutExpiration(t *testing.T) {
 func TestExpirationMiddleware_DropExpiredEventOnSend(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fixedTime := time.Unix(1000000, 0)
-		mw := &ExpirationMiddleware{now: func() time.Time { return fixedTime }}
+		mw := &expirationMiddleware{now: func() time.Time { return fixedTime }}
 		middleware := NewSimpleMiddleware(mw)
 
 		messagesSent := make(chan struct{})
@@ -261,7 +261,7 @@ func TestExpirationMiddleware_DropExpiredEventOnSend(t *testing.T) {
 func TestExpirationMiddleware_PassThroughNonEventMessages(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fixedTime := time.Unix(1000000, 0)
-		mw := &ExpirationMiddleware{now: func() time.Time { return fixedTime }}
+		mw := &expirationMiddleware{now: func() time.Time { return fixedTime }}
 		middleware := NewSimpleMiddleware(mw)
 
 		received := make(chan *ClientMsg, 1)

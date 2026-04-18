@@ -5,33 +5,30 @@ import (
 	"unicode/utf8"
 )
 
-// MaxContentLengthMiddleware limits the number of Unicode characters in event content.
-type MaxContentLengthMiddleware struct {
-	maxLen int
-}
-
-// NewMaxContentLengthMiddlewareBase creates a new MaxContentLengthMiddleware.
-// maxLen is the maximum number of Unicode characters (not bytes).
+// NewMaxContentLengthMiddlewareBase returns a middleware base that limits the
+// number of Unicode characters (not bytes) in event content.
+//
 // maxLen must be a positive integer.
 func NewMaxContentLengthMiddlewareBase(maxLen int) SimpleMiddlewareBase {
 	if maxLen < 1 {
 		panic("maxLen must be positive")
 	}
-	return &MaxContentLengthMiddleware{maxLen: maxLen}
+	return &maxContentLengthMiddleware{maxLen: maxLen}
 }
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *MaxContentLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+type maxContentLengthMiddleware struct {
+	maxLen int
+}
+
+func (m *maxContentLengthMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *MaxContentLengthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *maxContentLengthMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *MaxContentLengthMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *maxContentLengthMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent {
 		return msg, nil, nil
 	}
@@ -44,7 +41,6 @@ func (m *MaxContentLengthMiddleware) HandleClientMsg(ctx context.Context, msg *C
 	return msg, nil, nil
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *MaxContentLengthMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
+func (m *maxContentLengthMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

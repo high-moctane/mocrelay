@@ -54,7 +54,7 @@ func TestCreatedAtLimitsMiddleware_AllowWithinRange(t *testing.T) {
 
 func TestCreatedAtLimitsMiddleware_RejectTooOld(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		base := &CreatedAtLimitsMiddleware{
+		base := &createdAtLimitsMiddleware{
 			lowerLimit: 3600, // 1 hour
 			upperLimit: 60,   // 1 minute
 			now: func() time.Time {
@@ -106,7 +106,7 @@ func TestCreatedAtLimitsMiddleware_RejectTooOld(t *testing.T) {
 
 func TestCreatedAtLimitsMiddleware_RejectTooFuture(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		base := &CreatedAtLimitsMiddleware{
+		base := &createdAtLimitsMiddleware{
 			lowerLimit: 3600, // 1 hour
 			upperLimit: 60,   // 1 minute
 			now: func() time.Time {
@@ -158,7 +158,7 @@ func TestCreatedAtLimitsMiddleware_RejectTooFuture(t *testing.T) {
 
 func TestCreatedAtLimitsMiddleware_AllowAtBoundary(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		base := &CreatedAtLimitsMiddleware{
+		base := &createdAtLimitsMiddleware{
 			lowerLimit: 3600, // 1 hour
 			upperLimit: 60,   // 1 minute
 			now: func() time.Time {

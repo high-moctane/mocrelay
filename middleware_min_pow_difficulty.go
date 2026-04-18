@@ -6,30 +6,36 @@ import (
 	"strconv"
 )
 
-// MinPowDifficultyMiddleware is a middleware that validates Proof of Work (NIP-13).
-type MinPowDifficultyMiddleware struct {
-	// MinDifficulty is the minimum number of leading zero bits required.
-	MinDifficulty int
-
-	// CheckCommitment controls whether to check the nonce tag's target difficulty.
-	// If true, events with a committed target difficulty lower than MinDifficulty
-	// will be rejected, even if the actual difficulty is sufficient.
-	// This prevents spammers from getting lucky with low-target mining.
-	CheckCommitment bool
+// NewMinPowDifficultyMiddlewareBase creates a middleware base that validates
+// Proof of Work (NIP-13).
+//
+// Parameters:
+//   - minDifficulty: minimum number of leading zero bits required in event ID
+//   - checkCommitment: if true, also validates the nonce tag's target
+//     difficulty. This rejects events whose committed target is below
+//     minDifficulty even if their actual difficulty is sufficient, preventing
+//     spammers from getting lucky with low-target mining.
+func NewMinPowDifficultyMiddlewareBase(minDifficulty int, checkCommitment bool) SimpleMiddlewareBase {
+	return &minPowDifficultyMiddleware{
+		minDifficulty:   minDifficulty,
+		checkCommitment: checkCommitment,
+	}
 }
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *MinPowDifficultyMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+type minPowDifficultyMiddleware struct {
+	minDifficulty   int
+	checkCommitment bool
+}
+
+func (m *minPowDifficultyMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *MinPowDifficultyMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *minPowDifficultyMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *MinPowDifficultyMiddleware) HandleClientMsg(
+func (m *minPowDifficultyMiddleware) HandleClientMsg(
 	ctx context.Context,
 	msg *ClientMsg,
 ) (*ClientMsg, *ServerMsg, error) {
@@ -41,22 +47,22 @@ func (m *MinPowDifficultyMiddleware) HandleClientMsg(
 
 	// Check actual difficulty
 	actualDifficulty := CountLeadingZeroBits(event.ID)
-	if actualDifficulty < m.MinDifficulty {
+	if actualDifficulty < m.minDifficulty {
 		return nil, NewServerOKMsg(
 			event.ID,
 			false,
-			fmt.Sprintf("pow: difficulty %d is less than %d required", actualDifficulty, m.MinDifficulty),
+			fmt.Sprintf("pow: difficulty %d is less than %d required", actualDifficulty, m.minDifficulty),
 		), nil
 	}
 
 	// Check committed target difficulty (if enabled)
-	if m.CheckCommitment {
+	if m.checkCommitment {
 		committedTarget := getCommittedPowTarget(event)
-		if committedTarget >= 0 && committedTarget < m.MinDifficulty {
+		if committedTarget >= 0 && committedTarget < m.minDifficulty {
 			return nil, NewServerOKMsg(
 				event.ID,
 				false,
-				fmt.Sprintf("pow: committed target %d is less than %d required", committedTarget, m.MinDifficulty),
+				fmt.Sprintf("pow: committed target %d is less than %d required", committedTarget, m.minDifficulty),
 			), nil
 		}
 	}
@@ -64,8 +70,7 @@ func (m *MinPowDifficultyMiddleware) HandleClientMsg(
 	return msg, nil, nil
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *MinPowDifficultyMiddleware) HandleServerMsg(
+func (m *minPowDifficultyMiddleware) HandleServerMsg(
 	ctx context.Context,
 	msg *ServerMsg,
 ) (*ServerMsg, error) {
@@ -87,16 +92,4 @@ func getCommittedPowTarget(event *Event) int {
 		}
 	}
 	return -1
-}
-
-// NewMinPowDifficultyMiddlewareBase creates a middleware base that validates Proof of Work.
-//
-// Parameters:
-//   - minDifficulty: minimum number of leading zero bits required in event ID
-//   - checkCommitment: if true, also validates the nonce tag's target difficulty
-func NewMinPowDifficultyMiddlewareBase(minDifficulty int, checkCommitment bool) SimpleMiddlewareBase {
-	return &MinPowDifficultyMiddleware{
-		MinDifficulty:   minDifficulty,
-		CheckCommitment: checkCommitment,
-	}
 }

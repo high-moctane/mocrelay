@@ -4,30 +4,28 @@ import (
 	"context"
 )
 
-// ProtectedEventsMiddleware implements NIP-70: Protected Events.
-// Events with a ["-"] tag can only be published by their authenticated author.
+// NewProtectedEventsMiddlewareBase returns a middleware base implementing
+// NIP-70 (Protected Events): events with a ["-"] tag can only be published by
+// their authenticated author.
 //
-// This middleware requires NIP-42 authentication to be enabled upstream.
-// If no authentication state is found in the context, protected events are always rejected.
-type ProtectedEventsMiddleware struct{}
-
-// NewProtectedEventsMiddlewareBase creates a new ProtectedEventsMiddleware.
+// This middleware requires NIP-42 authentication to be enabled upstream. If
+// no authentication state is found in the context, protected events are
+// always rejected.
 func NewProtectedEventsMiddlewareBase() SimpleMiddlewareBase {
-	return &ProtectedEventsMiddleware{}
+	return &protectedEventsMiddleware{}
 }
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *ProtectedEventsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+type protectedEventsMiddleware struct{}
+
+func (m *protectedEventsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *ProtectedEventsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *protectedEventsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *ProtectedEventsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *protectedEventsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent || msg.Event == nil {
 		return msg, nil, nil
 	}
@@ -49,8 +47,7 @@ func (m *ProtectedEventsMiddleware) HandleClientMsg(ctx context.Context, msg *Cl
 	return msg, nil, nil
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *ProtectedEventsMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
+func (m *protectedEventsMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }
 
@@ -64,8 +61,8 @@ func hasProtectedTag(event *Event) bool {
 	return false
 }
 
-// isAuthedAsPubkey checks if the given pubkey is authenticated in the current session.
-// This looks for the auth state set by AuthMiddleware (NIP-42).
+// isAuthedAsPubkey checks if the given pubkey is authenticated in the current
+// session. This looks for the auth state set by the NIP-42 auth middleware.
 func isAuthedAsPubkey(ctx context.Context, pubkey string) bool {
 	state, ok := ctx.Value(authCtxKey{}).(*authState)
 	if !ok || state == nil {

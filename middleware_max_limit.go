@@ -4,15 +4,12 @@ import (
 	"context"
 )
 
-// MaxLimitMiddleware clamps the limit value in REQ filters and applies a default.
-type MaxLimitMiddleware struct {
-	maxLimit     int64
-	defaultLimit int64
-}
-
-// NewMaxLimitMiddlewareBase creates a new MaxLimitMiddleware.
+// NewMaxLimitMiddlewareBase returns a middleware base that clamps the limit
+// value in REQ filters and applies a default when unset.
+//
 // maxLimit is the maximum allowed limit value (must be positive).
-// defaultLimit is applied when no limit is specified (must be positive and <= maxLimit).
+// defaultLimit is applied when no limit is specified (must be positive and
+// <= maxLimit).
 func NewMaxLimitMiddlewareBase(maxLimit, defaultLimit int64) SimpleMiddlewareBase {
 	if maxLimit < 1 {
 		panic("maxLimit must be positive")
@@ -23,24 +20,26 @@ func NewMaxLimitMiddlewareBase(maxLimit, defaultLimit int64) SimpleMiddlewareBas
 	if defaultLimit > maxLimit {
 		panic("defaultLimit must not exceed maxLimit")
 	}
-	return &MaxLimitMiddleware{
+	return &maxLimitMiddleware{
 		maxLimit:     maxLimit,
 		defaultLimit: defaultLimit,
 	}
 }
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *MaxLimitMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+type maxLimitMiddleware struct {
+	maxLimit     int64
+	defaultLimit int64
+}
+
+func (m *maxLimitMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *MaxLimitMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *maxLimitMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *MaxLimitMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *maxLimitMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeReq {
 		return msg, nil, nil
 	}
@@ -59,7 +58,6 @@ func (m *MaxLimitMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg
 	return msg, nil, nil
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *MaxLimitMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
+func (m *maxLimitMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }

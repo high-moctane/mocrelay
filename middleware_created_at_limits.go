@@ -5,17 +5,12 @@ import (
 	"time"
 )
 
-// CreatedAtLimitsMiddleware limits the created_at timestamp of events.
-type CreatedAtLimitsMiddleware struct {
-	lowerLimit int64 // seconds into the past
-	upperLimit int64 // seconds into the future
-	now        func() time.Time
-}
-
-// NewCreatedAtLimitsMiddlewareBase creates a new CreatedAtLimitsMiddleware.
+// NewCreatedAtLimitsMiddlewareBase returns a middleware base that limits the
+// created_at timestamp of events.
+//
 // lowerLimit is the maximum age in seconds (how far into the past is allowed).
-// upperLimit is the maximum seconds into the future allowed.
-// Both must be non-negative.
+// upperLimit is the maximum seconds into the future allowed. Both must be
+// non-negative.
 func NewCreatedAtLimitsMiddlewareBase(lowerLimit, upperLimit int64) SimpleMiddlewareBase {
 	if lowerLimit < 0 {
 		panic("lowerLimit must be non-negative")
@@ -23,25 +18,28 @@ func NewCreatedAtLimitsMiddlewareBase(lowerLimit, upperLimit int64) SimpleMiddle
 	if upperLimit < 0 {
 		panic("upperLimit must be non-negative")
 	}
-	return &CreatedAtLimitsMiddleware{
+	return &createdAtLimitsMiddleware{
 		lowerLimit: lowerLimit,
 		upperLimit: upperLimit,
 		now:        time.Now,
 	}
 }
 
-// OnStart implements [SimpleMiddlewareBase].
-func (m *CreatedAtLimitsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
+type createdAtLimitsMiddleware struct {
+	lowerLimit int64 // seconds into the past
+	upperLimit int64 // seconds into the future
+	now        func() time.Time
+}
+
+func (m *createdAtLimitsMiddleware) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
 	return ctx, nil, nil
 }
 
-// OnEnd implements [SimpleMiddlewareBase].
-func (m *CreatedAtLimitsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
+func (m *createdAtLimitsMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
 	return nil, nil
 }
 
-// HandleClientMsg implements [SimpleMiddlewareBase].
-func (m *CreatedAtLimitsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+func (m *createdAtLimitsMiddleware) HandleClientMsg(ctx context.Context, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
 	if msg.Type != MsgTypeEvent {
 		return msg, nil, nil
 	}
@@ -70,7 +68,6 @@ func (m *CreatedAtLimitsMiddleware) HandleClientMsg(ctx context.Context, msg *Cl
 	return msg, nil, nil
 }
 
-// HandleServerMsg implements [SimpleMiddlewareBase].
-func (m *CreatedAtLimitsMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
+func (m *createdAtLimitsMiddleware) HandleServerMsg(ctx context.Context, msg *ServerMsg) (*ServerMsg, error) {
 	return msg, nil
 }
