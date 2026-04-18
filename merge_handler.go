@@ -309,14 +309,17 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 			return nil // Duplicate, drop
 		}
 
-		// Check sort order: created_at DESC, then id ASC for tiebreak
+		// Check sort order: created_at DESC, then id ASC for tiebreak.
+		// Storage yields events in (created_at DESC, id ASC) order, so an
+		// in-order event must be older than lastCreatedAt, or share
+		// lastCreatedAt with an id strictly greater than lastID.
 		if pending.hasSentEvent {
 			if eventCreatedAt > pending.lastCreatedAt {
 				// Newer event after older one - breaks DESC order, drop
 				return nil
 			}
-			if eventCreatedAt == pending.lastCreatedAt && eventID > pending.lastID {
-				// Same timestamp but higher ID - breaks ASC tiebreak, drop
+			if eventCreatedAt == pending.lastCreatedAt && eventID < pending.lastID {
+				// Same timestamp but lower id - breaks ASC tiebreak, drop
 				return nil
 			}
 		}

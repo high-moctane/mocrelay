@@ -306,6 +306,63 @@ func TestMergeHandler_Req_SortDrop(t *testing.T) {
 	})
 }
 
+// TestMergeHandler_Req_SortTiebreakASC tests that events sharing a created_at
+// are streamed in id ASC order (lexical), matching the Storage compareEvents
+// output. The previous implementation dropped any event whose id was greater
+// than the previously emitted id at the same timestamp, which was the inverse
+// of the documented "id ASC tiebreak" rule and made dedup tests flaky.
+func TestMergeHandler_Req_SortTiebreakASC(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// All events share the same created_at; storage yields in id ASC order.
+		storage := NewInMemoryStorage()
+		storage.Store(ctx, makeEvent("aaa", "pubkey01", 1, 100))
+		storage.Store(ctx, makeEvent("bbb", "pubkey01", 1, 100))
+		storage.Store(ctx, makeEvent("ccc", "pubkey01", 1, 100))
+
+		handler := NewStorageHandler(storage)
+		mergeHandler := NewMergeHandler(handler)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		var msgs []*ServerMsg
+		for {
+			select {
+			case msg := <-send:
+				msgs = append(msgs, msg)
+			default:
+				goto done
+			}
+		}
+	done:
+		if len(msgs) != 4 {
+			t.Fatalf("expected 3 events + EOSE, got %d: %+v", len(msgs), msgs)
+		}
+		assert.Equal(t, MsgTypeEvent, msgs[0].Type)
+		assert.Equal(t, "aaa", msgs[0].Event.ID)
+		assert.Equal(t, MsgTypeEvent, msgs[1].Type)
+		assert.Equal(t, "bbb", msgs[1].Event.ID)
+		assert.Equal(t, MsgTypeEvent, msgs[2].Type)
+		assert.Equal(t, "ccc", msgs[2].Event.ID)
+		assert.Equal(t, MsgTypeEOSE, msgs[3].Type)
+	})
+}
+
 // TestMergeHandler_Req_Limit tests that EOSE is sent after limit is reached.
 func TestMergeHandler_Req_Limit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
