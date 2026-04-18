@@ -777,6 +777,165 @@ func (h *triggeredRealTimeHandler) ServeNostr(ctx context.Context, send chan<- *
 	}
 }
 
+// realTimeOnlyHandler sends an event on trigger WITHOUT ever sending EOSE.
+// Useful for keeping the merged EOSE state pending while another handler
+// already passed its own EOSE — exercises handlerEOSESent[i]=true paths.
+type realTimeOnlyHandler struct {
+	triggerCh <-chan struct{}
+	event     *Event
+}
+
+func (h *realTimeOnlyHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
+	var subID string
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-recv:
+			if !ok {
+				return nil
+			}
+			if msg.Type == MsgTypeReq {
+				subID = msg.SubscriptionID
+			}
+		case <-h.triggerCh:
+			if subID != "" {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case send <- NewServerEventMsg(subID, h.event):
+				}
+				h.triggerCh = nil
+			}
+		}
+	}
+}
+
+// TestMergeHandler_Req_DedupAcrossHandlerEOSE_PassThroughThenRegular tests that
+// when handler A pass-throughs a real-time event after its own EOSE, handler B
+// (still pre-EOSE) does NOT re-emit the same event via the regular dedup path.
+// Without M5, the pass-through would skip seenEventIDs registration and let
+// the duplicate slip through.
+func TestMergeHandler_Req_DedupAcrossHandlerEOSE_PassThroughThenRegular(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		shared := makeEvent("event-shared", "pubkey01", 1, 100)
+		trigA := make(chan struct{})
+		trigB := make(chan struct{})
+		// A: sends EOSE on REQ, then emits shared on trigger (handlerEOSESent[A]=true)
+		handlerA := &triggeredRealTimeHandler{triggerCh: trigA, event: shared}
+		// B: never sends EOSE; emits shared on trigger (regular dedup path)
+		handlerB := &realTimeOnlyHandler{triggerCh: trigB, event: shared}
+
+		mergeHandler := NewMergeHandler(handlerA, handlerB)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// A pass-throughs first, B follows via the regular path.
+		close(trigA)
+		synctest.Wait()
+		close(trigB)
+		synctest.Wait()
+
+		eventCount := 0
+		eoseCount := 0
+		for {
+			select {
+			case msg := <-send:
+				switch msg.Type {
+				case MsgTypeEvent:
+					if msg.Event.ID == shared.ID {
+						eventCount++
+					}
+				case MsgTypeEOSE:
+					eoseCount++
+				}
+			default:
+				goto done
+			}
+		}
+	done:
+		assert.Equal(t, 1, eventCount, "shared event should be deduplicated to 1")
+		assert.Equal(t, 0, eoseCount, "merged EOSE must not fire (handler B never sent EOSE)")
+	})
+}
+
+// TestMergeHandler_Req_DedupAcrossHandlerEOSE_RegularThenPassThrough tests the
+// reverse: B (still pre-EOSE) emits first via the regular dedup path, then A
+// pass-throughs the same event after its own EOSE. The pass-through path must
+// consult seenEventIDs and drop the duplicate.
+func TestMergeHandler_Req_DedupAcrossHandlerEOSE_RegularThenPassThrough(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		shared := makeEvent("event-shared", "pubkey01", 1, 100)
+		trigA := make(chan struct{})
+		trigB := make(chan struct{})
+		handlerA := &triggeredRealTimeHandler{triggerCh: trigA, event: shared}
+		handlerB := &realTimeOnlyHandler{triggerCh: trigB, event: shared}
+
+		mergeHandler := NewMergeHandler(handlerA, handlerB)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		send := make(chan *ServerMsg, 10)
+		recv := make(chan *ClientMsg, 10)
+
+		go mergeHandler.ServeNostr(ctx, send, recv)
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		synctest.Wait()
+
+		// B emits first (regular dedup path), then A pass-throughs.
+		close(trigB)
+		synctest.Wait()
+		close(trigA)
+		synctest.Wait()
+
+		eventCount := 0
+		eoseCount := 0
+		for {
+			select {
+			case msg := <-send:
+				switch msg.Type {
+				case MsgTypeEvent:
+					if msg.Event.ID == shared.ID {
+						eventCount++
+					}
+				case MsgTypeEOSE:
+					eoseCount++
+				}
+			default:
+				goto done
+			}
+		}
+	done:
+		assert.Equal(t, 1, eventCount, "shared event should be deduplicated to 1")
+		assert.Equal(t, 0, eoseCount, "merged EOSE must not fire (handler B never sent EOSE)")
+	})
+}
+
 // errorHandler is a handler that returns an error.
 type errorHandler struct {
 	err error

@@ -299,8 +299,15 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 			return nil
 		}
 
-		// If this handler has already sent EOSE, pass through (real-time event)
+		// If this handler has already sent EOSE, pass through (real-time event).
+		// We still consult seenEventIDs so a real-time event isn't sent twice
+		// when another handler has already delivered (or later delivers) the
+		// same event id.
 		if pending.handlerEOSESent[handlerIndex] {
+			if pending.seenEventIDs[eventID] {
+				return nil
+			}
+			pending.seenEventIDs[eventID] = true
 			return []*ServerMsg{msg}
 		}
 
