@@ -66,8 +66,11 @@
 //
 //	router := NewRouter(nil)
 //	handler := NewMergeHandler(
-//	    NewStorageHandler(storage),
-//	    NewRouterHandler(router),
+//	    []Handler{
+//	        NewStorageHandler(storage),
+//	        NewRouterHandler(router),
+//	    },
+//	    nil,
 //	)
 //
 //	handler = NewSimpleMiddleware(

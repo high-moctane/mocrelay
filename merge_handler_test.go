@@ -39,7 +39,7 @@ func TestMergeHandler_Event_BothOK(t *testing.T) {
 		handler1 := NewNopHandler()
 		handler2 := NewNopHandler()
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -86,7 +86,7 @@ func TestMergeHandler_Event_OneRejects(t *testing.T) {
 		handler1 := NewNopHandler()
 		handler2 := &rejectingHandler{}
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -125,7 +125,7 @@ func TestMergeHandler_Req_EOSE(t *testing.T) {
 		handler1 := NewNopHandler()
 		handler2 := NewNopHandler()
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -182,7 +182,7 @@ func TestMergeHandler_Req_EventsWithDedupe(t *testing.T) {
 		handler1 := NewStorageHandler(storage1)
 		handler2 := NewStorageHandler(storage2)
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -251,7 +251,7 @@ func TestMergeHandler_Req_SortDrop(t *testing.T) {
 		handler1 := NewStorageHandler(storage1)
 		handler2 := NewStorageHandler(storage2)
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -322,7 +322,7 @@ func TestMergeHandler_Req_SortTiebreakASC(t *testing.T) {
 		storage.Store(ctx, makeEvent("ccc", "pubkey01", 1, 100))
 
 		handler := NewStorageHandler(storage)
-		mergeHandler := NewMergeHandler(handler)
+		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -377,7 +377,7 @@ func TestMergeHandler_Req_Limit(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-5", "pubkey01", 1, 100))
 
 		handler := NewStorageHandler(storage)
-		mergeHandler := NewMergeHandler(handler)
+		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -441,7 +441,7 @@ func TestMergeHandler_Req_EventAfterHandlerEOSE(t *testing.T) {
 			event: makeEvent("event-2", "pubkey01", 1, 200),
 		}
 
-		mergeHandler := NewMergeHandler(NewStorageHandler(storage), lateEventHandler)
+		mergeHandler := NewMergeHandler([]Handler{NewStorageHandler(storage), lateEventHandler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -516,7 +516,7 @@ func TestMergeHandler_Count(t *testing.T) {
 
 		handler1 := NewStorageHandler(storage1) // 3 events
 		handler2 := NewStorageHandler(storage2) // 2 events
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -601,7 +601,7 @@ func TestMergeHandler_Req_Limit_MultipleHandlers(t *testing.T) {
 
 		handler1 := NewStorageHandler(storage1)
 		handler2 := NewStorageHandler(storage2)
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -676,7 +676,7 @@ func TestMergeHandler_Req_Limit_RealTimeEventsAfterEOSE(t *testing.T) {
 			event:     realTimeEvent,
 		}
 
-		mergeHandler := NewMergeHandler(NewStorageHandler(storage), rtHandler)
+		mergeHandler := NewMergeHandler([]Handler{NewStorageHandler(storage), rtHandler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -828,7 +828,7 @@ func TestMergeHandler_Req_DedupAcrossHandlerEOSE_PassThroughThenRegular(t *testi
 		// B: never sends EOSE; emits shared on trigger (regular dedup path)
 		handlerB := &realTimeOnlyHandler{triggerCh: trigB, event: shared}
 
-		mergeHandler := NewMergeHandler(handlerA, handlerB)
+		mergeHandler := NewMergeHandler([]Handler{handlerA, handlerB}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -889,7 +889,7 @@ func TestMergeHandler_Req_DedupAcrossHandlerEOSE_RegularThenPassThrough(t *testi
 		handlerA := &triggeredRealTimeHandler{triggerCh: trigA, event: shared}
 		handlerB := &realTimeOnlyHandler{triggerCh: trigB, event: shared}
 
-		mergeHandler := NewMergeHandler(handlerA, handlerB)
+		mergeHandler := NewMergeHandler([]Handler{handlerA, handlerB}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -983,7 +983,7 @@ func TestMergeHandler_Req_LateEventAfterCloseDropped(t *testing.T) {
 		// Never sends EOSE; emits the event only on trigger.
 		handler := &realTimeOnlyHandler{triggerCh: trigger, event: event}
 
-		mergeHandler := NewMergeHandler(handler)
+		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1035,7 +1035,7 @@ func TestMergeHandler_Req_LateEOSEAfterCloseDropped(t *testing.T) {
 		trigger := make(chan struct{})
 		handler := &triggeredEOSEHandler{triggerCh: trigger}
 
-		mergeHandler := NewMergeHandler(handler)
+		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1103,7 +1103,7 @@ func TestMergeHandler_HandlerCloses_EOSEAdvances(t *testing.T) {
 		abandoning := &abandoningHandler{triggerCh: triggerExit}
 		nop := NewNopHandler()
 
-		mergeHandler := NewMergeHandler(abandoning, nop)
+		mergeHandler := NewMergeHandler([]Handler{abandoning, nop}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1151,7 +1151,7 @@ func TestMergeHandler_HandlerCloses_OKAdvances(t *testing.T) {
 		abandoning := &abandoningHandler{triggerCh: triggerExit}
 		nop := NewNopHandler()
 
-		mergeHandler := NewMergeHandler(abandoning, nop)
+		mergeHandler := NewMergeHandler([]Handler{abandoning, nop}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1198,7 +1198,7 @@ func TestMergeHandler_HandlerCloses_COUNTAdvances(t *testing.T) {
 		abandoning := &abandoningHandler{triggerCh: triggerExit}
 		nop := NewNopHandler() // returns count=0
 
-		mergeHandler := NewMergeHandler(abandoning, nop)
+		mergeHandler := NewMergeHandler([]Handler{abandoning, nop}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1255,7 +1255,7 @@ func TestMergeHandler_Error_Propagation(t *testing.T) {
 		handler1 := &errorHandler{err: errHandler1}
 		handler2 := &errorHandler{err: errHandler2}
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -1297,7 +1297,7 @@ func TestMergeHandler_Error_OneHandlerFails(t *testing.T) {
 		handler1 := NewNopHandler()                // returns nil
 		handler2 := &errorHandler{err: errHandler} // returns error
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -1344,7 +1344,7 @@ func TestMergeHandler_Req_SubIDReuseWithoutClose(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
 		handler := NewStorageHandler(storage)
-		mergeHandler := NewMergeHandler(handler)
+		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1418,7 +1418,7 @@ func TestMergeHandler_Close_CleansUpState(t *testing.T) {
 		handler1 := NewNopHandler()
 		handler2 := NewNopHandler()
 
-		mergeHandler := NewMergeHandler(handler1, handler2)
+		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

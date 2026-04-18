@@ -93,8 +93,11 @@ func main() {
 	// --- Handler ---
 
 	handler := mocrelay.NewMergeHandler(
-		mocrelay.NewStorageHandler(storage),
-		mocrelay.NewRouterHandler(router),
+		[]mocrelay.Handler{
+			mocrelay.NewStorageHandler(storage),
+			mocrelay.NewRouterHandler(router),
+		},
+		nil,
 	)
 
 	// --- Middleware pipeline (outermost first) ---

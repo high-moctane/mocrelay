@@ -6,7 +6,13 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 )
+
+// DefaultMergeHandlerBroadcastTimeout is the default per-child broadcast
+// timeout used by [MergeHandler] when [MergeHandlerOptions.BroadcastTimeout]
+// is zero. See [MergeHandlerOptions] for details on why a timeout exists.
+const DefaultMergeHandlerBroadcastTimeout = 30 * time.Second
 
 // sendAll forwards every message to send, honoring ctx cancellation. Returns
 // false if ctx was cancelled before all messages were delivered.
@@ -21,15 +27,44 @@ func sendAll(ctx context.Context, send chan<- *ServerMsg, msgs []*ServerMsg) boo
 	return true
 }
 
+// MergeHandlerOptions configures a [MergeHandler].
+//
+// All fields are optional. A nil *MergeHandlerOptions is equivalent to a
+// zero-valued MergeHandlerOptions and means "use defaults for everything".
+type MergeHandlerOptions struct {
+	// BroadcastTimeout caps how long MergeHandler waits when forwarding a
+	// control message (REQ / COUNT / CLOSE) to a single child handler whose
+	// recv channel is full. EVENT messages are always best-effort and are
+	// not affected by this timeout (a dropped EVENT is signalled to the
+	// client via OK accepted=false, prompting a retry).
+	//
+	// When the timeout fires, the slow child is treated as dead: any pending
+	// OK / EOSE / COUNT it owed is advanced as if the handler had exited.
+	// The remaining healthy handlers continue to serve the client.
+	//
+	// A zero value selects [DefaultMergeHandlerBroadcastTimeout] (30s).
+	BroadcastTimeout time.Duration
+}
+
 // MergeHandler merges multiple handlers into one.
 // It runs all handlers in parallel and merges their responses.
 type MergeHandler struct {
-	handlers []Handler
+	handlers         []Handler
+	broadcastTimeout time.Duration
 }
 
-// NewMergeHandler creates a new MergeHandler.
-func NewMergeHandler(handlers ...Handler) Handler {
-	return &MergeHandler{handlers: handlers}
+// NewMergeHandler creates a new MergeHandler that fans messages out to every
+// handler in handlers and merges their responses. Pass nil for opts to use
+// defaults.
+func NewMergeHandler(handlers []Handler, opts *MergeHandlerOptions) Handler {
+	timeout := DefaultMergeHandlerBroadcastTimeout
+	if opts != nil && opts.BroadcastTimeout > 0 {
+		timeout = opts.BroadcastTimeout
+	}
+	return &MergeHandler{
+		handlers:         handlers,
+		broadcastTimeout: timeout,
+	}
 }
 
 // ServeNostr implements [Handler].

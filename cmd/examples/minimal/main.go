@@ -43,8 +43,11 @@ func main() {
 
 	// Handler: merge storage (past events) and router (real-time).
 	handler := mocrelay.NewMergeHandler(
-		mocrelay.NewStorageHandler(storage),
-		mocrelay.NewRouterHandler(router),
+		[]mocrelay.Handler{
+			mocrelay.NewStorageHandler(storage),
+			mocrelay.NewRouterHandler(router),
+		},
+		nil,
 	)
 
 	// Middleware: basic limits.
