@@ -166,6 +166,139 @@ middleware policy (`MaxEventTags` dropping oversized events, `AuthRequired`
 rejecting unauthenticated REQs, …). Enable Debug when investigating why a
 specific client is being dropped; rely on metrics day-to-day.
 
+### Metrics
+
+**Observability stance**: metrics and logs are complementary. Logs (from
+`logRejection` etc.) are the per-event narrative — searchable, costly to
+retain long-term. Metrics are the aggregated time series — cheap,
+cross-indexable with log `reason` labels. Always instrument both.
+
+#### Framing: RED and USE
+
+Two methods cover different questions and are used together, not
+interchangeably:
+
+- **RED method** (Rate / Errors / Duration) — applied to **request-driven
+  paths**: EVENT handling, REQ handling, Store, Query, middleware, Bleve
+  search. Answers "is the client experience OK?"
+- **USE method** (Utilization / Saturation / Errors) — applied to
+  **resources**: connections, subscriptions, send buffers, Pebble WAL,
+  goroutines. Answers "is anything inside starting to choke?"
+
+A request path can be slow (RED-Duration bad) *because* a resource is
+saturated (USE-Saturation bad). You need both axes to see causation, so
+add the RED pair and the USE pair together.
+
+#### Cardinality rules
+
+| Rule | Labels |
+|---|---|
+| **Never** | `pubkey`, `conn_id`, `sub_id`, `ip`, `event_id`, free-form message strings |
+| **Careful** | `kind` — bounded in spec (0-65535) but mocrelay accepts arbitrary `int64`. A hostile client can explode the series set. See Known Concerns below. |
+| **Safe** | Stable enum strings: `type` (EVENT / REQ / …), `reason`, `result`, `middleware` name |
+
+Rule of thumb: if you cannot enumerate the full label-value set at code
+review time, the label is probably too cardinal.
+
+#### Layer convention — count at both ends and subtract
+
+- **Outer (Relay / routerHandler)**: count everything *received* on the
+  wire, before middleware. This is the rate the relay is being offered.
+- **Inner (Storage / MergeHandler accepted path)**: count everything
+  *accepted*. This is what actually took effect.
+- **Difference = amount rejected by middleware.** Each middleware emits
+  its own `<middleware>_rejections_total{reason}` counter (one metric
+  name per middleware, not a shared `{middleware, reason}` dimension),
+  so the breakdown is visible by cause while each middleware's metric
+  surface stays independent.
+
+#### Log ↔ metric cross-index
+
+Every middleware that calls `logRejection` also increments its own
+rejection counter, carrying the **same `reason` string** as a label. The
+shared key is the `reason` value, not a unified metric name:
+
+```
+grep reason=max_content_length relay.log
+rate({__name__=~"mocrelay_.*_rejections_total", reason="max_content_length"}[5m])
+```
+
+should land on the same events. Today only `AuthMiddleware` is wired —
+extending to all middleware is the primary follow-up.
+
+#### Instrument choice
+
+| Instrument | When | Hot-path note |
+|---|---|---|
+| **Counter** | Any monotonic count (requests, errors, rejections, drops, bytes in / out) | Lock-free, cheap; fine on every message |
+| **Gauge** | Current level (connections, subscriptions, buffer depth) | Must have matched Inc / Dec (`defer`, cleanup, or `Set`) or it drifts upward forever |
+| **Histogram** | Latency / size distributions where the tail matters | More expensive than Counter; acceptable per REQ / per Store. For per-EVENT hot paths, audit buckets first |
+
+#### Nil-safe injection
+
+Metrics are optional, matching the philosophy of `Relay.Logger`. Each of
+`RelayMetrics`, `RouterMetrics`, `AuthMetrics`, `StorageMetrics` is passed
+through `*Options`; `nil` means "don't measure, don't allocate." Call
+sites guard with a nil check (or a no-op shim) so the instrument-free
+build path has zero runtime cost and no Prometheus dependency surface.
+Just as `Logger == nil` falls back to `slog.Default()`, `Metrics == nil`
+falls back to silence.
+
+#### Coverage by layer (drives follow-up PRs)
+
+| Layer | Kind | Existing | Gaps (future PRs) |
+|---|---|---|---|
+| **Relay (WS conn)** | RED-R | `ConnectionsTotal`, `MessagesReceived{type}`, `MessagesSent{type}`, `EventsReceived{kind}` | — |
+| | RED-E | — | `ws_parse_errors_total`, `ws_write_errors_total` |
+| | RED-D | — | `ws_write_duration_seconds` (diagnose write timeouts) |
+| | USE-Sat | `ConnectionsCurrent` | `send_buf_full_drops_total`, `write_timeouts_total` |
+| **Router** | USE-Sat | `MessagesDropped` | `subscriptions_current` (Gauge) |
+| **Middleware: Auth** | RED-R+E | `AuthTotal{result}`, `RejectionsTotal{reason}`, `AuthenticatedConnectionsCurrent` | — |
+| **Middleware: others (11)** | RED-E | — | Per-middleware `<name>_rejections_total{reason}`, aligned with `logRejection` |
+| **StorageHandler** | RED-R+D | `EventsStored{kind, stored}`, `Store / QueryDuration` | `store_errors_total`, `query_errors_total` |
+| **MergeHandler** | USE-Sat+E | — | `lost_children_total`, `broadcast_timeouts_total`, `event_sort_drops_total` |
+| **Pebble (internals)** | USE | — | Expose `pebble.Metrics()` — L0 files, compactions, WAL bytes |
+| **Bleve** | RED-R+D+E | — | `search_total`, `search_duration_seconds`, `search_errors_total` |
+
+#### Known concerns (decide before v0.x freeze)
+
+1. **`kind` label explosion** — **decided: known-kind allowlist.**
+   `EventsReceived{kind}` and `EventsStored{kind, stored}` accept
+   arbitrary `int64`; a hostile or buggy client sending a unique kind
+   per message would grow the series set without bound. The chosen
+   mitigation is an allowlist of well-known kinds (0, 1, 3, 4, 5, 6, 7,
+   40-44, 1984, 9734, 9735, 10000-19999, 30000-39999, …) with everything
+   else bucketed to `kind="other"`. This keeps per-kind fidelity for the
+   common case (kind 1 / 7 in particular are worth watching) while
+   holding cardinality bounded. Implementation is a follow-up PR.
+   Alternatives considered and rejected: NIP-01 range buckets
+   (`regular` / `replaceable` / `ephemeral` / `addressable` / `other` —
+   loses per-kind detail), and dropping the label entirely (recoverable
+   from the event log but inconvenient for dashboards / alerts).
+
+2. **Per-middleware counter scope** — **decided: stay per-middleware.**
+   An earlier draft proposed promoting `RejectionsTotal` from
+   `AuthMetrics` to a relay-wide `mocrelay_rejections_total{middleware,
+   reason}`. We chose instead to keep each middleware's rejection
+   counter as its own metric (e.g. `mocrelay_auth_rejections_total`,
+   `mocrelay_max_content_length_rejections_total`, …). Rationale:
+   (a) it matches the existing per-middleware `*Metrics` / `*Options`
+   surface, so nil-safe injection stays local to each middleware;
+   (b) middlewares remain independent — adding or removing one doesn't
+   touch the others' label spaces; (c) each middleware's `reason` enum
+   stays small and closed, with no risk of colliding with another
+   middleware's vocabulary. The `{middleware, reason}` cross-product
+   view is still recoverable at query time via, e.g.,
+   `sum by(reason)({__name__=~"mocrelay_.*_rejections_total"})` —
+   PromQL is expressive enough that storage-layer independence doesn't
+   cost us aggregation at the query layer.
+
+3. **Pebble / Bleve internals**: `pebble.Metrics()` returns rich
+   saturation signals (L0 files, pending compactions, WAL bytes) that
+   are not exposed today. The usual pattern is a periodic collector
+   goroutine reading `Metrics()` every N seconds into Gauges. Out of
+   scope for the initial policy PR; planned as a later follow-up.
+
 ### Design Decisions
 
 #### Constructor API
