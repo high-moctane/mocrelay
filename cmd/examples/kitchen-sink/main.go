@@ -25,6 +25,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/blevesearch/bleve/v2"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -56,27 +59,45 @@ func main() {
 	storageMetrics := mocrelay.NewStorageMetrics(reg)
 
 	// --- Storage layer ---
+	//
+	// mocrelay does not open or close the underlying Pebble / Bleve
+	// databases: the caller owns them. This lets callers pick their own
+	// pebble.Options (cache size, bloom filter, event listeners, ...),
+	// expose db.Metrics() to Prometheus themselves, and pin their own
+	// Pebble / Bleve versions independently of mocrelay's go.mod.
 
 	// Pebble: persistent LSM-tree storage.
-	pebbleStorage, err := mocrelay.NewPebbleStorage(
-		filepath.Join(dataDir, "pebble"),
-		&mocrelay.PebbleStorageOptions{
-			CacheSize: 64 * 1024 * 1024, // 64 MB block cache
+	cache := pebble.NewCache(64 << 20) // 64 MB block cache
+	defer cache.Unref()
+	bloomOpts := pebble.LevelOptions{
+		FilterPolicy: bloom.FilterPolicy(10),
+		FilterType:   pebble.TableFilter,
+	}
+	db, err := pebble.Open(filepath.Join(dataDir, "pebble"), &pebble.Options{
+		Cache: cache,
+		// Apply the bloom filter to every level (Pebble uses 7 by default).
+		Levels: []pebble.LevelOptions{
+			bloomOpts, bloomOpts, bloomOpts, bloomOpts,
+			bloomOpts, bloomOpts, bloomOpts,
 		},
-	)
+	})
 	if err != nil {
 		log.Fatalf("pebble: %v", err)
 	}
-	defer pebbleStorage.Close()
+	defer db.Close()
+	pebbleStorage := mocrelay.NewPebbleStorage(db, nil)
 
 	// Bleve: full-text search with CJK support (NIP-50).
-	bleveIndex, err := mocrelay.NewBleveIndex(&mocrelay.BleveIndexOptions{
-		Path: filepath.Join(dataDir, "bleve"),
-	})
+	blevePath := filepath.Join(dataDir, "bleve")
+	idx, err := bleve.Open(blevePath)
+	if err == bleve.ErrorIndexPathDoesNotExist {
+		idx, err = bleve.New(blevePath, mocrelay.BuildIndexMapping())
+	}
 	if err != nil {
 		log.Fatalf("bleve: %v", err)
 	}
-	defer bleveIndex.Close()
+	defer idx.Close()
+	bleveIndex := mocrelay.NewBleveIndex(idx, nil)
 
 	// Composite: Pebble (source of truth) + Bleve (search).
 	compositeStorage := mocrelay.NewCompositeStorage(pebbleStorage, bleveIndex)

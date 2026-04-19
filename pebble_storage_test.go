@@ -4,19 +4,27 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupPebbleStorage(t *testing.T) *PebbleStorage {
+// openTestPebbleDB opens an in-memory Pebble DB for tests and registers a
+// cleanup that closes it. Callers must not close the returned DB themselves.
+func openTestPebbleDB(t *testing.T) *pebble.DB {
 	t.Helper()
-	dir := t.TempDir()
-	s, err := NewPebbleStorage(dir, nil)
+	db, err := pebble.Open("test", &pebble.Options{FS: vfs.NewMem()})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		s.Close()
+		_ = db.Close()
 	})
-	return s
+	return db
+}
+
+func setupPebbleStorage(t *testing.T) *PebbleStorage {
+	t.Helper()
+	return NewPebbleStorage(openTestPebbleDB(t), nil)
 }
 
 // queryPebble is a test helper that collects events from Query into a slice.

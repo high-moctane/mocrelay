@@ -2,7 +2,6 @@ package mocrelay
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/analysis/lang/cjk"
@@ -20,66 +19,55 @@ type SearchIndex interface {
 
 	// Delete removes an event from the search index.
 	Delete(ctx context.Context, eventID string) error
-
-	// Close releases resources.
-	Close() error
 }
 
 // BleveIndex implements SearchIndex using Bleve with CJK analyzer.
+//
+// The [bleve.Index] is owned by the caller: BleveIndex does not open or
+// close it. Callers should create the index with [BuildIndexMapping] (or
+// a customized mapping built on top of it) so the document schema matches
+// what Index / Search / Delete expect, then close the underlying index
+// when done. BleveIndex itself has no Close method.
 type BleveIndex struct {
-	index  bleve.Index
-	logger *slog.Logger // For Open/Close/lifecycle logs (never nil; falls back to slog.Default()).
+	index bleve.Index
 }
 
-// BleveIndexOptions configures BleveIndex behavior.
-type BleveIndexOptions struct {
-	// Path to store the index. If empty, uses in-memory index.
-	Path string
+// BleveIndexOptions is reserved for future BleveIndex configuration.
+// It is currently empty but exists so that adding options later is not a
+// breaking API change. Pass nil for now.
+type BleveIndexOptions struct{}
 
-	// Logger is used for lifecycle events (Open, Close) that happen outside
-	// of any request context. Per-request errors continue to use the context
-	// logger via [LoggerFromContext].
-	// Default: [slog.Default]
-	Logger *slog.Logger
+// NewBleveIndex wraps an already-open [bleve.Index] as a [SearchIndex].
+//
+// The caller retains ownership of idx: they are responsible for opening it
+// (typically with [BuildIndexMapping]) and for closing it when done.
+// BleveIndex itself has no Close method.
+//
+// opts can be nil; there are currently no configurable options.
+func NewBleveIndex(idx bleve.Index, opts *BleveIndexOptions) *BleveIndex {
+	_ = opts // reserved for future use
+	return &BleveIndex{index: idx}
 }
 
-// NewBleveIndex creates a new Bleve-based search index.
-func NewBleveIndex(opts *BleveIndexOptions) (*BleveIndex, error) {
-	if opts == nil {
-		opts = &BleveIndexOptions{}
-	}
-
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	indexMapping := buildIndexMapping()
-
-	var index bleve.Index
-	var err error
-
-	if opts.Path == "" {
-		// In-memory index (for testing)
-		index, err = bleve.NewMemOnly(indexMapping)
-	} else {
-		// Try to open existing index, create if not exists
-		index, err = bleve.Open(opts.Path)
-		if err == bleve.ErrorIndexPathDoesNotExist {
-			index, err = bleve.New(opts.Path, indexMapping)
-		}
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	if opts.Path == "" {
-		logger.Info("bleve index: opened (in-memory)")
-	} else {
-		logger.Info("bleve index: opened", "path", opts.Path)
-	}
-	return &BleveIndex{index: index, logger: logger}, nil
+// BuildIndexMapping returns the Bleve [mapping.IndexMappingImpl] that
+// BleveIndex expects. Use it when opening a [bleve.Index] to pass to
+// [NewBleveIndex]:
+//
+//	idx, _ := bleve.NewMemOnly(mocrelay.BuildIndexMapping())
+//	searchIndex := mocrelay.NewBleveIndex(idx, nil)
+//
+// It configures:
+//   - "content" as a text field analyzed with the CJK analyzer (bigram
+//     tokenization, covers Japanese / Chinese / Korean).
+//   - "id" as stored-only (indexed=false) so hits can be mapped back to
+//     event IDs without bloating the index.
+//   - "pubkey" as a keyword (exact match) field.
+//   - "kind" and "created_at" as numeric fields.
+//
+// Callers who need a customized mapping can build on top of the returned
+// value, but Index / Search / Delete rely on the document shape above.
+func BuildIndexMapping() *mapping.IndexMappingImpl {
+	return buildIndexMapping()
 }
 
 // buildIndexMapping creates the Bleve index mapping for Nostr events.
@@ -176,17 +164,6 @@ func (b *BleveIndex) Search(ctx context.Context, query string, limit int64) ([]s
 // Delete implements SearchIndex.Delete.
 func (b *BleveIndex) Delete(ctx context.Context, eventID string) error {
 	return b.index.Delete(eventID)
-}
-
-// Close implements SearchIndex.Close.
-func (b *BleveIndex) Close() error {
-	err := b.index.Close()
-	if err != nil {
-		b.logger.Warn("bleve index: close returned error", "error", err)
-	} else {
-		b.logger.Info("bleve index: closed")
-	}
-	return err
 }
 
 func (b *BleveIndex) docCount() (uint64, error) {

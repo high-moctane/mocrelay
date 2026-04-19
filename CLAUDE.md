@@ -139,7 +139,7 @@ slog.WarnContext(ctx, "query error", "error", err)
 |---|---|---|
 | **Error** | Data loss / corruption; operator must act now. | Storage.Store failure, unrecoverable I/O. |
 | **Warn** | Unexpected / externally-caused failures; individually tolerable but worth watching. | WebSocket parse / verify failure, MergeHandler lost child (timeout / early close), child handler returned error, Shutdown deadline exceeded. |
-| **Info** | Structural lifecycle events — one per connection or per relay, not per message. | Connection start / end, PebbleStorage / BleveIndex open / close, Relay shutdown progress. |
+| **Info** | Structural lifecycle events — one per connection or per relay, not per message. | Connection start / end, Relay shutdown progress. |
 | **Debug** | Hot-path events: every accepted EVENT, every REQ, every middleware rejection, every dropped broadcast. Off in production. | `logRejection` output, routerHandler per-message events, MergeHandler EVENT drop. |
 
 Rule of thumb: if the log fires "at Info or higher and would be noisy in
@@ -283,8 +283,8 @@ the `Logger` pattern, but that's deferred until a second metric
 | **Middleware: others (10)** | RED-E | Rejections via unified `mocrelay_rejections_total{middleware, reason}` (wired automatically through `logRejection`) | — |
 | **StorageHandler** | RED-R+D+E | `EventsStored{kind, type, stored}`, `Store / QueryDuration`, `StoreErrors`, `QueryErrors` | — |
 | **MergeHandler** | USE-Sat+E | `LostChildrenTotal`, `BroadcastTimeoutsTotal`, `EventDrops{reason}` | — |
-| **Pebble (internals)** | USE | — | Expose `pebble.Metrics()` — L0 files, compactions, WAL bytes |
-| **Bleve** | RED-R+D+E | — | `search_total`, `search_duration_seconds`, `search_errors_total` |
+| **Pebble (internals)** | USE | — (caller-owned) | External: expose via caller's `*pebble.DB` — `db.Metrics()` → L0 files, compactions, WAL bytes |
+| **Bleve** | RED-R+D+E | — (caller-owned) | External: expose via caller's `bleve.Index` — `idx.StatsMap()` / wrap `Search` for latency. Request-path RED could still be added inside mocrelay if operators want it without the caller ceremony. |
 
 Notes on retracted gaps:
 
@@ -376,11 +376,21 @@ Notes on retracted gaps:
    observability (forces operators to run log aggregators for basic
    rate questions and loses the cheap Prometheus alert surface).
 
-3. **Pebble / Bleve internals**: `pebble.Metrics()` returns rich
-   saturation signals (L0 files, pending compactions, WAL bytes) that
-   are not exposed today. The usual pattern is a periodic collector
-   goroutine reading `Metrics()` every N seconds into Gauges. Out of
-   scope for the initial policy PR; planned as a later follow-up.
+3. **Pebble / Bleve internals — exposed by the caller, not by
+   mocrelay.** `*pebble.DB` and `bleve.Index` are passed in by the
+   caller (see the "Caller-owned `*pebble.DB`" section), so
+   `db.Metrics()` — L0 files, pending compactions, WAL bytes — and
+   `idx.StatsMap()` live on the caller's side of the boundary. The
+   usual pattern is a periodic collector goroutine in the caller's
+   main reading these every N seconds into Gauges registered to the
+   same Prometheus registry that mocrelay's own metrics use. Putting
+   this inside mocrelay was the original plan, but it forced mocrelay
+   to (a) pin Pebble / Bleve versions tightly and (b) grow a new
+   "proxy every useful field" API surface for every new Pebble
+   release; moving the DB handle out eliminates both costs. Request-
+   path RED for Bleve search (latency / errors) *could* still be
+   added inside mocrelay later if operators want it without the
+   caller ceremony — see the Bleve row in the Coverage table.
 
 ### Design Decisions
 
@@ -389,12 +399,12 @@ Notes on retracted gaps:
 All public constructors in mocrelay follow a single shape:
 
 ```go
-NewX(required..., opts *XOptions) *X     // or (*X, error) for I/O
+NewX(required..., opts *XOptions) *X
 ```
 
 Rules:
 
-- **Positional args are required** (e.g. `handler`, `relayURL`, `path`).
+- **Positional args are required** (e.g. `handler`, `relayURL`, `db`).
   If a value has no sensible zero default, it goes here.
 - **Optional config lives in `*XOptions`** — one Options struct per type,
   right next to its constructor. `opts == nil` is always valid and means
@@ -817,30 +827,60 @@ Deletion markers:
 - Not supported in Pebble
 - Use separate search engine (Bleve, Meilisearch, etc.) via MergeHandler if needed
 
-**PebbleStorageOptions**:
-```go
-type PebbleStorageOptions struct {
-    CacheSize int64  // Block cache (default 8MB, production 64-256MB recommended)
-    FS        vfs.FS // For testing (vfs.NewMem())
-}
-```
+**Caller-owned `*pebble.DB`**:
 
-**Fixed settings (no need to change)**:
-- Bloom filter: 10 bits/key (~1% false positive), Table-level filter on all levels
-- MemTableSize: 4MB (~4000 events, sufficient for small-to-medium scale relays)
-- Other Pebble options: defaults are fine, add as needed
-
-**PebbleStorage Close**:
-- Caller responsible for `Close()` ("creator closes" principle)
-- Required to properly close WAL and files
+PebbleStorage does not open or close the Pebble database. The caller
+opens `*pebble.DB` with their own [pebble.Options] and passes it in:
 
 ```go
-storage, _ := NewPebbleStorage("/path/to/db", nil)
-defer storage.Close()  // ← Don't forget!
+db, err := pebble.Open("/path/to/db", &pebble.Options{
+    Cache:  pebble.NewCache(64 << 20), // 64 MB
+    Levels: bloomLevels,               // bloom filter per level
+    // EventListener, FormatMajorVersion, ... all caller's choice
+})
+if err != nil { ... }
+defer db.Close()  // ← caller closes the DB
 
+storage := NewPebbleStorage(db, nil) // no error, no Close()
 handler := NewStorageHandler(storage)
 relay := NewRelay(handler, nil)
 ```
+
+Consequences:
+
+- **PebbleStorage has no `Close()` method.** Lifecycle is the caller's.
+- **`PebbleStorageOptions` is currently empty** (reserved for future
+  use). Pass `nil`. DB-level tuning (cache size, bloom filter,
+  memtable size, event listeners, …) lives on `pebble.Options`, not on
+  PebbleStorageOptions.
+- **`db.Metrics()` is directly accessible to the caller**, so
+  Pebble-internal observability (L0 files, compaction debt, WAL bytes)
+  is exposed by the caller to their own Prometheus registry; mocrelay
+  no longer proxies it. See Coverage-by-layer note: the Pebble row is
+  "external — exposed via the caller's *pebble.DB".
+- **Pebble version** is the caller's choice too (MVS picks the highest
+  v1.x in the module graph; major-version differences would require
+  a `/v2` import path bump on mocrelay's side).
+
+**Recommended Pebble.Options for Nostr workloads** (not set by mocrelay;
+apply yourself if they fit your use case):
+
+- Bloom filter 10 bits/key (~1% false positive), table-level filter on
+  every level — significantly speeds up negative lookups on the
+  per-event-id index (`[0x01][event_id:32]`).
+- MemTableSize 4 MB — roughly 4000 events, adequate for small-to-medium
+  relays; raise it for write-heavy deployments.
+- Cache 64-256 MB in production, 8 MB (Pebble default) for dev.
+
+`BleveIndex` follows the same pattern: the caller opens the
+`bleve.Index` (typically with `mocrelay.BuildIndexMapping()`), passes
+it to `NewBleveIndex(idx, nil)`, and closes it themselves. `BleveIndex`
+has no `Close()`, and `BleveIndexOptions` is currently empty.
+`BuildIndexMapping()` is exported specifically because the Bleve
+mapping is part of the search semantics (CJK analyzer on `content`,
+keyword on `pubkey`, numeric on `kind` / `created_at`); callers who
+build their own index must use this mapping or Index/Search/Delete
+will operate on a different document shape.
 
 **Differential Testing**:
 - `storage_differential_test.go` verifies InMemory and Pebble behavior match

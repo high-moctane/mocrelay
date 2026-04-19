@@ -10,15 +10,12 @@ import (
 	"fmt"
 	"hash/fnv"
 	"iter"
-	"log/slog"
 	"math"
 	"sort"
 	"strconv"
 	"sync"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/vfs"
 )
 
 // Key prefixes for Pebble storage
@@ -45,101 +42,33 @@ const (
 )
 
 // PebbleStorage implements Storage using Pebble (LSM-tree based KV store).
+//
+// The *pebble.DB is owned by the caller: PebbleStorage does not open or
+// close the database. The caller is responsible for opening the DB with
+// whatever [pebble.Options] are appropriate (cache size, bloom filters,
+// event listeners, etc.) and for closing it when done. This lets the
+// caller expose [pebble.DB.Metrics] directly and pin their own Pebble
+// version independent of mocrelay's go.mod.
 type PebbleStorage struct {
-	db     *pebble.DB
-	cache  *pebble.Cache // Keep reference to close on Close()
-	logger *slog.Logger  // For Open/Close/lifecycle logs (never nil; falls back to slog.Default()).
-	mu     sync.RWMutex  // For atomic operations spanning multiple keys
+	db *pebble.DB
+	mu sync.RWMutex // For atomic operations spanning multiple keys
 }
 
-// PebbleStorageOptions configures PebbleStorage behavior.
-type PebbleStorageOptions struct {
-	// CacheSize is the size of the block cache in bytes.
-	// Larger cache improves read performance by keeping frequently accessed
-	// SSTable blocks in memory.
-	// Default: 8MB (Pebble's default). Recommended: 64MB-256MB for production.
-	CacheSize int64
+// PebbleStorageOptions is reserved for future PebbleStorage configuration.
+// It is currently empty but exists so that adding options later is not a
+// breaking API change. Pass nil for now.
+type PebbleStorageOptions struct{}
 
-	// Logger is used for lifecycle events (Open, Close) that happen outside
-	// of any request context. Per-request errors (Store / Query) continue to
-	// use the context logger via [LoggerFromContext].
-	// Default: [slog.Default]
-	Logger *slog.Logger
-
-	// fs provides the interface for persistent file storage (unexported: test use only).
-	// Use vfs.NewMem() for in-memory storage.
-	// Default: vfs.Default (operating system's file system)
-	fs vfs.FS
-}
-
-// NewPebbleStorage creates a new Pebble-backed storage.
-// path is the directory where Pebble will store its data.
-// opts can be nil for default options.
-func NewPebbleStorage(path string, opts *PebbleStorageOptions) (*PebbleStorage, error) {
-	if opts == nil {
-		opts = &PebbleStorageOptions{}
-	}
-
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	// Configure Bloom filter for efficient negative lookups.
-	// 10 bits per key provides ~1% false positive rate.
-	levelOpts := pebble.LevelOptions{
-		FilterPolicy: bloom.FilterPolicy(10),
-		FilterType:   pebble.TableFilter, // Table-level filter (faster than block-level)
-	}
-
-	pebbleOpts := &pebble.Options{
-		// Apply Bloom filter to all levels (Pebble uses 7 levels by default)
-		Levels: []pebble.LevelOptions{
-			levelOpts, // L0
-			levelOpts, // L1
-			levelOpts, // L2
-			levelOpts, // L3
-			levelOpts, // L4
-			levelOpts, // L5
-			levelOpts, // L6
-		},
-	}
-
-	// Apply custom filesystem
-	if opts.fs != nil {
-		pebbleOpts.FS = opts.fs
-	}
-
-	// Apply custom cache size
-	var cache *pebble.Cache
-	if opts.CacheSize > 0 {
-		cache = pebble.NewCache(opts.CacheSize)
-		pebbleOpts.Cache = cache
-	}
-
-	db, err := pebble.Open(path, pebbleOpts)
-	if err != nil {
-		if cache != nil {
-			cache.Unref()
-		}
-		return nil, fmt.Errorf("open pebble database: %w", err)
-	}
-	logger.Info("pebble storage: opened", "path", path, "cache_size", opts.CacheSize)
-	return &PebbleStorage{db: db, cache: cache, logger: logger}, nil
-}
-
-// Close closes the Pebble database.
-func (s *PebbleStorage) Close() error {
-	err := s.db.Close()
-	if s.cache != nil {
-		s.cache.Unref()
-	}
-	if err != nil {
-		s.logger.Warn("pebble storage: close returned error", "error", err)
-	} else {
-		s.logger.Info("pebble storage: closed")
-	}
-	return err
+// NewPebbleStorage wraps an already-open *pebble.DB as a Storage.
+//
+// The caller retains ownership of db: they are responsible for opening it
+// (with their own [pebble.Options]) and for calling db.Close() when done.
+// PebbleStorage itself has no Close method.
+//
+// opts can be nil; there are currently no configurable options.
+func NewPebbleStorage(db *pebble.DB, opts *PebbleStorageOptions) *PebbleStorage {
+	_ = opts // reserved for future use
+	return &PebbleStorage{db: db}
 }
 
 // Store implements Storage.Store.
