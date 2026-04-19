@@ -128,9 +128,9 @@ func main() {
 
 	handler = mocrelay.NewSimpleMiddleware(
 		// Auth (NIP-42): challenge/response authentication.
-		mocrelay.NewAuthMiddlewareBase("wss://relay.example.com/", &mocrelay.AuthMiddlewareOptions{
-			Metrics: authMetrics,
-		}),
+		// AuthMetrics is injected via RelayOptions.AuthMetrics below,
+		// picked up by the middleware via AuthMetricsFromContext.
+		mocrelay.NewAuthMiddlewareBase("wss://relay.example.com/", nil),
 
 		// Protected events (NIP-70): prevent republishing "-" tagged events.
 		mocrelay.NewProtectedEventsMiddlewareBase(),
@@ -158,8 +158,9 @@ func main() {
 	// --- Relay ---
 
 	relay := mocrelay.NewRelay(handler, &mocrelay.RelayOptions{
-		Logger:  logger,
-		Metrics: relayMetrics,
+		Logger:      logger,
+		Metrics:     relayMetrics,
+		AuthMetrics: authMetrics,
 		Info: &mocrelay.RelayInfo{
 			Name:          "mocrelay-kitchen-sink",
 			Description:   "A full-featured Nostr relay example",

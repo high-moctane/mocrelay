@@ -247,29 +247,35 @@ The `middleware` axis lets operators scope further:
 Metrics are optional, matching the philosophy of `Relay.Logger`. Two
 injection shapes coexist:
 
-- **Per-owner options** (`RelayMetrics`, `RouterMetrics`, `AuthMetrics`,
+- **Per-owner options** (`RelayMetrics`, `RouterMetrics`,
   `StorageMetrics`, `MergeHandlerMetrics`, `CompositeStorageMetrics`):
   passed through the owning
   type's `*Options` struct. `nil` means "don't measure, don't allocate."
   Call sites guard with a nil check so the instrument-free build path
-  has zero runtime cost and no Prometheus dependency surface.
-- **Context-injected** (`RejectionMetrics`): threaded through the
-  request context, symmetric with `Logger`. `Relay` installs it once
-  per connection; middleware never holds a reference, never needs a
-  nil check — `logRejection` reads it via `RejectionMetricsFromContext`
-  and no-ops on nil. This keeps the per-middleware API surface minimal
-  (no per-middleware metrics field just for rejections) and keeps
-  rejection reporting lazily DRY: a new middleware that calls
-  `logRejection` is automatically observable on day one.
+  has zero runtime cost and no Prometheus dependency surface. These
+  are all measured by the owning type itself (Relay measures Relay,
+  Storage measures Storage, …), so there is nothing request-scoped to
+  propagate — Options is the right place.
+- **Context-injected** (`RejectionMetrics`, `AuthMetrics`): threaded
+  through the request context, symmetric with `Logger`. `Relay`
+  installs them once per connection from `RelayOptions.RejectionMetrics`
+  / `RelayOptions.AuthMetrics`; middleware never holds a reference,
+  never needs a nil check — the middleware reads them via
+  `RejectionMetricsFromContext` / `AuthMetricsFromContext` and no-ops
+  on nil. The rule for picking this shape over Options is "the metric
+  is consumed by a unit that composes *into* a Relay
+  (handler / middleware), rather than by the unit itself." Logger
+  follows the same rule, which is why it shares the ctx path.
 
 Just as `Logger == nil` falls back to `slog.Default()`, both
-`Metrics == nil` and a ctx without `RejectionMetrics` fall back to
-silence.
+`Metrics == nil` and a ctx without `RejectionMetrics` / `AuthMetrics`
+fall back to silence.
 
-A natural future step is to migrate the remaining `*Metrics` types onto
-the context-injected shape so that the whole metrics surface matches
-the `Logger` pattern, but that's deferred until a second metric
-(beyond rejections) is shown to benefit from ctx scope.
+`MergeHandlerMetrics` is the next candidate to consider for the
+context-injected set under the same rule (consumed by a handler that
+composes into Relay rather than by Relay itself). It is left on
+Options for now; a follow-up PR can evaluate the move once a concrete
+need arises.
 
 #### Coverage by layer (drives follow-up PRs)
 
@@ -437,8 +443,14 @@ Rules:
   does not re-check for zero values. Writing `if x == 0 { x = default }`
   at call sites is a smell — it means the constructor did not finish
   its job.
-- **Metrics are a field of Options**, not a separate positional arg or
-  a post-construction field. Uniform with every other optional setting.
+- **Metrics are a field of some `*Options` struct**, not a separate
+  positional arg or a post-construction field. Which Options depends on
+  the consumer: types that measure themselves (e.g. `RouterMetrics` on
+  `RouterOptions`) keep Metrics on their own Options; types that are
+  composed *into* `Relay` and measured while serving a request
+  (`AuthMetrics`, `RejectionMetrics`) put Metrics on `RelayOptions` and
+  let `Relay` install them into the request context. See the "Nil-safe
+  injection" section in the Metrics policy above for the full rule.
 
 This pattern is used by `NewRelay`, `NewRouter`, `NewAuthMiddlewareBase`,
 `NewPebbleStorage`, `NewBleveIndex`, and `NewCompositeStorage`. New
