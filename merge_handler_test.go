@@ -194,8 +194,8 @@ func TestMergeHandler_Req_EventsWithDedupe(t *testing.T) {
 		storage2.Store(ctx, makeEvent("bbb", "pubkey01", 1, 100)) // duplicate
 		storage2.Store(ctx, makeEvent("ccc", "pubkey01", 1, 100))
 
-		handler1 := NewStorageHandler(storage1)
-		handler2 := NewStorageHandler(storage2)
+		handler1 := NewStorageHandler(storage1, nil)
+		handler2 := NewStorageHandler(storage2, nil)
 
 		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
@@ -263,8 +263,8 @@ func TestMergeHandler_Req_SortDrop(t *testing.T) {
 		storage2.Store(ctx, makeEvent("event-b", "pubkey01", 1, 400)) // even newer! should be dropped
 		storage2.Store(ctx, makeEvent("event-c", "pubkey01", 1, 100)) // oldest, OK
 
-		handler1 := NewStorageHandler(storage1)
-		handler2 := NewStorageHandler(storage2)
+		handler1 := NewStorageHandler(storage1, nil)
+		handler2 := NewStorageHandler(storage2, nil)
 
 		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
@@ -336,7 +336,7 @@ func TestMergeHandler_Req_SortTiebreakASC(t *testing.T) {
 		storage.Store(ctx, makeEvent("bbb", "pubkey01", 1, 100))
 		storage.Store(ctx, makeEvent("ccc", "pubkey01", 1, 100))
 
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
@@ -391,7 +391,7 @@ func TestMergeHandler_Req_Limit(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-4", "pubkey01", 1, 200))
 		storage.Store(ctx, makeEvent("event-5", "pubkey01", 1, 100))
 
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
@@ -456,7 +456,7 @@ func TestMergeHandler_Req_EventAfterHandlerEOSE(t *testing.T) {
 			event: makeEvent("event-2", "pubkey01", 1, 200),
 		}
 
-		mergeHandler := NewMergeHandler([]Handler{NewStorageHandler(storage), lateEventHandler}, nil)
+		mergeHandler := NewMergeHandler([]Handler{NewStorageHandler(storage, nil), lateEventHandler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -529,8 +529,8 @@ func TestMergeHandler_Count(t *testing.T) {
 		storage2.Store(ctx, makeEvent("event-4", "pubkey01", 1, 400))
 		storage2.Store(ctx, makeEvent("event-5", "pubkey01", 1, 500))
 
-		handler1 := NewStorageHandler(storage1) // 3 events
-		handler2 := NewStorageHandler(storage2) // 2 events
+		handler1 := NewStorageHandler(storage1, nil) // 3 events
+		handler2 := NewStorageHandler(storage2, nil) // 2 events
 		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
@@ -614,8 +614,8 @@ func TestMergeHandler_Req_Limit_MultipleHandlers(t *testing.T) {
 		storage2.Store(ctx, makeEvent("event-4", "pubkey01", 1, 300))
 		storage2.Store(ctx, makeEvent("event-6", "pubkey01", 1, 100))
 
-		handler1 := NewStorageHandler(storage1)
-		handler2 := NewStorageHandler(storage2)
+		handler1 := NewStorageHandler(storage1, nil)
+		handler2 := NewStorageHandler(storage2, nil)
 		mergeHandler := NewMergeHandler([]Handler{handler1, handler2}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
@@ -691,7 +691,7 @@ func TestMergeHandler_Req_Limit_RealTimeEventsAfterEOSE(t *testing.T) {
 			event:     realTimeEvent,
 		}
 
-		mergeHandler := NewMergeHandler([]Handler{NewStorageHandler(storage), rtHandler}, nil)
+		mergeHandler := NewMergeHandler([]Handler{NewStorageHandler(storage, nil), rtHandler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -1365,7 +1365,7 @@ func TestMergeHandler_Req_SubIDReuseWithoutClose(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-2", "pubkey01", 1, 400))
 		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 		mergeHandler := NewMergeHandler([]Handler{handler}, nil)
 
 		ctx, cancel := context.WithCancel(ctx)

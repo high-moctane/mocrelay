@@ -166,6 +166,38 @@ middleware policy (`MaxEventTags` dropping oversized events, `AuthRequired`
 rejecting unauthenticated REQs, …). Enable Debug when investigating why a
 specific client is being dropped; rely on metrics day-to-day.
 
+**Slow REQ / COUNT logging** (`StorageHandlerOptions.SlowQueryThreshold`):
+
+`StorageHandler` emits a **Warn** log (`"storage: slow REQ"` /
+`"storage: slow COUNT"`) when a subscription's total duration exceeds a
+configurable threshold (default 1s; zero uses the default, negative
+disables). The log carries:
+
+- `subscription_id`, `filters`
+- `events_sent` (REQ) or `count` (COUNT)
+- `total_ms` — wall time from `Query` call through EOSE / COUNT yield
+- For REQ: `scan_ms` and `send_wait_ms` — time spent outside vs inside
+  `yield`, summing to `total_ms`
+- `completed` (REQ) — false if the REQ was abandoned before EOSE
+
+Why the scan / send-wait split exists: `iter.Seq` is pull-driven, so a
+blocked `yield` also pauses the storage iterator — the two time windows
+are not independent. But the split is still operationally useful because
+*which side owns the stall* determines the fix:
+
+- `send_wait_ms >> scan_ms` → the client is failing to drain its send
+  path (slow consumer, dead TCP peer, network congestion). Look at WS
+  write timeouts and router drop metrics.
+- `scan_ms >> send_wait_ms` → the filter / index / data volume is the
+  bottleneck. Look at `db.Metrics()` (L0 files, compaction debt) and
+  the filter shape.
+- Both large → genuinely heavy query *and* slow consumer; typical when a
+  client subscribes with a broad filter and can't keep up.
+
+This is the complement to the `QueryDuration` histogram: the histogram
+answers "how often are REQs slow?", the Warn log answers "which REQs,
+with what shape, and which side owns the latency?"
+
 ### Metrics
 
 **Observability stance**: metrics and logs are complementary. Logs (from
@@ -453,7 +485,8 @@ Rules:
   injection" section in the Metrics policy above for the full rule.
 
 This pattern is used by `NewRelay`, `NewRouter`, `NewAuthMiddlewareBase`,
-`NewPebbleStorage`, `NewBleveIndex`, and `NewCompositeStorage`. New
+`NewPebbleStorage`, `NewBleveIndex`, `NewCompositeStorage`, and
+`NewStorageHandler`. New
 Handlers / Middlewares / Storages added to mocrelay should follow the
 same shape so third-party code composing with mocrelay has a predictable
 surface.
@@ -692,7 +725,7 @@ child wraps an external relay.
 ```go
 handler := NewMergeHandler(
     []Handler{
-        NewStorageHandler(storage),  // Fetch past events
+        NewStorageHandler(storage, nil),  // Fetch past events
         NewRouterHandler(router),    // Real-time delivery
     },
     nil, // *MergeHandlerOptions; nil = defaults
@@ -877,7 +910,7 @@ if err != nil { ... }
 defer db.Close()  // ← caller closes the DB
 
 storage := NewPebbleStorage(db, nil) // no error, no Close()
-handler := NewStorageHandler(storage)
+handler := NewStorageHandler(storage, nil)
 relay := NewRelay(handler, nil)
 ```
 

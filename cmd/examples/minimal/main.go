@@ -44,7 +44,7 @@ func main() {
 	// Handler: merge storage (past events) and router (real-time).
 	handler := mocrelay.NewMergeHandler(
 		[]mocrelay.Handler{
-			mocrelay.NewStorageHandler(storage),
+			mocrelay.NewStorageHandler(storage, nil),
 			mocrelay.NewRouterHandler(router),
 		},
 		nil, // default options

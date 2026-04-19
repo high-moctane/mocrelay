@@ -324,8 +324,8 @@ func testStorageHandlerDifferentialWithSeed(t *testing.T, seed uint64) {
 	pebbleStorage := NewPebbleStorage(openTestPebbleDB(t), nil)
 
 	// Create handlers
-	handlerInMem := NewStorageHandler(inMemory)
-	handlerPebble := NewStorageHandler(pebbleStorage)
+	handlerInMem := NewStorageHandler(inMemory, nil)
+	handlerPebble := NewStorageHandler(pebbleStorage, nil)
 
 	// Create channels for both handlers
 	sendInMem := make(chan *ServerMsg, 100)

@@ -1,9 +1,14 @@
 package mocrelay
 
 import (
+	"bytes"
 	"context"
+	"iter"
+	"log/slog"
+	"strings"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,7 +17,7 @@ import (
 func TestStorageHandler_Event_Store(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		storage := NewInMemoryStorage()
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -49,7 +54,7 @@ func TestStorageHandler_Event_Store(t *testing.T) {
 func TestStorageHandler_Event_Duplicate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		storage := NewInMemoryStorage()
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -86,7 +91,7 @@ func TestStorageHandler_Event_Duplicate(t *testing.T) {
 func TestStorageHandler_Req_Empty(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		storage := NewInMemoryStorage()
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -126,7 +131,7 @@ func TestStorageHandler_Req_WithEvents(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -180,7 +185,7 @@ func TestStorageHandler_Req_WithLimit(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -225,7 +230,7 @@ func TestStorageHandler_Req_WithLimit(t *testing.T) {
 func TestStorageHandler_Close_NoOp(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		storage := NewInMemoryStorage()
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -263,7 +268,7 @@ func TestStorageHandler_Count(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -304,7 +309,7 @@ func TestStorageHandler_Count_WithFilter(t *testing.T) {
 		storage.Store(ctx, makeEvent("event-2", "pubkey01", 2, 200))
 		storage.Store(ctx, makeEvent("event-3", "pubkey01", 1, 300))
 
-		handler := NewStorageHandler(storage)
+		handler := NewStorageHandler(storage, nil)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -330,6 +335,172 @@ func TestStorageHandler_Count_WithFilter(t *testing.T) {
 			assert.Equal(t, uint64(2), msg.Count)
 		default:
 			t.Fatal("expected COUNT message")
+		}
+	})
+}
+
+// delayedQueryStorage wraps a Storage and sleeps for delay before returning
+// from Query — useful to force the slow-query logging path under synctest
+// (time.Sleep advances synctest's virtual clock).
+type delayedQueryStorage struct {
+	inner Storage
+	delay time.Duration
+}
+
+func (s *delayedQueryStorage) Store(ctx context.Context, event *Event) (bool, error) {
+	return s.inner.Store(ctx, event)
+}
+
+func (s *delayedQueryStorage) Query(
+	ctx context.Context,
+	filters []*ReqFilter,
+) (iter.Seq[*Event], func() error, func() error) {
+	time.Sleep(s.delay)
+	return s.inner.Query(ctx, filters)
+}
+
+// runSlowQueryServeNostr is a shared fixture for the slow-query tests: it
+// wires up a handler, an in-memory storage wrapped in a delay shim, a slog
+// text handler into buf, and drives a single ClientMsg through ServeNostr.
+// synctest time is advanced by test-goroutine time.Sleep (past advance) so
+// the delayed Query path actually resolves before assertions run.
+func runSlowQueryServeNostr(
+	t *testing.T,
+	msg *ClientMsg,
+	opts *StorageHandlerOptions,
+	delay time.Duration,
+	advance time.Duration,
+) string {
+	t.Helper()
+	ctx := context.Background()
+	base := NewInMemoryStorage()
+	base.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
+
+	storage := &delayedQueryStorage{inner: base, delay: delay}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	handler := NewStorageHandler(storage, opts)
+
+	ctx = ContextWithLogger(ctx, logger)
+	ctx, cancel := context.WithCancel(ctx)
+
+	send := make(chan *ServerMsg, 10)
+	recv := make(chan *ClientMsg, 10)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- handler.ServeNostr(ctx, send, recv) }()
+
+	recv <- msg
+
+	// time.Sleep (not just synctest.Wait) is required to advance the fake
+	// clock — see merge_handler_test.go for the same pattern.
+	time.Sleep(advance)
+	synctest.Wait()
+
+	cancel()
+	synctest.Wait()
+	<-errCh
+	return buf.String()
+}
+
+func TestStorageHandler_SlowQuery_ReqLogsOnThresholdExceeded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		out := runSlowQueryServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeReq,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{SlowQueryThreshold: 100 * time.Millisecond},
+			500*time.Millisecond,
+			600*time.Millisecond,
+		)
+
+		for _, want := range []string{
+			`level=WARN`,
+			`msg="storage: slow REQ"`,
+			`subscription_id=sub1`,
+			`events_sent=1`,
+			`completed=true`,
+			`total_ms=`,
+			`scan_ms=`,
+			`send_wait_ms=`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("output missing %q\nfull output: %s", want, out)
+			}
+		}
+	})
+}
+
+func TestStorageHandler_SlowQuery_ReqNoLogBelowThreshold(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// Delay is below the default 1s threshold: must not log.
+		out := runSlowQueryServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeReq,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			nil, // default 1s
+			500*time.Millisecond,
+			600*time.Millisecond,
+		)
+
+		if strings.Contains(out, "slow REQ") {
+			t.Errorf("slow REQ should not be logged below default 1s threshold:\n%s", out)
+		}
+	})
+}
+
+func TestStorageHandler_SlowQuery_Disabled(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// Large delay that would trip any positive threshold, but a
+		// negative threshold disables slow-query logging entirely.
+		out := runSlowQueryServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeReq,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{SlowQueryThreshold: -1},
+			5*time.Second,
+			6*time.Second,
+		)
+
+		if strings.Contains(out, "slow REQ") || strings.Contains(out, "slow COUNT") {
+			t.Errorf("slow-query logging should be disabled with negative threshold:\n%s", out)
+		}
+	})
+}
+
+func TestStorageHandler_SlowQuery_CountLogsOnThresholdExceeded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		out := runSlowQueryServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeCount,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{SlowQueryThreshold: 100 * time.Millisecond},
+			500*time.Millisecond,
+			600*time.Millisecond,
+		)
+
+		for _, want := range []string{
+			`level=WARN`,
+			`msg="storage: slow COUNT"`,
+			`subscription_id=sub1`,
+			`count=1`,
+			`total_ms=`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("output missing %q\nfull output: %s", want, out)
+			}
 		}
 	})
 }

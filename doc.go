@@ -73,7 +73,7 @@
 //	router := NewRouter(nil)
 //	handler := NewMergeHandler(
 //	    []Handler{
-//	        NewStorageHandler(storage),
+//	        NewStorageHandler(storage, nil),
 //	        NewRouterHandler(router),
 //	    },
 //	    nil,
