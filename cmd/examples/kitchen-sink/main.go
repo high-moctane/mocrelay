@@ -118,7 +118,7 @@ func main() {
 
 	handler := mocrelay.NewMergeHandler(
 		[]mocrelay.Handler{
-			mocrelay.NewStorageHandler(storage),
+			mocrelay.NewStorageHandler(storage, nil),
 			mocrelay.NewRouterHandler(router),
 		},
 		nil, // default options

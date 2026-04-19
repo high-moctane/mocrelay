@@ -255,7 +255,7 @@ func TestMetrics_MergeHandler_EventDrops_Duplicate(t *testing.T) {
 		storage2.Store(ctx, makeEvent("dup", "pubkey01", 1, 100))
 
 		mh := NewMergeHandler(
-			[]Handler{NewStorageHandler(storage1), NewStorageHandler(storage2)},
+			[]Handler{NewStorageHandler(storage1, nil), NewStorageHandler(storage2, nil)},
 			&MergeHandlerOptions{Metrics: metrics},
 		)
 
