@@ -26,6 +26,7 @@ type Relay struct {
 	pingTimeout      time.Duration
 	info             *RelayInfo
 	metrics          *RelayMetrics
+	rejectionMetrics *RejectionMetrics
 	connIDFunc       func() string
 
 	mu      sync.Mutex
@@ -65,6 +66,13 @@ type RelayOptions struct {
 	// Metrics is the Prometheus metrics collector.
 	// If set, the relay will collect connection and message metrics.
 	Metrics *RelayMetrics
+
+	// RejectionMetrics is the unified rejection counter shared across every
+	// middleware. If set, the relay installs it into the request context so
+	// that logRejection (called from every middleware drop) auto-increments
+	// the counter alongside its structured log entry. If nil, rejections are
+	// only logged — no counter is incremented.
+	RejectionMetrics *RejectionMetrics
 
 	// ConnIDFunc generates a unique connection ID string.
 	// If nil, a default monotonic counter ("1", "2", ...) is used.
@@ -106,6 +114,7 @@ func NewRelay(handler Handler, opts *RelayOptions) *Relay {
 		pingTimeout:      pingTimeout,
 		info:             opts.Info,
 		metrics:          opts.Metrics,
+		rejectionMetrics: opts.RejectionMetrics,
 		connIDFunc:       opts.ConnIDFunc,
 	}
 }
@@ -218,6 +227,9 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx = contextWithConnID(ctx, connID)
 	logger := r.logger.With("conn_id", connID)
 	ctx = ContextWithLogger(ctx, logger)
+	if r.rejectionMetrics != nil {
+		ctx = ContextWithRejectionMetrics(ctx, r.rejectionMetrics)
+	}
 
 	// Metrics: connection tracking
 	if r.metrics != nil {

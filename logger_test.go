@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestLoggerFromContext(t *testing.T) {
@@ -67,6 +70,65 @@ func TestLogRejection(t *testing.T) {
 
 		if buf.Len() != 0 {
 			t.Errorf("expected no output at Info level, got: %s", buf.String())
+		}
+	})
+
+	t.Run("increments rejection counter from ctx", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		metrics := NewRejectionMetrics(reg)
+		ctx := ContextWithRejectionMetrics(context.Background(), metrics)
+
+		logRejection(ctx, "max_content_length", "content_too_long",
+			"event_id", "abc", "length", 9999,
+		)
+		logRejection(ctx, "max_content_length", "content_too_long",
+			"event_id", "def", "length", 9999,
+		)
+		logRejection(ctx, "auth", "event_unauthenticated",
+			"event_id", "ghi",
+		)
+
+		if got := testutil.ToFloat64(metrics.Total.WithLabelValues(
+			"max_content_length", "content_too_long",
+		)); got != 2 {
+			t.Errorf("max_content_length/content_too_long: want 2, got %v", got)
+		}
+		if got := testutil.ToFloat64(metrics.Total.WithLabelValues(
+			"auth", "event_unauthenticated",
+		)); got != 1 {
+			t.Errorf("auth/event_unauthenticated: want 1, got %v", got)
+		}
+	})
+
+	t.Run("no-op when no metrics in ctx", func(t *testing.T) {
+		// Plain context.Background() — no RejectionMetrics installed.
+		// Should not panic and should still log.
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
+		ctx := ContextWithLogger(context.Background(), logger)
+
+		logRejection(ctx, "auth", "event_unauthenticated", "event_id", "x")
+
+		if buf.Len() == 0 {
+			t.Error("expected log output, got none")
+		}
+	})
+}
+
+func TestRejectionMetricsFromContext(t *testing.T) {
+	t.Run("returns nil when not set", func(t *testing.T) {
+		if got := RejectionMetricsFromContext(context.Background()); got != nil {
+			t.Fatalf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("returns metrics from context", func(t *testing.T) {
+		metrics := NewRejectionMetrics(prometheus.NewRegistry())
+		ctx := ContextWithRejectionMetrics(context.Background(), metrics)
+		if got := RejectionMetricsFromContext(ctx); got != metrics {
+			t.Fatalf("expected same metrics, got %v", got)
 		}
 	})
 }

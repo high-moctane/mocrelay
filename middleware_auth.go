@@ -104,9 +104,6 @@ func (m *authMiddleware) HandleClientMsg(
 
 	case MsgTypeEvent:
 		if !m.isAuthedPubkey(state, msg.Event.Pubkey) {
-			if m.metrics != nil {
-				m.metrics.RejectionsTotal.WithLabelValues("event_unauthenticated").Inc()
-			}
 			logRejection(ctx, "auth", "event_unauthenticated",
 				"event_id", msg.Event.ID,
 				"pubkey", msg.Event.Pubkey,
@@ -121,9 +118,6 @@ func (m *authMiddleware) HandleClientMsg(
 
 	case MsgTypeReq:
 		if !m.isAuthed(state) {
-			if m.metrics != nil {
-				m.metrics.RejectionsTotal.WithLabelValues("req_unauthenticated").Inc()
-			}
 			logRejection(ctx, "auth", "req_unauthenticated",
 				"sub_id", msg.SubscriptionID,
 			)
