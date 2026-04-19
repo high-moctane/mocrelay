@@ -3,10 +3,11 @@ package mocrelay
 import "strconv"
 
 // knownKinds is the set of Nostr event kinds that get their own Prometheus
-// label value in kind-tagged metrics (EventsReceived, EventsStored). Kinds
-// outside this set are bucketed by NIP-01 category (see kindLabel) so a
-// hostile or buggy client cannot explode the series set by sending
-// arbitrary int64 kind values.
+// `kind` label value in kind-tagged metrics (EventsReceived, EventsStored).
+// Kinds outside this set are collapsed to `kind="other"` so a hostile or
+// buggy client cannot explode the series set by sending arbitrary int64
+// kind values. The `type` label (see kindLabels) orthogonalises the
+// NIP-01 category so operators still see traffic shape.
 //
 // The list follows the mocrelay metrics policy (CLAUDE.md, Known concerns
 // #1): commonly observed kinds get per-kind fidelity; everything else is
@@ -55,31 +56,48 @@ var knownKinds = map[int64]struct{}{
 	30023: {},
 }
 
-// kindLabel returns a Prometheus label value for an event kind with bounded
-// cardinality. Known kinds return their decimal form (e.g. 1 -> "1").
-// Unknown kinds are bucketed by NIP-01 range:
+// kindLabels returns the (kind, type) Prometheus label values for an event
+// kind. The two labels carry redundant information (type is a function of
+// kind) but pairing them lets operators query per-kind fidelity and
+// per-category shape in the same metric without inflating cardinality —
+// `(kind, type)` is a functional relationship, so the observed series set
+// is bounded at len(knownKinds) + 5 = 28, not the label cross-product.
 //
-//	10000..19999 (replaceable range)   -> "replaceable_other"
-//	20000..29999 (ephemeral range)     -> "ephemeral"
-//	30000..39999 (addressable range)   -> "addressable_other"
-//	1..9999      (regular range)       -> "regular_other"
-//	everything else                    -> "other"
+// The first return is the `kind` label: decimal form of `kind` if in the
+// known-kind allowlist, otherwise "other". Cardinality: len(knownKinds) + 1.
 //
-// Total label cardinality is bounded at len(knownKinds) + 5 regardless of
-// client behaviour.
-func kindLabel(kind int64) string {
+// The second return is the `type` label, classifying `kind` by NIP-01
+// range:
+//
+//	"regular"     — kind 1, 2, 4..44, 1000..9999
+//	"replaceable" — kind 0, 3, 10000..19999
+//	"ephemeral"   — kind 20000..29999
+//	"addressable" — kind 30000..39999
+//	"unknown"     — everything else (e.g. 45..999, ≥ 40000, negative)
+//
+// Cardinality: 5.
+func kindLabels(kind int64) (kindValue, typeValue string) {
+	typeValue = kindType(kind)
 	if _, ok := knownKinds[kind]; ok {
-		return strconv.FormatInt(kind, 10)
+		return strconv.FormatInt(kind, 10), typeValue
 	}
+	return "other", typeValue
+}
+
+// kindType classifies a kind into one of the NIP-01 categories (regular,
+// replaceable, ephemeral, addressable) or "unknown" if the kind falls in
+// a gap the spec does not define (e.g. 45..999, values ≥ 40000, negative
+// values). This is used as the `type` label on kind-tagged metrics.
+func kindType(kind int64) string {
 	switch {
-	case kind >= 10000 && kind <= 19999:
-		return "replaceable_other"
+	case kind == 0, kind == 3, kind >= 10000 && kind <= 19999:
+		return "replaceable"
 	case kind >= 20000 && kind <= 29999:
 		return "ephemeral"
 	case kind >= 30000 && kind <= 39999:
-		return "addressable_other"
-	case kind >= 1 && kind <= 9999:
-		return "regular_other"
+		return "addressable"
+	case kind == 1, kind == 2, kind >= 4 && kind <= 44, kind >= 1000 && kind <= 9999:
+		return "regular"
 	}
-	return "other"
+	return "unknown"
 }

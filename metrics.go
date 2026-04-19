@@ -35,7 +35,7 @@ func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
 		EventsReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "mocrelay_events_received_total",
 			Help: "Total number of events received from clients",
-		}, []string{"kind"}),
+		}, []string{"kind", "type"}),
 	}
 
 	reg.MustRegister(
@@ -116,7 +116,7 @@ func NewStorageMetrics(reg prometheus.Registerer) *StorageMetrics {
 		EventsStored: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "mocrelay_events_stored_total",
 			Help: "Total number of event store attempts",
-		}, []string{"kind", "stored"}),
+		}, []string{"kind", "type", "stored"}),
 		StoreDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "mocrelay_store_duration_seconds",
 			Help:    "Time spent storing events",

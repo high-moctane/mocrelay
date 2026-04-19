@@ -30,7 +30,8 @@ func (s *MetricsStorage) Store(ctx context.Context, event *Event) (bool, error) 
 	s.metrics.StoreDuration.Observe(duration.Seconds())
 
 	if err == nil {
-		s.metrics.EventsStored.WithLabelValues(kindLabel(event.Kind), strconv.FormatBool(stored)).Inc()
+		kind, typ := kindLabels(event.Kind)
+		s.metrics.EventsStored.WithLabelValues(kind, typ, strconv.FormatBool(stored)).Inc()
 	}
 
 	return stored, err
