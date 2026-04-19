@@ -5,17 +5,35 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/blevesearch/bleve/v2"
 )
+
+// openTestBleveIndex opens an in-memory Bleve index for tests and registers
+// a cleanup that closes it. Callers must not close the returned index
+// themselves.
+func openTestBleveIndex(t *testing.T) bleve.Index {
+	t.Helper()
+	idx, err := bleve.NewMemOnly(BuildIndexMapping())
+	if err != nil {
+		t.Fatalf("bleve.NewMemOnly failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = idx.Close()
+	})
+	return idx
+}
+
+// setupBleveIndex returns a BleveIndex wrapping an in-memory index.
+func setupBleveIndex(t *testing.T) *BleveIndex {
+	t.Helper()
+	return NewBleveIndex(openTestBleveIndex(t), nil)
+}
 
 func TestBleveIndex_IndexAndSearch(t *testing.T) {
 	ctx := context.Background()
 
-	// Create in-memory index
-	idx, err := NewBleveIndex(nil)
-	if err != nil {
-		t.Fatalf("NewBleveIndex failed: %v", err)
-	}
-	defer idx.Close()
+	idx := setupBleveIndex(t)
 
 	// Index some events
 	events := []*Event{
@@ -82,11 +100,7 @@ func TestBleveIndex_IndexAndSearch(t *testing.T) {
 func TestBleveIndex_SearchLimit(t *testing.T) {
 	ctx := context.Background()
 
-	idx, err := NewBleveIndex(nil)
-	if err != nil {
-		t.Fatalf("NewBleveIndex failed: %v", err)
-	}
-	defer idx.Close()
+	idx := setupBleveIndex(t)
 
 	// Index 20 events with similar content
 	for i := range 20 {
@@ -116,11 +130,7 @@ func TestBleveIndex_SearchLimit(t *testing.T) {
 func TestBleveIndex_Delete(t *testing.T) {
 	ctx := context.Background()
 
-	idx, err := NewBleveIndex(nil)
-	if err != nil {
-		t.Fatalf("NewBleveIndex failed: %v", err)
-	}
-	defer idx.Close()
+	idx := setupBleveIndex(t)
 
 	// Index an event
 	e := &Event{
@@ -170,11 +180,7 @@ func TestBleveIndex_Delete(t *testing.T) {
 func TestBleveIndex_NilEvent(t *testing.T) {
 	ctx := context.Background()
 
-	idx, err := NewBleveIndex(nil)
-	if err != nil {
-		t.Fatalf("NewBleveIndex failed: %v", err)
-	}
-	defer idx.Close()
+	idx := setupBleveIndex(t)
 
 	// Index nil event should not error
 	if err := idx.Index(ctx, nil); err != nil {

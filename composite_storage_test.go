@@ -11,11 +11,7 @@ func TestCompositeStorage_StoreAndQuery(t *testing.T) {
 
 	// Create primary (InMemory) and search (Bleve)
 	primary := NewInMemoryStorage()
-	search, err := NewBleveIndex(nil)
-	if err != nil {
-		t.Fatalf("NewBleveIndex failed: %v", err)
-	}
-	defer search.Close()
+	search := setupBleveIndex(t)
 
 	storage := NewCompositeStorage(primary, search)
 
@@ -192,11 +188,7 @@ func TestCompositeStorage_EphemeralNotIndexed(t *testing.T) {
 	ctx := context.Background()
 
 	primary := NewInMemoryStorage()
-	search, err := NewBleveIndex(nil)
-	if err != nil {
-		t.Fatalf("NewBleveIndex failed: %v", err)
-	}
-	defer search.Close()
+	search := setupBleveIndex(t)
 
 	storage := NewCompositeStorage(primary, search)
 

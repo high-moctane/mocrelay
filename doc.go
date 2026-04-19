@@ -55,14 +55,20 @@
 //	}
 //
 // [InMemoryStorage] is provided for testing. For production use, see [PebbleStorage]
-// which provides persistent storage using CockroachDB's Pebble LSM-tree engine.
+// which wraps a caller-owned CockroachDB Pebble LSM-tree [*pebble.DB].
+// Full-text search (NIP-50) is available via [BleveIndex], which wraps a
+// caller-owned [bleve.Index].
 //
 // # Typical usage
 //
-// A typical relay combines storage, routing, middleware, and metrics:
+// A typical relay combines storage, routing, middleware, and metrics.
+// The caller owns the underlying pebble.DB (and bleve.Index, if used),
+// which keeps [pebble.DB.Metrics] and database lifecycle in the caller's
+// hands:
 //
-//	storage, _ := NewPebbleStorage("/path/to/db", nil)
-//	defer storage.Close()
+//	db, _ := pebble.Open("/path/to/db", nil)
+//	defer db.Close()
+//	storage := NewPebbleStorage(db, nil)
 //
 //	router := NewRouter(nil)
 //	handler := NewMergeHandler(

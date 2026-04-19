@@ -9,7 +9,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,9 +30,7 @@ func testStorageDifferentialWithSeed(t *testing.T, seed uint64) {
 	// Create both storages
 	inMemory := NewInMemoryStorage()
 
-	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
-	require.NoError(t, err)
-	defer pebbleStorage.Close()
+	pebbleStorage := NewPebbleStorage(openTestPebbleDB(t), nil)
 
 	// Use deterministic random generator
 	rng := rand.New(rand.NewPCG(seed, seed))
@@ -186,9 +183,7 @@ func TestStorageDifferential_Kind5(t *testing.T) {
 	ctx := context.Background()
 
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
-	require.NoError(t, err)
-	defer pebbleStorage.Close()
+	pebbleStorage := NewPebbleStorage(openTestPebbleDB(t), nil)
 
 	pubkey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -236,9 +231,7 @@ func TestStorageDifferential_Replaceable(t *testing.T) {
 	ctx := context.Background()
 
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
-	require.NoError(t, err)
-	defer pebbleStorage.Close()
+	pebbleStorage := NewPebbleStorage(openTestPebbleDB(t), nil)
 
 	pubkey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -271,9 +264,7 @@ func TestStorageDifferential_Addressable(t *testing.T) {
 	ctx := context.Background()
 
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
-	require.NoError(t, err)
-	defer pebbleStorage.Close()
+	pebbleStorage := NewPebbleStorage(openTestPebbleDB(t), nil)
 
 	pubkey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -330,9 +321,7 @@ func testStorageHandlerDifferentialWithSeed(t *testing.T, seed uint64) {
 
 	// Create both storages
 	inMemory := NewInMemoryStorage()
-	pebbleStorage, err := NewPebbleStorage("test", &PebbleStorageOptions{fs: vfs.NewMem()})
-	require.NoError(t, err)
-	defer pebbleStorage.Close()
+	pebbleStorage := NewPebbleStorage(openTestPebbleDB(t), nil)
 
 	// Create handlers
 	handlerInMem := NewStorageHandler(inMemory)
