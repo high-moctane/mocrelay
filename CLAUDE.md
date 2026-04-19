@@ -248,33 +248,55 @@ falls back to silence.
 
 | Layer | Kind | Existing | Gaps (future PRs) |
 |---|---|---|---|
-| **Relay (WS conn)** | RED-R | `ConnectionsTotal`, `MessagesReceived{type}`, `MessagesSent{type}`, `EventsReceived{kind}` | — |
+| **Relay (WS conn)** | RED-R | `ConnectionsTotal`, `MessagesReceived{type}`, `MessagesSent{type}`, `EventsReceived{kind, type}` | — |
 | | RED-E | — | `ws_parse_errors_total`, `ws_write_errors_total` |
 | | RED-D | — | `ws_write_duration_seconds` (diagnose write timeouts) |
 | | USE-Sat | `ConnectionsCurrent` | `send_buf_full_drops_total`, `write_timeouts_total` |
 | **Router** | USE-Sat | `MessagesDropped` | `subscriptions_current` (Gauge) |
 | **Middleware: Auth** | RED-R+E | `AuthTotal{result}`, `RejectionsTotal{reason}`, `AuthenticatedConnectionsCurrent` | — |
 | **Middleware: others (11)** | RED-E | — | Per-middleware `<name>_rejections_total{reason}`, aligned with `logRejection` |
-| **StorageHandler** | RED-R+D | `EventsStored{kind, stored}`, `Store / QueryDuration` | `store_errors_total`, `query_errors_total` |
+| **StorageHandler** | RED-R+D | `EventsStored{kind, type, stored}`, `Store / QueryDuration` | `store_errors_total`, `query_errors_total` |
 | **MergeHandler** | USE-Sat+E | — | `lost_children_total`, `broadcast_timeouts_total`, `event_sort_drops_total` |
 | **Pebble (internals)** | USE | — | Expose `pebble.Metrics()` — L0 files, compactions, WAL bytes |
 | **Bleve** | RED-R+D+E | — | `search_total`, `search_duration_seconds`, `search_errors_total` |
 
 #### Known concerns (decide before v0.x freeze)
 
-1. **`kind` label explosion** — **decided: known-kind allowlist.**
-   `EventsReceived{kind}` and `EventsStored{kind, stored}` accept
-   arbitrary `int64`; a hostile or buggy client sending a unique kind
-   per message would grow the series set without bound. The chosen
-   mitigation is an allowlist of well-known kinds (0, 1, 3, 4, 5, 6, 7,
-   40-44, 1984, 9734, 9735, 10000-19999, 30000-39999, …) with everything
-   else bucketed to `kind="other"`. This keeps per-kind fidelity for the
-   common case (kind 1 / 7 in particular are worth watching) while
-   holding cardinality bounded. Implementation is a follow-up PR.
-   Alternatives considered and rejected: NIP-01 range buckets
-   (`regular` / `replaceable` / `ephemeral` / `addressable` / `other` —
-   loses per-kind detail), and dropping the label entirely (recoverable
-   from the event log but inconvenient for dashboards / alerts).
+1. **`kind` label explosion** — **implemented: two-axis label
+   (`kind`, `type`).** `EventsReceived` and `EventsStored` originally
+   took a single free-form `kind` label (`int64`), letting a hostile or
+   buggy client grow the series set without bound. Mitigation lives in
+   `kind_label.go` via the `kindLabels(int64) (kind, type string)`
+   helper, with the two labels carrying deliberately redundant
+   information:
+   - **`kind`** — decimal form if the kind is in the known-kind
+     allowlist (0, 1, 3, 4, 5, 6, 7, 13, 14, 40-44, 1059, 1111, 1984,
+     9734, 9735, 10002, 10050, 30023); otherwise `"other"`.
+   - **`type`** — NIP-01 category: `"regular"` (kind 1, 2, 4-44,
+     1000-9999), `"replaceable"` (0, 3, 10000-19999), `"ephemeral"`
+     (20000-29999), `"addressable"` (30000-39999), `"unknown"` for
+     anything else (45-999, ≥ 40000, negatives).
+
+   Because `type` is a function of `kind`, the two-axis label is *not*
+   a cardinality cross-product: the observed series set is bounded at
+   `len(knownKinds) + 5 = 28` (23 allowlist kinds each paired with
+   exactly one type, plus `kind="other"` paired with each of the 5
+   type labels). The redundancy is a query-ergonomics trade: operators
+   get `sum by(type)` for category-level shape and `sum by(kind)` for
+   per-kind fidelity in the same metric without managing an info
+   metric + `group_left` join. Prometheus best practice usually favours
+   orthogonal labels, but the `(kind, type)` functional relationship is
+   fixed by the NIP-01 spec so the usual cardinality-blowup concern
+   doesn't apply.
+
+   Alternatives considered and rejected: single-label NIP-01 range
+   buckets (loses per-kind detail for e.g. kind 1, 7, 10002, 30023 —
+   operationally interesting); single-label encoded pair like
+   `kind="1:regular"` (ugly, requires client-side parsing); dropping
+   the label entirely (recoverable from the event log but inconvenient
+   for dashboards / alerts); info metric + `group_left` join (PromQL
+   overhead not justified given the fixed NIP mapping). Adjust the
+   allowlist based on operational experience.
 
 2. **Per-middleware counter scope** — **decided: stay per-middleware.**
    An earlier draft proposed promoting `RejectionsTotal` from
