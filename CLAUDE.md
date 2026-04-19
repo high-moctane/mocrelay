@@ -248,10 +248,10 @@ Metrics are optional, matching the philosophy of `Relay.Logger`. Two
 injection shapes coexist:
 
 - **Per-owner options** (`RelayMetrics`, `RouterMetrics`, `AuthMetrics`,
-  `StorageMetrics`): passed through the owning type's `*Options` struct.
-  `nil` means "don't measure, don't allocate." Call sites guard with a
-  nil check so the instrument-free build path has zero runtime cost and
-  no Prometheus dependency surface.
+  `StorageMetrics`, `MergeHandlerMetrics`): passed through the owning
+  type's `*Options` struct. `nil` means "don't measure, don't allocate."
+  Call sites guard with a nil check so the instrument-free build path
+  has zero runtime cost and no Prometheus dependency surface.
 - **Context-injected** (`RejectionMetrics`): threaded through the
   request context, symmetric with `Logger`. `Relay` installs it once
   per connection; middleware never holds a reference, never needs a
@@ -275,16 +275,35 @@ the `Logger` pattern, but that's deferred until a second metric
 | Layer | Kind | Existing | Gaps (future PRs) |
 |---|---|---|---|
 | **Relay (WS conn)** | RED-R | `ConnectionsTotal`, `MessagesReceived{type}`, `MessagesSent{type}`, `EventsReceived{kind, type}` | — |
-| | RED-E | — | `ws_parse_errors_total`, `ws_write_errors_total` |
-| | RED-D | — | `ws_write_duration_seconds` (diagnose write timeouts) |
-| | USE-Sat | `ConnectionsCurrent` | `send_buf_full_drops_total`, `write_timeouts_total` |
-| **Router** | USE-Sat | `MessagesDropped` | `subscriptions_current` (Gauge) |
+| | RED-E | `WSParseErrors{reason}`, `WSWriteErrors{reason}` | — |
+| | RED-D | `WSWriteDuration` | — |
+| | USE-Sat | `ConnectionsCurrent` | — (see note below) |
+| **Router** | USE-Sat | `MessagesDropped`, `SubscriptionsCurrent` | — |
 | **Middleware: Auth** | RED-R+E | `AuthTotal{result}`, `AuthenticatedConnectionsCurrent`, rejections via unified `mocrelay_rejections_total{middleware="auth", reason}` | — |
 | **Middleware: others (10)** | RED-E | Rejections via unified `mocrelay_rejections_total{middleware, reason}` (wired automatically through `logRejection`) | — |
-| **StorageHandler** | RED-R+D | `EventsStored{kind, type, stored}`, `Store / QueryDuration` | `store_errors_total`, `query_errors_total` |
-| **MergeHandler** | USE-Sat+E | — | `lost_children_total`, `broadcast_timeouts_total`, `event_sort_drops_total` |
+| **StorageHandler** | RED-R+D+E | `EventsStored{kind, type, stored}`, `Store / QueryDuration`, `StoreErrors`, `QueryErrors` | — |
+| **MergeHandler** | USE-Sat+E | `LostChildrenTotal`, `BroadcastTimeoutsTotal`, `EventDrops{reason}` | — |
 | **Pebble (internals)** | USE | — | Expose `pebble.Metrics()` — L0 files, compactions, WAL bytes |
 | **Bleve** | RED-R+D+E | — | `search_total`, `search_duration_seconds`, `search_errors_total` |
+
+Notes on retracted gaps:
+
+- **`send_buf_full_drops_total`** — withdrawn. The Relay send channel
+  uses a blocking send path throughout (`readLoop` → handler pipeline
+  is unbuffered at the recv boundary; `sendNotice` blocks on
+  `ctx.Done()` or delivery), so there is no drop site to instrument
+  under the current design. If the send boundary is ever converted to
+  best-effort drop (e.g. to mirror the Router's broadcast semantics),
+  this counter should be reintroduced together with the policy change.
+- **`write_timeouts_total`** — subsumed by
+  `WSWriteErrors{reason="timeout"}`. The writeLoop distinguishes
+  `context.DeadlineExceeded` on `conn.Write` from other failures via
+  the `reason` label; a dedicated counter would duplicate this.
+- **`event_sort_drops_total`** — shipped as
+  `EventDrops{reason}` instead, covering dedup / sort / limit drops
+  (`duplicate` / `out_of_order` / `after_limit`) *and* the broadcast
+  recv-buffer-full drop (`recv_buf_full`) in a single counter. The
+  broader name reflects the broader coverage.
 
 #### Known concerns (decide before v0.x freeze)
 

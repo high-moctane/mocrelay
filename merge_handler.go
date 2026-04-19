@@ -78,6 +78,9 @@ func (h *mergeHandler) broadcastAll(
 					"handler_index", i,
 					"event_id", msg.Event.ID,
 				)
+				if h.metrics != nil {
+					h.metrics.EventDrops.WithLabelValues("recv_buf_full").Inc()
+				}
 			}
 		}
 		return nil, false
@@ -107,6 +110,9 @@ func (h *mergeHandler) broadcastAll(
 				"msg_type", msg.Type,
 				"timeout", h.broadcastTimeout,
 			)
+			if h.metrics != nil {
+				h.metrics.BroadcastTimeoutsTotal.Inc()
+			}
 			dead = append(dead, i)
 		case <-ctx.Done():
 			t.Stop()
@@ -133,21 +139,29 @@ type MergeHandlerOptions struct {
 	//
 	// A zero value selects [DefaultMergeHandlerBroadcastTimeout] (30s).
 	BroadcastTimeout time.Duration
+
+	// Metrics is the Prometheus metrics collector for merge-handler
+	// saturation and error signals (lost children, broadcast timeouts,
+	// EVENT drops). If nil, no metrics are collected.
+	Metrics *MergeHandlerMetrics
 }
 
 // NewMergeHandler returns a [Handler] that fans messages out to every handler
 // in handlers and merges their responses. Pass nil for opts to use defaults.
 func NewMergeHandler(handlers []Handler, opts *MergeHandlerOptions) Handler {
 	timeout := DefaultMergeHandlerBroadcastTimeout
+	var metrics *MergeHandlerMetrics
 	if opts != nil {
 		if opts.BroadcastTimeout > 0 {
 			timeout = opts.BroadcastTimeout
 		}
+		metrics = opts.Metrics
 	}
 	return &mergeHandler{
 		handlers:         handlers,
 		broadcastTimeout: timeout,
 		childRecvBuffer:  defaultChildRecvBuffer,
+		metrics:          metrics,
 	}
 }
 
@@ -155,6 +169,7 @@ type mergeHandler struct {
 	handlers         []Handler
 	broadcastTimeout time.Duration
 	childRecvBuffer  int
+	metrics          *MergeHandlerMetrics
 }
 
 func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
@@ -210,7 +225,7 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 	}
 
 	// Session state for merging
-	session := newMergeSession(numHandlers)
+	session := newMergeSession(numHandlers, h.metrics)
 
 	// Build select cases dynamically
 	// Case 0: ctx.Done()
@@ -274,6 +289,9 @@ loop:
 			for _, idx := range deadIndices {
 				cases[2+idx].Chan = reflect.ValueOf(nil)
 				childRecvs[idx] = nil
+				if h.metrics != nil {
+					h.metrics.LostChildrenTotal.Inc()
+				}
 				results := session.handlerClosed(idx)
 				if !sendAll(ctx, send, results) {
 					loopErr = ctx.Err()
@@ -292,6 +310,9 @@ loop:
 					"handler_index", handlerIndex,
 				)
 				cases[chosen].Chan = reflect.ValueOf(nil)
+				if h.metrics != nil {
+					h.metrics.LostChildrenTotal.Inc()
+				}
 				results := session.handlerClosed(handlerIndex)
 				if !sendAll(ctx, send, results) {
 					loopErr = ctx.Err()
@@ -334,6 +355,15 @@ type mergeSession struct {
 	pendingEOSEs  map[string]*pendingEOSE  // subscriptionID -> pending EOSE state
 	pendingCounts map[string]*pendingCount // subscriptionID -> pending COUNT state
 	completedSubs map[string]bool          // subscriptionID -> true if EOSE already sent
+	metrics       *MergeHandlerMetrics
+}
+
+// recordEventDrop increments the merge-handler EVENT drop counter under the
+// given reason. Safe to call with a nil session.metrics.
+func (s *mergeSession) recordEventDrop(reason string) {
+	if s.metrics != nil {
+		s.metrics.EventDrops.WithLabelValues(reason).Inc()
+	}
 }
 
 type pendingOK struct {
@@ -381,13 +411,14 @@ type pendingEOSE struct {
 	handlerEOSESent []bool
 }
 
-func newMergeSession(numHandlers int) *mergeSession {
+func newMergeSession(numHandlers int, metrics *MergeHandlerMetrics) *mergeSession {
 	return &mergeSession{
 		numHandlers:   numHandlers,
 		pendingOKs:    make(map[string]*pendingOK),
 		pendingEOSEs:  make(map[string]*pendingEOSE),
 		pendingCounts: make(map[string]*pendingCount),
 		completedSubs: make(map[string]bool),
+		metrics:       metrics,
 	}
 }
 
@@ -564,6 +595,7 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 
 		// If EOSE already sent (due to limit), drop the event
 		if pending.eoseSent {
+			s.recordEventDrop("after_limit")
 			return nil
 		}
 
@@ -573,6 +605,7 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 		// same event id.
 		if pending.handlerEOSESent[handlerIndex] {
 			if pending.seenEventIDs[eventID] {
+				s.recordEventDrop("duplicate")
 				return nil
 			}
 			pending.seenEventIDs[eventID] = true
@@ -581,6 +614,7 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 
 		// Check if we've already seen this event (deduplication)
 		if pending.seenEventIDs[eventID] {
+			s.recordEventDrop("duplicate")
 			return nil // Duplicate, drop
 		}
 
@@ -591,10 +625,12 @@ func (s *mergeSession) processResponse(msg *ServerMsg, handlerIndex int) []*Serv
 		if pending.hasSentEvent {
 			if eventCreatedAt > pending.lastCreatedAt {
 				// Newer event after older one - breaks DESC order, drop
+				s.recordEventDrop("out_of_order")
 				return nil
 			}
 			if eventCreatedAt == pending.lastCreatedAt && eventID < pending.lastID {
 				// Same timestamp but lower id - breaks ASC tiebreak, drop
+				s.recordEventDrop("out_of_order")
 				return nil
 			}
 		}

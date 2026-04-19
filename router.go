@@ -69,6 +69,13 @@ func (r *Router) Unregister(connID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	conn, ok := r.connections[connID]
+	if !ok {
+		return
+	}
+	if r.metrics != nil && len(conn.subscriptions) > 0 {
+		r.metrics.SubscriptionsCurrent.Sub(float64(len(conn.subscriptions)))
+	}
 	delete(r.connections, connID)
 }
 
@@ -83,7 +90,14 @@ func (r *Router) Subscribe(connID, subID string, filters []*ReqFilter) {
 		return
 	}
 
+	// Only increment the gauge on a genuinely new subID; a client
+	// replacing an existing subscription (NIP-01 allows this without an
+	// intervening CLOSE) must not cause drift.
+	_, existed := conn.subscriptions[subID]
 	conn.subscriptions[subID] = filters
+	if r.metrics != nil && !existed {
+		r.metrics.SubscriptionsCurrent.Inc()
+	}
 }
 
 // Unsubscribe removes a subscription from a connection.
@@ -96,7 +110,12 @@ func (r *Router) Unsubscribe(connID, subID string) {
 		return
 	}
 
-	delete(conn.subscriptions, subID)
+	if _, existed := conn.subscriptions[subID]; existed {
+		delete(conn.subscriptions, subID)
+		if r.metrics != nil {
+			r.metrics.SubscriptionsCurrent.Dec()
+		}
+	}
 }
 
 // Broadcast sends an event to all matching subscriptions.

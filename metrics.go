@@ -13,6 +13,22 @@ type RelayMetrics struct {
 	MessagesReceived   *prometheus.CounterVec
 	MessagesSent       *prometheus.CounterVec
 	EventsReceived     *prometheus.CounterVec
+
+	// WSParseErrors counts client messages rejected before they reach the
+	// handler pipeline (binary frames, invalid UTF-8, parse failures,
+	// signature verification failures). Labeled by reason.
+	WSParseErrors *prometheus.CounterVec
+
+	// WSWriteErrors counts WebSocket write-path failures (marshal errors,
+	// write timeouts, ping timeouts, other write errors). Labeled by reason.
+	// A write-path failure typically terminates the connection; expect low
+	// rates with sharp spikes during outages.
+	WSWriteErrors *prometheus.CounterVec
+
+	// WSWriteDuration observes the latency of each conn.Write call in the
+	// writeLoop. Diagnoses slow clients / saturated send paths that can
+	// cause write timeouts and ping-starvation.
+	WSWriteDuration prometheus.Histogram
 }
 
 // NewRelayMetrics creates and registers Relay metrics with the given registry.
@@ -38,6 +54,24 @@ func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
 			Name: "mocrelay_events_received_total",
 			Help: "Total number of events received from clients",
 		}, []string{"kind", "type"}),
+		WSParseErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "mocrelay_ws_parse_errors_total",
+			Help: "Total number of client messages rejected by the WebSocket " +
+				"read path before reaching the handler pipeline, labeled by " +
+				"reason (binary_message, invalid_utf8, parse_error, " +
+				"verify_error, invalid_signature).",
+		}, []string{"reason"}),
+		WSWriteErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "mocrelay_ws_write_errors_total",
+			Help: "Total number of WebSocket write-path failures, labeled by " +
+				"reason (marshal, timeout, ping_timeout, other). A failure " +
+				"typically terminates the connection.",
+		}, []string{"reason"}),
+		WSWriteDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "mocrelay_ws_write_duration_seconds",
+			Help:    "Time spent in each WebSocket conn.Write call in the writeLoop",
+			Buckets: prometheus.DefBuckets,
+		}),
 	}
 
 	reg.MustRegister(
@@ -46,6 +80,9 @@ func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
 		m.MessagesReceived,
 		m.MessagesSent,
 		m.EventsReceived,
+		m.WSParseErrors,
+		m.WSWriteErrors,
+		m.WSWriteDuration,
 	)
 
 	return m
@@ -54,6 +91,12 @@ func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
 // RouterMetrics holds Prometheus metrics for Router.
 type RouterMetrics struct {
 	MessagesDropped prometheus.Counter
+
+	// SubscriptionsCurrent is the total number of active subscriptions
+	// across every connection registered with the Router. Sums over
+	// (per-connection subID) entries; a client that replaces an existing
+	// subID does not cause drift.
+	SubscriptionsCurrent prometheus.Gauge
 }
 
 // NewRouterMetrics creates and registers Router metrics with the given registry.
@@ -63,10 +106,15 @@ func NewRouterMetrics(reg prometheus.Registerer) *RouterMetrics {
 			Name: "mocrelay_router_messages_dropped_total",
 			Help: "Total number of messages dropped due to full send channel",
 		}),
+		SubscriptionsCurrent: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "mocrelay_router_subscriptions_current",
+			Help: "Current number of active subscriptions across all connections",
+		}),
 	}
 
 	reg.MustRegister(
 		m.MessagesDropped,
+		m.SubscriptionsCurrent,
 	)
 
 	return m
@@ -165,6 +213,15 @@ type StorageMetrics struct {
 	EventsStored  *prometheus.CounterVec
 	StoreDuration prometheus.Histogram
 	QueryDuration prometheus.Histogram
+
+	// StoreErrors counts failed Storage.Store calls. One increment per
+	// failed Store; paired with EventsStored to compute a success ratio.
+	StoreErrors prometheus.Counter
+
+	// QueryErrors counts failed Storage.Query calls. A Query reports its
+	// error via errFn after iteration completes, so this counter is
+	// incremented at most once per Query.
+	QueryErrors prometheus.Counter
 }
 
 // NewStorageMetrics creates and registers Storage metrics with the given registry.
@@ -184,12 +241,85 @@ func NewStorageMetrics(reg prometheus.Registerer) *StorageMetrics {
 			Help:    "Time spent querying events",
 			Buckets: prometheus.DefBuckets,
 		}),
+		StoreErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_store_errors_total",
+			Help: "Total number of failed Storage.Store calls",
+		}),
+		QueryErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_query_errors_total",
+			Help: "Total number of failed Storage.Query calls (reported via errFn)",
+		}),
 	}
 
 	reg.MustRegister(
 		m.EventsStored,
 		m.StoreDuration,
 		m.QueryDuration,
+		m.StoreErrors,
+		m.QueryErrors,
+	)
+
+	return m
+}
+
+// MergeHandlerMetrics holds Prometheus metrics for [NewMergeHandler].
+//
+// These surface the USE-Saturation and USE-Errors axes of the merge
+// handler: how often downstream children are retired or stall on control
+// broadcasts, and how many EVENT messages are dropped (on the way in,
+// or during dedup/sort/limit enforcement on the way out).
+type MergeHandlerMetrics struct {
+	// LostChildrenTotal counts child handlers retired mid-flight. A lost
+	// child contributes a synthesized accepted=false OK to its pending
+	// responses (see MergeHandlerOKLostHandlerMessage) and prompts the
+	// client to retry. Paired with BroadcastTimeoutsTotal to split the
+	// causes: timeout on a control broadcast vs. child closed its send
+	// channel (early exit / error).
+	LostChildrenTotal prometheus.Counter
+
+	// BroadcastTimeoutsTotal counts control-message (REQ / COUNT / CLOSE)
+	// broadcast timeouts. Every timeout retires exactly one child and is
+	// therefore also counted in LostChildrenTotal; subtract to isolate the
+	// early-exit path. EVENT broadcasts are never counted here — they are
+	// best-effort and land on EventDrops{reason="recv_buf_full"}.
+	BroadcastTimeoutsTotal prometheus.Counter
+
+	// EventDrops counts EVENT messages dropped at the merge boundary,
+	// labeled by reason:
+	//
+	//   - recv_buf_full  — per-child recv buffer full during broadcast
+	//                      (client is notified via OK accepted=false).
+	//   - duplicate      — event id already seen for this subscription.
+	//   - out_of_order   — breaks (created_at DESC, id ASC) sort order.
+	//   - after_limit    — subscription already hit its limit / EOSE.
+	EventDrops *prometheus.CounterVec
+}
+
+// NewMergeHandlerMetrics creates and registers merge handler metrics with
+// the given registry.
+func NewMergeHandlerMetrics(reg prometheus.Registerer) *MergeHandlerMetrics {
+	m := &MergeHandlerMetrics{
+		LostChildrenTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_merge_lost_children_total",
+			Help: "Total number of merge-handler child handlers retired " +
+				"mid-flight (broadcast timeout or early exit).",
+		}),
+		BroadcastTimeoutsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_merge_broadcast_timeouts_total",
+			Help: "Total number of merge-handler control-message broadcasts " +
+				"that timed out waiting for a single child to drain.",
+		}),
+		EventDrops: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "mocrelay_merge_event_drops_total",
+			Help: "Total number of EVENT messages dropped by the merge handler, " +
+				"labeled by reason (recv_buf_full, duplicate, out_of_order, after_limit).",
+		}, []string{"reason"}),
+	}
+
+	reg.MustRegister(
+		m.LostChildrenTotal,
+		m.BroadcastTimeoutsTotal,
+		m.EventDrops,
 	)
 
 	return m
