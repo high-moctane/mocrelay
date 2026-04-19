@@ -248,7 +248,8 @@ Metrics are optional, matching the philosophy of `Relay.Logger`. Two
 injection shapes coexist:
 
 - **Per-owner options** (`RelayMetrics`, `RouterMetrics`, `AuthMetrics`,
-  `StorageMetrics`, `MergeHandlerMetrics`): passed through the owning
+  `StorageMetrics`, `MergeHandlerMetrics`, `CompositeStorageMetrics`):
+  passed through the owning
   type's `*Options` struct. `nil` means "don't measure, don't allocate."
   Call sites guard with a nil check so the instrument-free build path
   has zero runtime cost and no Prometheus dependency surface.
@@ -284,7 +285,8 @@ the `Logger` pattern, but that's deferred until a second metric
 | **StorageHandler** | RED-R+D+E | `EventsStored{kind, type, stored}`, `Store / QueryDuration`, `StoreErrors`, `QueryErrors` | — |
 | **MergeHandler** | USE-Sat+E | `LostChildrenTotal`, `BroadcastTimeoutsTotal`, `EventDrops{reason}` | — |
 | **Pebble (internals)** | USE | — (caller-owned) | External: expose via caller's `*pebble.DB` — `db.Metrics()` → L0 files, compactions, WAL bytes |
-| **Bleve** | RED-R+D+E | — (caller-owned) | External: expose via caller's `bleve.Index` — `idx.StatsMap()` / wrap `Search` for latency. Request-path RED could still be added inside mocrelay if operators want it without the caller ceremony. |
+| **Bleve / SearchIndex (via CompositeStorage)** | RED-R+E | `SearchTotal`, `SearchErrors`, `IndexTotal`, `IndexErrors` (on `CompositeStorageMetrics`) | — |
+| | USE | — (caller-owned) | External: expose via caller's `bleve.Index` — `idx.StatsMap()` → doc count, batch stats |
 
 Notes on retracted gaps:
 
@@ -376,9 +378,9 @@ Notes on retracted gaps:
    observability (forces operators to run log aggregators for basic
    rate questions and loses the cheap Prometheus alert surface).
 
-3. **Pebble / Bleve internals — exposed by the caller, not by
-   mocrelay.** `*pebble.DB` and `bleve.Index` are passed in by the
-   caller (see the "Caller-owned `*pebble.DB`" section), so
+3. **Pebble / Bleve internals — USE is exposed by the caller, RED for
+   Bleve search is internal.** `*pebble.DB` and `bleve.Index` are passed
+   in by the caller (see the "Caller-owned `*pebble.DB`" section), so
    `db.Metrics()` — L0 files, pending compactions, WAL bytes — and
    `idx.StatsMap()` live on the caller's side of the boundary. The
    usual pattern is a periodic collector goroutine in the caller's
@@ -387,10 +389,30 @@ Notes on retracted gaps:
    this inside mocrelay was the original plan, but it forced mocrelay
    to (a) pin Pebble / Bleve versions tightly and (b) grow a new
    "proxy every useful field" API surface for every new Pebble
-   release; moving the DB handle out eliminates both costs. Request-
-   path RED for Bleve search (latency / errors) *could* still be
-   added inside mocrelay later if operators want it without the
-   caller ceremony — see the Bleve row in the Coverage table.
+   release; moving the DB handle out eliminates both costs.
+
+   Request-path RED for Bleve search (rate / errors) **has been added
+   inside mocrelay** on `CompositeStorage` via `CompositeStorageMetrics`:
+   `SearchTotal`, `SearchErrors`, `IndexTotal`, `IndexErrors`. These
+   instrument the two call sites where `CompositeStorage` would
+   otherwise silently swallow a backend failure — `Search` falls back
+   to the primary on error, and `Index` is fire-and-forget on the
+   success path of `Store`. Without these counters the search backend
+   could be fully broken (clients still see results, just not
+   search-scored) or the search index could silently drift out of sync
+   with the primary, and nobody would notice until a user complained.
+   Each failure is also logged at Warn via `LoggerFromContext(ctx)`
+   with matching fields (`event_id` / `query`, `error`) so logs and
+   metrics stay cross-indexable, mirroring the `logRejection` pattern.
+
+   Duration (RED-D) was deliberately not added on the search side: the
+   Bleve hop is dominated by `Search`'s own latency (primary
+   `IDs → Event` fetch is O(1) per ID), and that latency is already
+   captured inside `StorageMetrics.QueryDuration`. A separate
+   `SearchDuration` histogram would track the same shape; it can be
+   introduced later if a concrete operational need emerges (e.g.
+   isolating Bleve slowness from Pebble slowness when
+   `QueryDuration` spikes).
 
 ### Design Decisions
 
@@ -419,9 +441,10 @@ Rules:
   a post-construction field. Uniform with every other optional setting.
 
 This pattern is used by `NewRelay`, `NewRouter`, `NewAuthMiddlewareBase`,
-`NewPebbleStorage`, and `NewBleveIndex`. New Handlers / Middlewares /
-Storages added to mocrelay should follow the same shape so third-party
-code composing with mocrelay has a predictable surface.
+`NewPebbleStorage`, `NewBleveIndex`, and `NewCompositeStorage`. New
+Handlers / Middlewares / Storages added to mocrelay should follow the
+same shape so third-party code composing with mocrelay has a predictable
+surface.
 
 Exceptions:
 - `MetricsStorage` uses the decorator pattern (`NewMetricsStorage(storage, metrics)`)

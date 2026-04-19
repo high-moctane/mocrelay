@@ -16,18 +16,41 @@ import (
 // Store behavior:
 //   - Store in primary first (source of truth)
 //   - If successful, index in search index (best effort)
+//
+// Both the search path and the index path swallow their backend's errors
+// from the caller's perspective (search falls back to primary; index is
+// fire-and-forget). Wire [CompositeStorageOptions.Metrics] to make those
+// failures visible via [CompositeStorageMetrics.SearchErrors] /
+// [CompositeStorageMetrics.IndexErrors]; a structured Warn log is emitted
+// alongside each failure via [LoggerFromContext].
 type CompositeStorage struct {
 	primary Storage
 	search  SearchIndex
+	metrics *CompositeStorageMetrics
+}
+
+// CompositeStorageOptions configures [CompositeStorage]. Pass nil for
+// defaults.
+type CompositeStorageOptions struct {
+	// Metrics collects search and indexing observability signals. nil
+	// disables instrumentation (zero runtime cost, no Prometheus
+	// dependency on the caller).
+	Metrics *CompositeStorageMetrics
 }
 
 // NewCompositeStorage creates a new CompositeStorage.
 // primary is the source of truth for all data.
 // search provides full-text search capabilities (can be nil to disable search).
-func NewCompositeStorage(primary Storage, search SearchIndex) *CompositeStorage {
+// opts can be nil; see [CompositeStorageOptions] for configurable options.
+func NewCompositeStorage(primary Storage, search SearchIndex, opts *CompositeStorageOptions) *CompositeStorage {
+	var metrics *CompositeStorageMetrics
+	if opts != nil {
+		metrics = opts.Metrics
+	}
 	return &CompositeStorage{
 		primary: primary,
 		search:  search,
+		metrics: metrics,
 	}
 }
 
@@ -44,7 +67,19 @@ func (s *CompositeStorage) Store(ctx context.Context, event *Event) (bool, error
 	if s.search != nil && event != nil {
 		// Only index non-ephemeral events with content
 		if event.EventType() != EventTypeEphemeral && event.Content != "" {
-			_ = s.search.Index(ctx, event) // Ignore errors - primary is truth
+			if s.metrics != nil {
+				s.metrics.IndexTotal.Inc()
+			}
+			if ierr := s.search.Index(ctx, event); ierr != nil {
+				if s.metrics != nil {
+					s.metrics.IndexErrors.Inc()
+				}
+				LoggerFromContext(ctx).WarnContext(ctx,
+					"search index failed; primary store succeeded, index will drift",
+					"event_id", event.ID,
+					"error", ierr,
+				)
+			}
 		}
 	}
 
@@ -75,9 +110,20 @@ func (s *CompositeStorage) Query(ctx context.Context, filters []*ReqFilter) (ite
 	}
 
 	// Search for event IDs
+	if s.metrics != nil {
+		s.metrics.SearchTotal.Inc()
+	}
 	eventIDs, err := s.search.Search(ctx, searchQuery, limit)
 	if err != nil {
 		// Fall back to primary on search error
+		if s.metrics != nil {
+			s.metrics.SearchErrors.Inc()
+		}
+		LoggerFromContext(ctx).WarnContext(ctx,
+			"search backend failed; falling back to primary",
+			"query", searchQuery,
+			"error", err,
+		)
 		return s.primary.Query(ctx, filters)
 	}
 

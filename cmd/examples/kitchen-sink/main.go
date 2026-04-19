@@ -57,6 +57,7 @@ func main() {
 	routerMetrics := mocrelay.NewRouterMetrics(reg)
 	authMetrics := mocrelay.NewAuthMetrics(reg)
 	storageMetrics := mocrelay.NewStorageMetrics(reg)
+	compositeMetrics := mocrelay.NewCompositeStorageMetrics(reg)
 
 	// --- Storage layer ---
 	//
@@ -100,7 +101,9 @@ func main() {
 	bleveIndex := mocrelay.NewBleveIndex(idx, nil)
 
 	// Composite: Pebble (source of truth) + Bleve (search).
-	compositeStorage := mocrelay.NewCompositeStorage(pebbleStorage, bleveIndex)
+	compositeStorage := mocrelay.NewCompositeStorage(pebbleStorage, bleveIndex, &mocrelay.CompositeStorageOptions{
+		Metrics: compositeMetrics,
+	})
 
 	// Metrics: wrap storage with Prometheus instrumentation.
 	storage := mocrelay.NewMetricsStorage(compositeStorage, storageMetrics)

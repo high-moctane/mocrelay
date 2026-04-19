@@ -262,6 +262,87 @@ func NewStorageMetrics(reg prometheus.Registerer) *StorageMetrics {
 	return m
 }
 
+// CompositeStorageMetrics holds Prometheus metrics for [CompositeStorage].
+//
+// These instrument the two places where [CompositeStorage] would otherwise
+// silently swallow backend failures:
+//
+//   - Search (Query path): on [SearchIndex].Search error the Query falls
+//     back to the primary storage, so the client sees a result — just not
+//     a search-scored one. Without [SearchErrors] the backend could be
+//     fully broken and nobody would notice.
+//   - Index (Store path): [SearchIndex].Index is best-effort (the event is
+//     already in primary), so its return value is discarded. Without
+//     [IndexErrors] the search index can silently drift out of sync with
+//     the primary.
+//
+// Pairing *Total with *Errors yields an error rate on each side. The
+// underlying Bleve / SearchIndex resource state itself (doc count, index
+// size, batch statistics) lives on the caller's [bleve.Index] and should
+// be collected directly from idx.StatsMap() by the caller — see the
+// "Caller-owned *pebble.DB and bleve.Index" section in CLAUDE.md.
+type CompositeStorageMetrics struct {
+	// SearchTotal counts Query calls that hit the search backend (Search
+	// filter non-empty and a search index is configured). Paired with
+	// SearchErrors to derive a search error rate.
+	SearchTotal prometheus.Counter
+
+	// SearchErrors counts [SearchIndex].Search failures. On failure the
+	// Query falls back to the primary storage; without this counter the
+	// failure is silent.
+	SearchErrors prometheus.Counter
+
+	// IndexTotal counts [SearchIndex].Index attempts on successful Store
+	// (non-ephemeral events with non-empty content). Paired with
+	// IndexErrors to derive an indexing error rate.
+	IndexTotal prometheus.Counter
+
+	// IndexErrors counts [SearchIndex].Index failures. Indexing is
+	// best-effort (the event is already in primary storage), so failures
+	// do not propagate to the client — but a sustained non-zero rate
+	// means the search index is drifting out of sync with the primary.
+	IndexErrors prometheus.Counter
+}
+
+// NewCompositeStorageMetrics creates and registers CompositeStorage
+// metrics with the given registry.
+func NewCompositeStorageMetrics(reg prometheus.Registerer) *CompositeStorageMetrics {
+	m := &CompositeStorageMetrics{
+		SearchTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_search_total",
+			Help: "Total number of Query calls that hit the search backend " +
+				"(Search filter non-empty and a search index configured).",
+		}),
+		SearchErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_search_errors_total",
+			Help: "Total number of SearchIndex.Search failures. Query falls " +
+				"back to the primary storage on failure, so clients see results " +
+				"but not search-scored ones.",
+		}),
+		IndexTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_index_total",
+			Help: "Total number of SearchIndex.Index attempts on successful Store " +
+				"(non-ephemeral events with non-empty content).",
+		}),
+		IndexErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_index_errors_total",
+			Help: "Total number of SearchIndex.Index failures. Indexing is " +
+				"best-effort and failures do not propagate to the client, but a " +
+				"sustained non-zero rate means the search index is drifting out " +
+				"of sync with the primary.",
+		}),
+	}
+
+	reg.MustRegister(
+		m.SearchTotal,
+		m.SearchErrors,
+		m.IndexTotal,
+		m.IndexErrors,
+	)
+
+	return m
+}
+
 // MergeHandlerMetrics holds Prometheus metrics for [NewMergeHandler].
 //
 // These surface the USE-Saturation and USE-Errors axes of the merge
