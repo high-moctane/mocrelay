@@ -12,14 +12,15 @@ import (
 // AuthMiddlewareOptions configures the middleware returned by
 // [NewAuthMiddlewareBase]. All fields are optional; the zero value gives
 // sensible defaults.
+//
+// Metrics are not part of this struct. [AuthMetrics] is injected via the
+// request context by [Relay] (see [RelayOptions.AuthMetrics]) and read by
+// the auth middleware via [AuthMetricsFromContext], mirroring the
+// [RejectionMetrics] / Logger pattern.
 type AuthMiddlewareOptions struct {
 	// CreatedAtTolerance is the maximum age of auth events.
 	// Default: 10 minutes (as recommended by NIP-42)
 	CreatedAtTolerance time.Duration
-
-	// Metrics is the Prometheus metrics collector for authentication.
-	// If nil, no metrics are collected.
-	Metrics *AuthMetrics
 }
 
 // NewAuthMiddlewareBase creates a middleware base that requires NIP-42
@@ -40,14 +41,12 @@ func NewAuthMiddlewareBase(relayURL string, opts *AuthMiddlewareOptions) SimpleM
 	return &authMiddleware{
 		relayURL:           relayURL,
 		createdAtTolerance: tolerance,
-		metrics:            opts.Metrics,
 	}
 }
 
 type authMiddleware struct {
 	relayURL           string
 	createdAtTolerance time.Duration
-	metrics            *AuthMetrics
 }
 
 // authState holds per-connection authentication state.
@@ -78,14 +77,14 @@ func (m *authMiddleware) OnStart(ctx context.Context) (context.Context, *ServerM
 }
 
 func (m *authMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
-	if m.metrics != nil {
+	if metrics := AuthMetricsFromContext(ctx); metrics != nil {
 		state := ctx.Value(authCtxKey{}).(*authState)
 		state.mu.RLock()
 		authenticated := state.authenticated
 		state.mu.RUnlock()
 
 		if authenticated {
-			m.metrics.AuthenticatedConnectionsCurrent.Dec()
+			metrics.AuthenticatedConnectionsCurrent.Dec()
 		}
 	}
 
@@ -142,6 +141,8 @@ func (m *authMiddleware) HandleServerMsg(
 }
 
 func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
+	metrics := AuthMetricsFromContext(ctx)
+
 	if msg.Event == nil {
 		logRejection(ctx, "auth", "missing_auth_event")
 		return nil, NewServerOKMsg("", false, "invalid: missing auth event"), nil
@@ -151,8 +152,8 @@ func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *
 
 	// Validate kind
 	if event.Kind != 22242 {
-		if m.metrics != nil {
-			m.metrics.AuthTotal.WithLabelValues("invalid_kind").Inc()
+		if metrics != nil {
+			metrics.AuthTotal.WithLabelValues("invalid_kind").Inc()
 		}
 		logRejection(ctx, "auth", "invalid_kind",
 			"event_id", event.ID,
@@ -164,8 +165,8 @@ func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *
 	// Validate created_at (within tolerance)
 	now := time.Now()
 	if event.CreatedAt.Before(now.Add(-m.createdAtTolerance)) || event.CreatedAt.After(now.Add(m.createdAtTolerance)) {
-		if m.metrics != nil {
-			m.metrics.AuthTotal.WithLabelValues("expired").Inc()
+		if metrics != nil {
+			metrics.AuthTotal.WithLabelValues("expired").Inc()
 		}
 		logRejection(ctx, "auth", "expired",
 			"event_id", event.ID,
@@ -181,8 +182,8 @@ func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *
 	state.mu.RUnlock()
 
 	if challengeTag != expectedChallenge {
-		if m.metrics != nil {
-			m.metrics.AuthTotal.WithLabelValues("challenge_mismatch").Inc()
+		if metrics != nil {
+			metrics.AuthTotal.WithLabelValues("challenge_mismatch").Inc()
 		}
 		logRejection(ctx, "auth", "challenge_mismatch",
 			"event_id", event.ID,
@@ -196,8 +197,8 @@ func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *
 		// Simple check: just verify it's not empty for now
 		// More sophisticated URL normalization could be added
 		if relayTag == "" {
-			if m.metrics != nil {
-				m.metrics.AuthTotal.WithLabelValues("invalid_relay").Inc()
+			if metrics != nil {
+				metrics.AuthTotal.WithLabelValues("invalid_relay").Inc()
 			}
 			logRejection(ctx, "auth", "missing_relay_tag",
 				"event_id", event.ID,
@@ -207,15 +208,15 @@ func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *
 	}
 
 	// Authentication successful
-	if m.metrics != nil {
-		m.metrics.AuthTotal.WithLabelValues("success").Inc()
+	if metrics != nil {
+		metrics.AuthTotal.WithLabelValues("success").Inc()
 	}
 
 	state.mu.Lock()
 	state.authedPubkeys[event.Pubkey] = struct{}{}
-	if m.metrics != nil && !state.authenticated {
+	if metrics != nil && !state.authenticated {
 		state.authenticated = true
-		m.metrics.AuthenticatedConnectionsCurrent.Inc()
+		metrics.AuthenticatedConnectionsCurrent.Inc()
 	}
 	state.mu.Unlock()
 

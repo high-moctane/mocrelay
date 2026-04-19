@@ -122,6 +122,11 @@ func NewRouterMetrics(reg prometheus.Registerer) *RouterMetrics {
 
 // AuthMetrics holds Prometheus metrics for AuthMiddleware.
 //
+// AuthMetrics is injected into the request context by [Relay] (via
+// [RelayOptions.AuthMetrics]); the auth middleware reads it via
+// [AuthMetricsFromContext] and no-ops on nil. Middleware code never holds a
+// reference directly, mirroring the [RejectionMetrics] / Logger pattern.
+//
 // Rejection metrics are not part of this struct. They are unified across all
 // middleware under [RejectionMetrics] and are wired automatically via
 // [logRejection] — Auth contributes to the shared counter with label
@@ -150,6 +155,25 @@ func NewAuthMetrics(reg prometheus.Registerer) *AuthMetrics {
 	)
 
 	return m
+}
+
+type authMetricsKey struct{}
+
+// ContextWithAuthMetrics returns a new context carrying the given auth
+// metrics. [Relay] installs this at connection start so the auth middleware
+// downstream can record attempts and authenticated connections via
+// [AuthMetricsFromContext] without holding a direct reference.
+func ContextWithAuthMetrics(ctx context.Context, m *AuthMetrics) context.Context {
+	return context.WithValue(ctx, authMetricsKey{}, m)
+}
+
+// AuthMetricsFromContext returns the auth metrics from the context, or nil
+// if none was set. Callers must be nil-safe.
+func AuthMetricsFromContext(ctx context.Context) *AuthMetrics {
+	if m, ok := ctx.Value(authMetricsKey{}).(*AuthMetrics); ok {
+		return m
+	}
+	return nil
 }
 
 // RejectionMetrics holds the unified rejection counter shared across every

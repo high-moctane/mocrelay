@@ -27,6 +27,7 @@ type Relay struct {
 	info             *RelayInfo
 	metrics          *RelayMetrics
 	rejectionMetrics *RejectionMetrics
+	authMetrics      *AuthMetrics
 	connIDFunc       func() string
 
 	mu      sync.Mutex
@@ -74,6 +75,14 @@ type RelayOptions struct {
 	// only logged — no counter is incremented.
 	RejectionMetrics *RejectionMetrics
 
+	// AuthMetrics is the Prometheus metrics collector for the auth
+	// middleware (NIP-42). If set, the relay installs it into the request
+	// context so that NewAuthMiddlewareBase downstream records attempts
+	// and authenticated connections via AuthMetricsFromContext. If nil,
+	// auth events are not measured (rejections are still counted via
+	// RejectionMetrics with middleware="auth" where applicable).
+	AuthMetrics *AuthMetrics
+
 	// ConnIDFunc generates a unique connection ID string.
 	// If nil, a default monotonic counter ("1", "2", ...) is used.
 	ConnIDFunc func() string
@@ -115,6 +124,7 @@ func NewRelay(handler Handler, opts *RelayOptions) *Relay {
 		info:             opts.Info,
 		metrics:          opts.Metrics,
 		rejectionMetrics: opts.RejectionMetrics,
+		authMetrics:      opts.AuthMetrics,
 		connIDFunc:       opts.ConnIDFunc,
 	}
 }
@@ -229,6 +239,9 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx = ContextWithLogger(ctx, logger)
 	if r.rejectionMetrics != nil {
 		ctx = ContextWithRejectionMetrics(ctx, r.rejectionMetrics)
+	}
+	if r.authMetrics != nil {
+		ctx = ContextWithAuthMetrics(ctx, r.authMetrics)
 	}
 
 	// Metrics: connection tracking
