@@ -2,8 +2,13 @@ package mocrelay
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCompositeStorage_StoreAndQuery(t *testing.T) {
@@ -13,7 +18,7 @@ func TestCompositeStorage_StoreAndQuery(t *testing.T) {
 	primary := NewInMemoryStorage()
 	search := setupBleveIndex(t)
 
-	storage := NewCompositeStorage(primary, search)
+	storage := NewCompositeStorage(primary, search, nil)
 
 	// Store some events
 	events := []*Event{
@@ -143,7 +148,7 @@ func TestCompositeStorage_NoSearchIndex(t *testing.T) {
 
 	// Create composite without search index
 	primary := NewInMemoryStorage()
-	storage := NewCompositeStorage(primary, nil)
+	storage := NewCompositeStorage(primary, nil, nil)
 
 	// Store an event
 	event := &Event{
@@ -190,7 +195,7 @@ func TestCompositeStorage_EphemeralNotIndexed(t *testing.T) {
 	primary := NewInMemoryStorage()
 	search := setupBleveIndex(t)
 
-	storage := NewCompositeStorage(primary, search)
+	storage := NewCompositeStorage(primary, search, nil)
 
 	// Store ephemeral event (kind 20000-29999)
 	event := &Event{
@@ -230,4 +235,156 @@ func id64(prefix string) string {
 // pk64 creates a 64-char hex pubkey for testing
 func pk64(prefix string) string {
 	return id64(prefix)
+}
+
+// fakeSearchIndex is a [SearchIndex] double that lets tests trigger
+// controlled failures without standing up Bleve.
+type fakeSearchIndex struct {
+	indexErr     error
+	searchErr    error
+	searchResult []string
+}
+
+func (f *fakeSearchIndex) Index(ctx context.Context, event *Event) error {
+	return f.indexErr
+}
+
+func (f *fakeSearchIndex) Search(ctx context.Context, query string, limit int64) ([]string, error) {
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	return f.searchResult, nil
+}
+
+func (f *fakeSearchIndex) Delete(ctx context.Context, eventID string) error {
+	return nil
+}
+
+// TestCompositeStorage_MetricsSearch asserts SearchTotal increments on
+// every search-backend call and SearchErrors increments (plus fallback to
+// primary fires) when the backend fails.
+func TestCompositeStorage_MetricsSearch(t *testing.T) {
+	ctx := context.Background()
+	primary := NewInMemoryStorage()
+	search := &fakeSearchIndex{}
+
+	reg := prometheus.NewRegistry()
+	metrics := NewCompositeStorageMetrics(reg)
+
+	storage := NewCompositeStorage(primary, search, &CompositeStorageOptions{Metrics: metrics})
+
+	// Prime primary with one event so the fallback path returns something.
+	event := &Event{
+		ID:        id64("event1"),
+		Pubkey:    pk64("pk1"),
+		Kind:      1,
+		CreatedAt: time.Unix(1000, 0),
+		Content:   "hello",
+	}
+	if _, err := storage.Store(ctx, event); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	// Store triggered exactly one Index attempt (non-ephemeral, non-empty content).
+	assert.Equal(t, float64(1), testutil.ToFloat64(metrics.IndexTotal))
+	assert.Equal(t, float64(0), testutil.ToFloat64(metrics.IndexErrors))
+
+	searchStr := "hello"
+	limit := int64(10)
+	filters := []*ReqFilter{{Search: &searchStr, Limit: &limit}}
+
+	// Case 1: search succeeds.
+	search.searchResult = []string{event.ID}
+	search.searchErr = nil
+
+	evts, errFn, closeFn := storage.Query(ctx, filters)
+	for range evts {
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("Query errFn: %v", err)
+	}
+	if err := closeFn(); err != nil {
+		t.Fatalf("Query closeFn: %v", err)
+	}
+	assert.Equal(t, float64(1), testutil.ToFloat64(metrics.SearchTotal))
+	assert.Equal(t, float64(0), testutil.ToFloat64(metrics.SearchErrors))
+
+	// Case 2: search errors out; Query falls back to primary.
+	search.searchResult = nil
+	search.searchErr = errors.New("bleve kaboom")
+
+	evts, errFn, closeFn = storage.Query(ctx, filters)
+	var fallbackCount int
+	for range evts {
+		fallbackCount++
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("Query errFn (fallback): %v", err)
+	}
+	if err := closeFn(); err != nil {
+		t.Fatalf("Query closeFn (fallback): %v", err)
+	}
+	assert.Equal(t, float64(2), testutil.ToFloat64(metrics.SearchTotal))
+	assert.Equal(t, float64(1), testutil.ToFloat64(metrics.SearchErrors))
+	assert.Equal(t, 1, fallbackCount,
+		"fallback should delegate to primary, which returns the stored event")
+}
+
+// TestCompositeStorage_MetricsIndex asserts IndexTotal / IndexErrors
+// increment on Store, and ephemeral events never trigger indexing.
+func TestCompositeStorage_MetricsIndex(t *testing.T) {
+	ctx := context.Background()
+	primary := NewInMemoryStorage()
+	search := &fakeSearchIndex{indexErr: errors.New("index down")}
+
+	reg := prometheus.NewRegistry()
+	metrics := NewCompositeStorageMetrics(reg)
+
+	storage := NewCompositeStorage(primary, search, &CompositeStorageOptions{Metrics: metrics})
+
+	// Store: primary succeeds, index fails. Store returns success
+	// because indexing is best-effort.
+	event := &Event{
+		ID:        id64("event1"),
+		Pubkey:    pk64("pk1"),
+		Kind:      1,
+		CreatedAt: time.Unix(1000, 0),
+		Content:   "hello",
+	}
+	stored, err := storage.Store(ctx, event)
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	assert.True(t, stored, "primary should have stored the event even if indexing fails")
+
+	assert.Equal(t, float64(1), testutil.ToFloat64(metrics.IndexTotal))
+	assert.Equal(t, float64(1), testutil.ToFloat64(metrics.IndexErrors))
+
+	// Ephemeral events bypass indexing entirely.
+	eph := &Event{
+		ID:        id64("eph1"),
+		Pubkey:    pk64("pk2"),
+		Kind:      20001,
+		CreatedAt: time.Unix(1001, 0),
+		Content:   "ephemeral",
+	}
+	if _, err := storage.Store(ctx, eph); err != nil {
+		t.Fatalf("Store ephemeral: %v", err)
+	}
+	assert.Equal(t, float64(1), testutil.ToFloat64(metrics.IndexTotal),
+		"ephemeral events must not trigger indexing")
+
+	// Events with empty content also bypass indexing.
+	empty := &Event{
+		ID:        id64("empty1"),
+		Pubkey:    pk64("pk3"),
+		Kind:      1,
+		CreatedAt: time.Unix(1002, 0),
+		Content:   "",
+	}
+	if _, err := storage.Store(ctx, empty); err != nil {
+		t.Fatalf("Store empty: %v", err)
+	}
+	assert.Equal(t, float64(1), testutil.ToFloat64(metrics.IndexTotal),
+		"empty-content events must not trigger indexing")
 }
