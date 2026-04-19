@@ -262,19 +262,27 @@ falls back to silence.
 
 #### Known concerns (decide before v0.x freeze)
 
-1. **`kind` label explosion** — **decided: known-kind allowlist.**
-   `EventsReceived{kind}` and `EventsStored{kind, stored}` accept
-   arbitrary `int64`; a hostile or buggy client sending a unique kind
-   per message would grow the series set without bound. The chosen
-   mitigation is an allowlist of well-known kinds (0, 1, 3, 4, 5, 6, 7,
-   40-44, 1984, 9734, 9735, 10000-19999, 30000-39999, …) with everything
-   else bucketed to `kind="other"`. This keeps per-kind fidelity for the
-   common case (kind 1 / 7 in particular are worth watching) while
-   holding cardinality bounded. Implementation is a follow-up PR.
-   Alternatives considered and rejected: NIP-01 range buckets
-   (`regular` / `replaceable` / `ephemeral` / `addressable` / `other` —
-   loses per-kind detail), and dropping the label entirely (recoverable
-   from the event log but inconvenient for dashboards / alerts).
+1. **`kind` label explosion** — **implemented: known-kind allowlist +
+   NIP-01 range buckets.** `EventsReceived{kind}` and
+   `EventsStored{kind, stored}` accept arbitrary `int64`; a hostile or
+   buggy client sending a unique kind per message would grow the series
+   set without bound. Mitigation lives in `kind_label.go` via the
+   `kindLabel(int64) string` helper:
+   - Known kinds return their decimal form: 0, 1, 3, 4, 5, 6, 7, 13, 14,
+     40-44, 1059, 1111, 1984, 9734, 9735, 10002, 10050, 30023.
+   - Unknown kinds are bucketed by NIP-01 range — `regular_other`
+     (1..9999), `replaceable_other` (10000..19999), `ephemeral`
+     (20000..29999), `addressable_other` (30000..39999), `other` for
+     everything else (including negatives and values ≥ 40000).
+
+   Total cardinality is bounded at `len(knownKinds) + 5` — currently
+   28 — regardless of client behaviour, while per-kind fidelity is
+   preserved for the common cases (kind 1 / 7 in particular are worth
+   watching). Alternatives considered and rejected before landing on
+   this hybrid: NIP-01 range buckets alone (loses per-kind detail), and
+   dropping the label entirely (recoverable from the event log but
+   inconvenient for dashboards / alerts). Adjust the allowlist based on
+   operational experience.
 
 2. **Per-middleware counter scope** — **decided: stay per-middleware.**
    An earlier draft proposed promoting `RejectionsTotal` from

@@ -344,8 +344,7 @@ func (r *Relay) readLoop(
 		if r.metrics != nil {
 			r.metrics.MessagesReceived.WithLabelValues(string(msg.Type)).Inc()
 			if msg.Type == MsgTypeEvent && msg.Event != nil {
-				kindStr := strconv.FormatInt(msg.Event.Kind, 10)
-				r.metrics.EventsReceived.WithLabelValues(kindStr).Inc()
+				r.metrics.EventsReceived.WithLabelValues(kindLabel(msg.Event.Kind)).Inc()
 			}
 		}
 
