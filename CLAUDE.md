@@ -207,17 +207,24 @@ review time, the label is probably too cardinal.
 - **Inner (Storage / MergeHandler accepted path)**: count everything
   *accepted*. This is what actually took effect.
 - **Difference = amount rejected by middleware.** Each middleware emits
-  its own `rejections_total{middleware, reason}` counter so the breakdown
-  is visible by cause.
+  its own `<middleware>_rejections_total{reason}` counter (one metric
+  name per middleware, not a shared `{middleware, reason}` dimension),
+  so the breakdown is visible by cause while each middleware's metric
+  surface stays independent.
 
 #### Log ↔ metric cross-index
 
-Every middleware that calls `logRejection` also increments
-`rejections_total{middleware, reason}` with the **same `reason` string**.
-`grep reason=max_content_length relay.log` and
-`rate(mocrelay_rejections_total{reason="max_content_length"}[5m])` should
-land on the same events. Today only `AuthMiddleware` does this — extending
-to all middleware is the primary follow-up.
+Every middleware that calls `logRejection` also increments its own
+rejection counter, carrying the **same `reason` string** as a label. The
+shared key is the `reason` value, not a unified metric name:
+
+```
+grep reason=max_content_length relay.log
+rate({__name__=~"mocrelay_.*_rejections_total", reason="max_content_length"}[5m])
+```
+
+should land on the same events. Today only `AuthMiddleware` is wired —
+extending to all middleware is the primary follow-up.
 
 #### Instrument choice
 
@@ -247,7 +254,7 @@ falls back to silence.
 | | USE-Sat | `ConnectionsCurrent` | `send_buf_full_drops_total`, `write_timeouts_total` |
 | **Router** | USE-Sat | `MessagesDropped` | `subscriptions_current` (Gauge) |
 | **Middleware: Auth** | RED-R+E | `AuthTotal{result}`, `RejectionsTotal{reason}`, `AuthenticatedConnectionsCurrent` | — |
-| **Middleware: others (11)** | RED-E | — | Unified `rejections_total{middleware, reason}`, aligned with `logRejection` |
+| **Middleware: others (11)** | RED-E | — | Per-middleware `<name>_rejections_total{reason}`, aligned with `logRejection` |
 | **StorageHandler** | RED-R+D | `EventsStored{kind, stored}`, `Store / QueryDuration` | `store_errors_total`, `query_errors_total` |
 | **MergeHandler** | USE-Sat+E | — | `lost_children_total`, `broadcast_timeouts_total`, `event_sort_drops_total` |
 | **Pebble (internals)** | USE | — | Expose `pebble.Metrics()` — L0 files, compactions, WAL bytes |
@@ -255,31 +262,42 @@ falls back to silence.
 
 #### Known concerns (decide before v0.x freeze)
 
-1. **`kind` label explosion**: `EventsReceived{kind}` and
-   `EventsStored{kind, stored}` accept arbitrary `int64`. A malicious or
-   buggy client sending a unique kind per message would grow the series
-   set without bound. Candidate fixes (to be decided):
-   - **Allowlist of known kinds** (0, 1, 3, 4, 5, 6, 7, 40-44, 1984,
-     9734, 9735, 10000-19999, 30000-39999, …) with everything else
-     bucketed to `kind="other"`. Preserves per-kind fidelity for the
-     common case.
-   - **Range buckets** aligned with NIP-01 categories: `regular`,
-     `replaceable`, `ephemeral`, `addressable`, `other`. Loses per-kind
-     detail but cardinality is fixed at 5.
-   - **Drop the `kind` label entirely** and recover kind-level breakdown
-     from the event log instead.
+1. **`kind` label explosion** — **decided: known-kind allowlist.**
+   `EventsReceived{kind}` and `EventsStored{kind, stored}` accept
+   arbitrary `int64`; a hostile or buggy client sending a unique kind
+   per message would grow the series set without bound. The chosen
+   mitigation is an allowlist of well-known kinds (0, 1, 3, 4, 5, 6, 7,
+   40-44, 1984, 9734, 9735, 10000-19999, 30000-39999, …) with everything
+   else bucketed to `kind="other"`. This keeps per-kind fidelity for the
+   common case (kind 1 / 7 in particular are worth watching) while
+   holding cardinality bounded. Implementation is a follow-up PR.
+   Alternatives considered and rejected: NIP-01 range buckets
+   (`regular` / `replaceable` / `ephemeral` / `addressable` / `other` —
+   loses per-kind detail), and dropping the label entirely (recoverable
+   from the event log but inconvenient for dashboards / alerts).
 
-2. **Per-middleware counter alignment**: today `RejectionsTotal` lives on
-   `AuthMetrics` with two reasons. The follow-up should promote this to a
-   relay-wide `mocrelay_rejections_total{middleware, reason}` so every
-   `logRejection` call has a matching metric increment and the
-   `{middleware, reason}` cross-product stays a closed enum.
+2. **Per-middleware counter scope** — **decided: stay per-middleware.**
+   An earlier draft proposed promoting `RejectionsTotal` from
+   `AuthMetrics` to a relay-wide `mocrelay_rejections_total{middleware,
+   reason}`. We chose instead to keep each middleware's rejection
+   counter as its own metric (e.g. `mocrelay_auth_rejections_total`,
+   `mocrelay_max_content_length_rejections_total`, …). Rationale:
+   (a) it matches the existing per-middleware `*Metrics` / `*Options`
+   surface, so nil-safe injection stays local to each middleware;
+   (b) middlewares remain independent — adding or removing one doesn't
+   touch the others' label spaces; (c) each middleware's `reason` enum
+   stays small and closed, with no risk of colliding with another
+   middleware's vocabulary. The `{middleware, reason}` cross-product
+   view is still recoverable at query time via, e.g.,
+   `sum by(reason)({__name__=~"mocrelay_.*_rejections_total"})` —
+   PromQL is expressive enough that storage-layer independence doesn't
+   cost us aggregation at the query layer.
 
 3. **Pebble / Bleve internals**: `pebble.Metrics()` returns rich
-   saturation signals (L0 files, pending compactions, WAL bytes) that are
-   not exposed today. The usual pattern is a periodic collector goroutine
-   reading `Metrics()` every N seconds into Gauges. Out of scope for the
-   initial policy PR.
+   saturation signals (L0 files, pending compactions, WAL bytes) that
+   are not exposed today. The usual pattern is a periodic collector
+   goroutine reading `Metrics()` every N seconds into Gauges. Out of
+   scope for the initial policy PR; planned as a later follow-up.
 
 ### Design Decisions
 
