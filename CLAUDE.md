@@ -206,25 +206,33 @@ review time, the label is probably too cardinal.
   wire, before middleware. This is the rate the relay is being offered.
 - **Inner (Storage / MergeHandler accepted path)**: count everything
   *accepted*. This is what actually took effect.
-- **Difference = amount rejected by middleware.** Each middleware emits
-  its own `<middleware>_rejections_total{reason}` counter (one metric
-  name per middleware, not a shared `{middleware, reason}` dimension),
-  so the breakdown is visible by cause while each middleware's metric
-  surface stays independent.
+- **Difference = amount rejected by middleware.** The breakdown by
+  cause is visible on the unified counter
+  `mocrelay_rejections_total{middleware, reason}` — every middleware
+  contributes to the same metric via [logRejection], distinguished by
+  the `middleware` label. See Known concerns #2 for why this shape
+  (rather than one metric per middleware) was chosen.
 
 #### Log ↔ metric cross-index
 
-Every middleware that calls `logRejection` also increments its own
-rejection counter, carrying the **same `reason` string** as a label. The
-shared key is the `reason` value, not a unified metric name:
+`logRejection` is the single place where every middleware reports a
+rejection. It performs two side-effects from the same call site:
+
+1. Increments `mocrelay_rejections_total{middleware, reason}` via the
+   context-injected [RejectionMetrics] (no-op if absent).
+2. Emits a Debug-level structured log entry with the same `middleware`
+   and `reason` fields.
+
+Because the two sinks share the exact label/field strings, the
+following queries target the same events:
 
 ```
-grep reason=max_content_length relay.log
-rate({__name__=~"mocrelay_.*_rejections_total", reason="max_content_length"}[5m])
+grep 'reason=max_content_length' relay.log
+rate(mocrelay_rejections_total{reason="max_content_length"}[5m])
 ```
 
-should land on the same events. Today only `AuthMiddleware` is wired —
-extending to all middleware is the primary follow-up.
+The `middleware` axis lets operators scope further:
+`sum by(reason) (mocrelay_rejections_total{middleware="auth"})`.
 
 #### Instrument choice
 
@@ -236,13 +244,31 @@ extending to all middleware is the primary follow-up.
 
 #### Nil-safe injection
 
-Metrics are optional, matching the philosophy of `Relay.Logger`. Each of
-`RelayMetrics`, `RouterMetrics`, `AuthMetrics`, `StorageMetrics` is passed
-through `*Options`; `nil` means "don't measure, don't allocate." Call
-sites guard with a nil check (or a no-op shim) so the instrument-free
-build path has zero runtime cost and no Prometheus dependency surface.
-Just as `Logger == nil` falls back to `slog.Default()`, `Metrics == nil`
-falls back to silence.
+Metrics are optional, matching the philosophy of `Relay.Logger`. Two
+injection shapes coexist:
+
+- **Per-owner options** (`RelayMetrics`, `RouterMetrics`, `AuthMetrics`,
+  `StorageMetrics`): passed through the owning type's `*Options` struct.
+  `nil` means "don't measure, don't allocate." Call sites guard with a
+  nil check so the instrument-free build path has zero runtime cost and
+  no Prometheus dependency surface.
+- **Context-injected** (`RejectionMetrics`): threaded through the
+  request context, symmetric with `Logger`. `Relay` installs it once
+  per connection; middleware never holds a reference, never needs a
+  nil check — `logRejection` reads it via `RejectionMetricsFromContext`
+  and no-ops on nil. This keeps the per-middleware API surface minimal
+  (no per-middleware metrics field just for rejections) and keeps
+  rejection reporting lazily DRY: a new middleware that calls
+  `logRejection` is automatically observable on day one.
+
+Just as `Logger == nil` falls back to `slog.Default()`, both
+`Metrics == nil` and a ctx without `RejectionMetrics` fall back to
+silence.
+
+A natural future step is to migrate the remaining `*Metrics` types onto
+the context-injected shape so that the whole metrics surface matches
+the `Logger` pattern, but that's deferred until a second metric
+(beyond rejections) is shown to benefit from ctx scope.
 
 #### Coverage by layer (drives follow-up PRs)
 
@@ -253,8 +279,8 @@ falls back to silence.
 | | RED-D | — | `ws_write_duration_seconds` (diagnose write timeouts) |
 | | USE-Sat | `ConnectionsCurrent` | `send_buf_full_drops_total`, `write_timeouts_total` |
 | **Router** | USE-Sat | `MessagesDropped` | `subscriptions_current` (Gauge) |
-| **Middleware: Auth** | RED-R+E | `AuthTotal{result}`, `RejectionsTotal{reason}`, `AuthenticatedConnectionsCurrent` | — |
-| **Middleware: others (11)** | RED-E | — | Per-middleware `<name>_rejections_total{reason}`, aligned with `logRejection` |
+| **Middleware: Auth** | RED-R+E | `AuthTotal{result}`, `AuthenticatedConnectionsCurrent`, rejections via unified `mocrelay_rejections_total{middleware="auth", reason}` | — |
+| **Middleware: others (10)** | RED-E | Rejections via unified `mocrelay_rejections_total{middleware, reason}` (wired automatically through `logRejection`) | — |
 | **StorageHandler** | RED-R+D | `EventsStored{kind, type, stored}`, `Store / QueryDuration` | `store_errors_total`, `query_errors_total` |
 | **MergeHandler** | USE-Sat+E | — | `lost_children_total`, `broadcast_timeouts_total`, `event_sort_drops_total` |
 | **Pebble (internals)** | USE | — | Expose `pebble.Metrics()` — L0 files, compactions, WAL bytes |
@@ -298,22 +324,38 @@ falls back to silence.
    overhead not justified given the fixed NIP mapping). Adjust the
    allowlist based on operational experience.
 
-2. **Per-middleware counter scope** — **decided: stay per-middleware.**
-   An earlier draft proposed promoting `RejectionsTotal` from
-   `AuthMetrics` to a relay-wide `mocrelay_rejections_total{middleware,
-   reason}`. We chose instead to keep each middleware's rejection
-   counter as its own metric (e.g. `mocrelay_auth_rejections_total`,
-   `mocrelay_max_content_length_rejections_total`, …). Rationale:
-   (a) it matches the existing per-middleware `*Metrics` / `*Options`
-   surface, so nil-safe injection stays local to each middleware;
-   (b) middlewares remain independent — adding or removing one doesn't
-   touch the others' label spaces; (c) each middleware's `reason` enum
-   stays small and closed, with no risk of colliding with another
-   middleware's vocabulary. The `{middleware, reason}` cross-product
-   view is still recoverable at query time via, e.g.,
-   `sum by(reason)({__name__=~"mocrelay_.*_rejections_total"})` —
-   PromQL is expressive enough that storage-layer independence doesn't
-   cost us aggregation at the query layer.
+2. **Rejection counter scope** — **implemented: unified
+   `mocrelay_rejections_total{middleware, reason}`.** A previous draft
+   of this policy argued for keeping one `<name>_rejections_total`
+   metric per middleware. In practice that shape required ten new
+   `*Options` structs and ~30 call-site updates across examples and
+   tests for the initial roll-out, so the convenience trade flipped:
+   a single counter with `{middleware, reason}` labels gives the same
+   observability with dramatically less surface area. Labels are a
+   functional pair (each middleware emits a fixed, small enum of
+   reasons), so the label set is bounded and does not form a true
+   cross-product — the same argument as Known concern #1's
+   `(kind, type)` two-axis label.
+
+   Implementation:
+   - `RejectionMetrics` lives in `metrics.go`; it wraps a single
+     `mocrelay_rejections_total` CounterVec.
+   - `Relay` installs it into the request context via
+     `ContextWithRejectionMetrics`, symmetric with `ContextWithLogger`.
+   - `logRejection` reads it from context on every call and increments
+     `{middleware, reason}` alongside its Debug log line. Middleware
+     authors don't touch metrics code at all.
+   - `AuthMetrics.RejectionsTotal` was removed as part of this pivot;
+     its auth-specific reasons (`event_unauthenticated`, `expired`, …)
+     now land on the unified counter with `middleware="auth"`.
+
+   Rejected alternatives: per-middleware `*Options` with a `Metrics`
+   field (API bloat across 10 middleware, constructor signature churn
+   propagated to every call site, little benefit since the reason
+   enums never collide once the `middleware` label is present);
+   removing the rejection counter entirely in favour of log-only
+   observability (forces operators to run log aggregators for basic
+   rate questions and loses the cheap Prometheus alert surface).
 
 3. **Pebble / Bleve internals**: `pebble.Metrics()` returns rich
    saturation signals (L0 files, pending compactions, WAL bytes) that

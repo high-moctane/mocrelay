@@ -21,15 +21,25 @@ func LoggerFromContext(ctx context.Context) *slog.Logger {
 	return slog.Default()
 }
 
-// logRejection logs a middleware-level message rejection at Debug level with
-// a uniform key set. All middleware drops in mocrelay call this helper so
-// operators can find them with a single grep of "message rejected".
+// logRejection reports a middleware-level message rejection with a uniform
+// key set. It performs two side-effects:
+//
+//  1. Increments the unified [RejectionMetrics] counter from the context
+//     (labels {middleware, reason}) if one is installed. No-op if absent.
+//  2. Emits a Debug-level structured log entry ("message rejected") so
+//     operators can find all rejections with a single grep.
+//
+// Both sinks share the middleware and reason strings, making logs and
+// metrics cross-indexable by the reason label.
 //
 // Rejections are Debug (not Warn) because they are an expected outcome of
 // normal middleware policy and would otherwise flood the log. Enable Debug
 // logging when investigating why a specific client's messages are being
-// dropped.
+// dropped; rely on the metrics counter for day-to-day trends.
 func logRejection(ctx context.Context, middleware, reason string, attrs ...any) {
+	if m := RejectionMetricsFromContext(ctx); m != nil {
+		m.Total.WithLabelValues(middleware, reason).Inc()
+	}
 	base := []any{"middleware", middleware, "reason", reason}
 	LoggerFromContext(ctx).DebugContext(ctx, "message rejected", append(base, attrs...)...)
 }
