@@ -318,6 +318,9 @@ func (r *Relay) readLoop(
 		// Must be text message
 		if typ != websocket.MessageText {
 			LoggerFromContext(ctx).WarnContext(ctx, "received binary message")
+			if r.metrics != nil {
+				r.metrics.WSParseErrors.WithLabelValues("binary_message").Inc()
+			}
 			r.sendNotice(ctx, send, "binary message not allowed")
 			continue
 		}
@@ -325,6 +328,9 @@ func (r *Relay) readLoop(
 		// Must be valid UTF-8
 		if !utf8.Valid(payload) {
 			LoggerFromContext(ctx).WarnContext(ctx, "received invalid UTF-8")
+			if r.metrics != nil {
+				r.metrics.WSParseErrors.WithLabelValues("invalid_utf8").Inc()
+			}
 			r.sendNotice(ctx, send, "invalid UTF-8")
 			continue
 		}
@@ -333,6 +339,9 @@ func (r *Relay) readLoop(
 		msg, err := ParseClientMsg(payload)
 		if err != nil {
 			LoggerFromContext(ctx).WarnContext(ctx, "failed to parse client message", "error", err)
+			if r.metrics != nil {
+				r.metrics.WSParseErrors.WithLabelValues("parse_error").Inc()
+			}
 			r.sendNotice(ctx, send, "invalid message format")
 			continue
 		}
@@ -342,11 +351,17 @@ func (r *Relay) readLoop(
 			valid, err := msg.Event.Verify()
 			if err != nil {
 				LoggerFromContext(ctx).WarnContext(ctx, "failed to verify event", "error", err)
+				if r.metrics != nil {
+					r.metrics.WSParseErrors.WithLabelValues("verify_error").Inc()
+				}
 				r.sendNotice(ctx, send, "verification error")
 				continue
 			}
 			if !valid {
 				LoggerFromContext(ctx).WarnContext(ctx, "invalid event signature", "id", msg.Event.ID)
+				if r.metrics != nil {
+					r.metrics.WSParseErrors.WithLabelValues("invalid_signature").Inc()
+				}
 				r.sendNotice(ctx, send, "invalid signature")
 				continue
 			}
@@ -400,15 +415,29 @@ func (r *Relay) writeLoop(
 			data, err := json.Marshal(msg)
 			if err != nil {
 				LoggerFromContext(ctx).WarnContext(ctx, "failed to marshal server message", "error", err)
+				if r.metrics != nil {
+					r.metrics.WSWriteErrors.WithLabelValues("marshal").Inc()
+				}
 				continue
 			}
 
 			writeCtx, writeCancel := context.WithTimeout(ctx, timeout)
 
+			writeStart := time.Now()
 			err = conn.Write(writeCtx, websocket.MessageText, data)
 			writeCancel()
+			if r.metrics != nil {
+				r.metrics.WSWriteDuration.Observe(time.Since(writeStart).Seconds())
+			}
 
 			if err != nil {
+				if r.metrics != nil {
+					reason := "other"
+					if errors.Is(err, context.DeadlineExceeded) {
+						reason = "timeout"
+					}
+					r.metrics.WSWriteErrors.WithLabelValues(reason).Inc()
+				}
 				return fmt.Errorf("write: %w", err)
 			}
 
@@ -422,6 +451,9 @@ func (r *Relay) writeLoop(
 			err := conn.Ping(pingCtx)
 			pingCancel()
 			if err != nil {
+				if r.metrics != nil {
+					r.metrics.WSWriteErrors.WithLabelValues("ping_timeout").Inc()
+				}
 				return fmt.Errorf("ping timeout: %w", err)
 			}
 		}

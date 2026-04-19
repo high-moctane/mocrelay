@@ -4,6 +4,7 @@ import (
 	"context"
 	"iter"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -29,7 +30,9 @@ func (s *MetricsStorage) Store(ctx context.Context, event *Event) (bool, error) 
 
 	s.metrics.StoreDuration.Observe(duration.Seconds())
 
-	if err == nil {
+	if err != nil {
+		s.metrics.StoreErrors.Inc()
+	} else {
 		kind, typ := kindLabels(event.Kind)
 		s.metrics.EventsStored.WithLabelValues(kind, typ, strconv.FormatBool(stored)).Inc()
 	}
@@ -51,6 +54,20 @@ func (s *MetricsStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.
 		}
 	}
 
+	// Wrap errFn to count Query errors. Guarded by sync.Once so a caller
+	// invoking errFn multiple times (allowed by the Storage contract)
+	// doesn't inflate the counter.
+	var errOnce sync.Once
+	wrappedErrFn := func() error {
+		err := errFn()
+		if err != nil {
+			errOnce.Do(func() {
+				s.metrics.QueryErrors.Inc()
+			})
+		}
+		return err
+	}
+
 	// Wrap closeFn to record duration
 	wrappedCloseFn := func() error {
 		duration := time.Since(start)
@@ -58,5 +75,5 @@ func (s *MetricsStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.
 		return closeFn()
 	}
 
-	return wrappedEvents, errFn, wrappedCloseFn
+	return wrappedEvents, wrappedErrFn, wrappedCloseFn
 }
