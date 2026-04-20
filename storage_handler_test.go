@@ -504,3 +504,198 @@ func TestStorageHandler_SlowQuery_CountLogsOnThresholdExceeded(t *testing.T) {
 		}
 	})
 }
+
+// runQueryTimeoutServeNostr mirrors runSlowQueryServeNostr but also drains the
+// send channel after cancel, so tests can assert which terminal ServerMsg
+// (CLOSED on timeout, EOSE / COUNT on normal completion) was emitted.
+func runQueryTimeoutServeNostr(
+	t *testing.T,
+	msg *ClientMsg,
+	opts *StorageHandlerOptions,
+	delay time.Duration,
+	advance time.Duration,
+) (string, []*ServerMsg) {
+	t.Helper()
+	ctx := context.Background()
+	base := NewInMemoryStorage()
+	base.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
+
+	storage := &delayedQueryStorage{inner: base, delay: delay}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	handler := NewStorageHandler(storage, opts)
+
+	ctx = ContextWithLogger(ctx, logger)
+	ctx, cancel := context.WithCancel(ctx)
+
+	send := make(chan *ServerMsg, 10)
+	recv := make(chan *ClientMsg, 10)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- handler.ServeNostr(ctx, send, recv) }()
+
+	recv <- msg
+
+	time.Sleep(advance)
+	synctest.Wait()
+
+	cancel()
+	synctest.Wait()
+	<-errCh
+
+	var msgs []*ServerMsg
+drain:
+	for {
+		select {
+		case m := <-send:
+			msgs = append(msgs, m)
+		default:
+			break drain
+		}
+	}
+	return buf.String(), msgs
+}
+
+func TestStorageHandler_QueryTimeout_ReqAbortsWithClosed(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		out, msgs := runQueryTimeoutServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeReq,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{
+				SlowQueryThreshold: 50 * time.Millisecond,
+				QueryTimeout:       100 * time.Millisecond,
+			},
+			500*time.Millisecond,
+			600*time.Millisecond,
+		)
+
+		// Must have sent exactly one CLOSED, no EVENT or EOSE.
+		require.Len(t, msgs, 1)
+		assert.Equal(t, MsgTypeClosed, msgs[0].Type)
+		assert.Equal(t, "sub1", msgs[0].SubscriptionID)
+		assert.Equal(t, "error: query timeout", msgs[0].Message)
+
+		// Slow-query log should fire with completed=false (aborted).
+		for _, want := range []string{
+			`msg="storage: slow REQ"`,
+			`completed=false`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("output missing %q\nfull output: %s", want, out)
+			}
+		}
+	})
+}
+
+func TestStorageHandler_QueryTimeout_CountAbortsWithClosed(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		_, msgs := runQueryTimeoutServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeCount,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{QueryTimeout: 100 * time.Millisecond},
+			500*time.Millisecond,
+			600*time.Millisecond,
+		)
+
+		require.Len(t, msgs, 1)
+		assert.Equal(t, MsgTypeClosed, msgs[0].Type)
+		assert.Equal(t, "sub1", msgs[0].SubscriptionID)
+		assert.Equal(t, "error: query timeout", msgs[0].Message)
+	})
+}
+
+func TestStorageHandler_QueryTimeout_ReqWithinTimeoutNormalEose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		_, msgs := runQueryTimeoutServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeReq,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{QueryTimeout: 5 * time.Second},
+			50*time.Millisecond,
+			100*time.Millisecond,
+		)
+
+		// Normal completion: 1 EVENT + EOSE, no CLOSED.
+		require.Len(t, msgs, 2)
+		assert.Equal(t, MsgTypeEvent, msgs[0].Type)
+		assert.Equal(t, MsgTypeEOSE, msgs[1].Type)
+	})
+}
+
+func TestStorageHandler_QueryTimeout_CountWithinTimeoutNormalCount(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		_, msgs := runQueryTimeoutServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeCount,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{QueryTimeout: 5 * time.Second},
+			50*time.Millisecond,
+			100*time.Millisecond,
+		)
+
+		require.Len(t, msgs, 1)
+		assert.Equal(t, MsgTypeCount, msgs[0].Type)
+		assert.Equal(t, uint64(1), msgs[0].Count)
+	})
+}
+
+func TestStorageHandler_QueryTimeout_ZeroDisables(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// Large delay that would trip any positive timeout, but zero
+		// QueryTimeout means disabled.
+		_, msgs := runQueryTimeoutServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeReq,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{
+				SlowQueryThreshold: -1, // silence the slow-query log
+				QueryTimeout:       0,  // explicitly disabled
+			},
+			500*time.Millisecond,
+			600*time.Millisecond,
+		)
+
+		// Normal completion despite long delay: EVENT + EOSE.
+		require.Len(t, msgs, 2)
+		assert.Equal(t, MsgTypeEvent, msgs[0].Type)
+		assert.Equal(t, MsgTypeEOSE, msgs[1].Type)
+	})
+}
+
+func TestStorageHandler_QueryTimeout_NegativeDisables(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		_, msgs := runQueryTimeoutServeNostr(t,
+			&ClientMsg{
+				Type:           MsgTypeReq,
+				SubscriptionID: "sub1",
+				Filters:        []*ReqFilter{{}},
+			},
+			&StorageHandlerOptions{
+				SlowQueryThreshold: -1,
+				QueryTimeout:       -1 * time.Second,
+			},
+			500*time.Millisecond,
+			600*time.Millisecond,
+		)
+
+		require.Len(t, msgs, 2)
+		assert.Equal(t, MsgTypeEvent, msgs[0].Type)
+		assert.Equal(t, MsgTypeEOSE, msgs[1].Type)
+	})
+}

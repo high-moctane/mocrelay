@@ -198,6 +198,28 @@ This is the complement to the `QueryDuration` histogram: the histogram
 answers "how often are REQs slow?", the Warn log answers "which REQs,
 with what shape, and which side owns the latency?"
 
+**Query abort** (`StorageHandlerOptions.QueryTimeout`):
+
+When the slow-query log is a passive observer, `QueryTimeout` is the
+active enforcement: a REQ or COUNT whose total duration exceeds it is
+*aborted*, not just logged. The handler sends a CLOSED message with
+reason `"error: query timeout"` (no EOSE / COUNT is emitted), the
+context passed to `Storage.Query` is canceled, and the in-progress
+iteration is stopped at the next event boundary. If the slow-query
+log is also enabled, it fires with `completed=false` so the abort
+shows up alongside other slow subscriptions.
+
+Zero (the default) disables the timeout — preserving prior behavior.
+A negative value also disables it. When enabled, set it well above
+`SlowQueryThreshold` so operators see the slow-query log fire and
+have a chance to investigate before the abort kicks in.
+
+Motivating case: a live-but-slow client keeps the WebSocket alive
+(so `ping_timeout` never fires) but drains EVENTs so slowly that a
+broad REQ can stall the pull-driven `iter.Seq` for hours. Without
+this option the relay has no ceiling on REQ wall-time; with it, a
+hard deadline is in place.
+
 ### Metrics
 
 **Observability stance**: metrics and logs are complementary. Logs (from
