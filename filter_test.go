@@ -6,6 +6,22 @@ import (
 	"time"
 )
 
+// jsonStringEqual is a small convenience that decodes two JSON strings
+// and compares them via the package-level jsonEqual helper (defined in
+// message_test.go), so tests can assert on JSON *shape* without pinning
+// the unstable map key order from encoding/json/v2.
+func jsonStringEqual(t *testing.T, got, want string) bool {
+	t.Helper()
+	var g, w any
+	if err := json.Unmarshal([]byte(got), &g); err != nil {
+		t.Fatalf("unmarshal got: %v", err)
+	}
+	if err := json.Unmarshal([]byte(want), &w); err != nil {
+		t.Fatalf("unmarshal want: %v", err)
+	}
+	return jsonEqual(g, w)
+}
+
 func TestReqFilter_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -363,5 +379,70 @@ func TestIsValidLowercaseHex(t *testing.T) {
 		if got := isValidLowercaseHex(tt.s, tt.length); got != tt.want {
 			t.Errorf("isValidLowercaseHex(%q, %d) = %v, want %v", tt.s, tt.length, got, tt.want)
 		}
+	}
+}
+
+func TestReqFiltersLogValue(t *testing.T) {
+	since := int64(100)
+	until := int64(200)
+	limit := int64(50)
+	search := "hello"
+
+	tests := []struct {
+		name    string
+		filters []*ReqFilter
+		want    string // compared with jsonStringEqual; v2 map key order is unstable
+	}{
+		{
+			// encoding/json/v2 marshals a nil slice as "[]" (not "null"
+			// like v1). Either rendering is fine for this log — the
+			// operator just needs to see "no filters".
+			name:    "nil slice renders as empty JSON array",
+			filters: nil,
+			want:    `[]`,
+		},
+		{
+			name:    "empty slice renders as empty JSON array",
+			filters: []*ReqFilter{},
+			want:    `[]`,
+		},
+		{
+			name:    "slice containing an empty filter renders as [{}]",
+			filters: []*ReqFilter{{}},
+			want:    `[{}]`,
+		},
+		{
+			name: "populated filter carries every non-zero field",
+			filters: []*ReqFilter{
+				{
+					IDs:     []string{"aa"},
+					Authors: []string{"bb"},
+					Kinds:   []int64{1, 7},
+					Tags:    map[string][]string{"e": {"cc"}},
+					Since:   &since,
+					Until:   &until,
+					Limit:   &limit,
+					Search:  &search,
+				},
+			},
+			want: `[{"#e":["cc"],"authors":["bb"],"ids":["aa"],"kinds":[1,7],"limit":50,"search":"hello","since":100,"until":200}]`,
+		},
+		{
+			name: "multi-filter slice preserves order and per-filter shape",
+			filters: []*ReqFilter{
+				{Kinds: []int64{1}},
+				{Authors: []string{"ab"}, Limit: &limit},
+			},
+			want: `[{"kinds":[1]},{"authors":["ab"],"limit":50}]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := reqFiltersLogValue(tt.filters).String()
+			if !jsonStringEqual(t, got, tt.want) {
+				t.Errorf("reqFiltersLogValue() = %q, want (JSON-equal to) %q", got, tt.want)
+			}
+		})
 	}
 }

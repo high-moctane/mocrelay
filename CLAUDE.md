@@ -345,6 +345,36 @@ Notes on retracted gaps:
   recv-buffer-full drop (`recv_buf_full`) in a single counter. The
   broader name reflects the broader coverage.
 
+#### Metric name mapping (Go field ↔ Prometheus)
+
+The **Existing** column above lists Go struct field names from the
+various `*Metrics` Options structs (e.g. `QueryDuration`,
+`MessagesReceived`). These correspond to Prometheus time series under
+the `mocrelay_` prefix, lower-snake-cased, with the standard suffix of
+the instrument type (`_total`, `_seconds`, `_current`, or none for
+Histograms which emit `_bucket` / `_count` / `_sum`). Examples:
+
+| Go field | Prometheus time series |
+|---|---|
+| `QueryDuration` | `mocrelay_query_duration_seconds` |
+| `StoreDuration` | `mocrelay_store_duration_seconds` |
+| `QueryErrors` | `mocrelay_query_errors_total` |
+| `WSWriteDuration` | `mocrelay_ws_write_duration_seconds` |
+| `WSWriteErrors{reason}` | `mocrelay_ws_write_errors_total{reason}` |
+| `MessagesReceived{type}` | `mocrelay_messages_received_total{type}` |
+| `EventsStored{kind, type, stored}` | `mocrelay_events_stored_total{kind, type, stored}` |
+| `AuthTotal{result}` | `mocrelay_auth_total{result}` |
+| `AuthenticatedConnectionsCurrent` | `mocrelay_auth_authenticated_connections_current` |
+| `SearchTotal` / `IndexTotal` | `mocrelay_search_total` / `mocrelay_index_total` |
+| `MessagesDropped` | `mocrelay_router_messages_dropped_total` |
+| `LostChildrenTotal` | `mocrelay_merge_lost_children_total` |
+
+The authoritative list is `metrics.go`. Notably there is **no
+`storage_` infix** for StorageHandler metrics — the series are flat
+(`mocrelay_query_duration_seconds`, `mocrelay_store_errors_total`,
+…), not `mocrelay_storage_query_*`. PromQL that naïvely prefixes with
+`storage` will match nothing.
+
 #### Known concerns (decide before v0.x freeze)
 
 1. **`kind` label explosion** — **implemented: two-axis label
