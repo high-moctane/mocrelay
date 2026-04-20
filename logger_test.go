@@ -75,8 +75,8 @@ func TestLogRejection(t *testing.T) {
 
 	t.Run("increments rejection counter from ctx", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		metrics := NewRejectionMetrics(reg)
-		ctx := ContextWithRejectionMetrics(context.Background(), metrics)
+		metrics := newRejectionMetrics(reg)
+		ctx := contextWithRejectionMetrics(context.Background(), metrics)
 
 		logRejection(ctx, "max_content_length", "content_too_long",
 			"event_id", "abc", "length", 9999,
@@ -119,15 +119,15 @@ func TestLogRejection(t *testing.T) {
 
 func TestRejectionMetricsFromContext(t *testing.T) {
 	t.Run("returns nil when not set", func(t *testing.T) {
-		if got := RejectionMetricsFromContext(context.Background()); got != nil {
+		if got := rejectionMetricsFromContext(context.Background()); got != nil {
 			t.Fatalf("expected nil, got %v", got)
 		}
 	})
 
 	t.Run("returns metrics from context", func(t *testing.T) {
-		metrics := NewRejectionMetrics(prometheus.NewRegistry())
-		ctx := ContextWithRejectionMetrics(context.Background(), metrics)
-		if got := RejectionMetricsFromContext(ctx); got != metrics {
+		metrics := newRejectionMetrics(prometheus.NewRegistry())
+		ctx := contextWithRejectionMetrics(context.Background(), metrics)
+		if got := rejectionMetricsFromContext(ctx); got != metrics {
 			t.Fatalf("expected same metrics, got %v", got)
 		}
 	})

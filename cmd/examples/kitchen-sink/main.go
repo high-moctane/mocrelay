@@ -50,14 +50,16 @@ func main() {
 	}))
 
 	// --- Prometheus registry ---
+	//
+	// mocrelay exposes a single `Registerer` field on each *Options struct.
+	// Setting it causes that component to register its metrics with the
+	// supplied registry; leaving it nil disables instrumentation entirely
+	// for that component (no collectors are created and every instrument
+	// site no-ops). Pass the same registry to every component to collect
+	// everything under one Prometheus registry.
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector())
-	relayMetrics := mocrelay.NewRelayMetrics(reg)
-	routerMetrics := mocrelay.NewRouterMetrics(reg)
-	authMetrics := mocrelay.NewAuthMetrics(reg)
-	storageMetrics := mocrelay.NewStorageMetrics(reg)
-	compositeMetrics := mocrelay.NewCompositeStorageMetrics(reg)
 
 	// --- Storage layer ---
 	//
@@ -102,16 +104,16 @@ func main() {
 
 	// Composite: Pebble (source of truth) + Bleve (search).
 	compositeStorage := mocrelay.NewCompositeStorage(pebbleStorage, bleveIndex, &mocrelay.CompositeStorageOptions{
-		Metrics: compositeMetrics,
+		Registerer: reg,
 	})
 
 	// Metrics: wrap storage with Prometheus instrumentation.
-	storage := mocrelay.NewMetricsStorage(compositeStorage, storageMetrics)
+	storage := mocrelay.NewMetricsStorage(compositeStorage, reg)
 
 	// --- Routing layer ---
 
 	router := mocrelay.NewRouter(&mocrelay.RouterOptions{
-		Metrics: routerMetrics,
+		Registerer: reg,
 	})
 
 	// --- Handler ---
@@ -128,8 +130,9 @@ func main() {
 
 	handler = mocrelay.NewSimpleMiddleware(
 		// Auth (NIP-42): challenge/response authentication.
-		// AuthMetrics is injected via RelayOptions.AuthMetrics below,
-		// picked up by the middleware via AuthMetricsFromContext.
+		// Auth metrics are constructed by Relay from RelayOptions.Registerer
+		// (below) and injected into the request context; the middleware
+		// reads them internally.
 		mocrelay.NewAuthMiddlewareBase("wss://relay.example.com/", nil),
 
 		// Protected events (NIP-70): prevent republishing "-" tagged events.
@@ -158,9 +161,8 @@ func main() {
 	// --- Relay ---
 
 	relay := mocrelay.NewRelay(handler, &mocrelay.RelayOptions{
-		Logger:      logger,
-		Metrics:     relayMetrics,
-		AuthMetrics: authMetrics,
+		Logger:     logger,
+		Registerer: reg,
 		Info: &mocrelay.RelayInfo{
 			Name:          "mocrelay-kitchen-sink",
 			Description:   "A full-featured Nostr relay example",

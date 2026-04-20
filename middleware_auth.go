@@ -13,10 +13,10 @@ import (
 // [NewAuthMiddlewareBase]. All fields are optional; the zero value gives
 // sensible defaults.
 //
-// Metrics are not part of this struct. [AuthMetrics] is injected via the
-// request context by [Relay] (see [RelayOptions.AuthMetrics]) and read by
-// the auth middleware via [AuthMetricsFromContext], mirroring the
-// [RejectionMetrics] / Logger pattern.
+// Metrics are not part of this struct. Auth metrics are constructed by
+// [Relay] from [RelayOptions.Registerer] and injected into the request
+// context; the auth middleware reads them internally without holding a
+// direct reference, mirroring the rejection counter / Logger pattern.
 type AuthMiddlewareOptions struct {
 	// CreatedAtTolerance is the maximum age of auth events.
 	// Default: 10 minutes (as recommended by NIP-42)
@@ -77,7 +77,7 @@ func (m *authMiddleware) OnStart(ctx context.Context) (context.Context, *ServerM
 }
 
 func (m *authMiddleware) OnEnd(ctx context.Context) (*ServerMsg, error) {
-	if metrics := AuthMetricsFromContext(ctx); metrics != nil {
+	if metrics := authMetricsFromContext(ctx); metrics != nil {
 		state := ctx.Value(authCtxKey{}).(*authState)
 		state.mu.RLock()
 		authenticated := state.authenticated
@@ -141,7 +141,7 @@ func (m *authMiddleware) HandleServerMsg(
 }
 
 func (m *authMiddleware) handleAuth(ctx context.Context, state *authState, msg *ClientMsg) (*ClientMsg, *ServerMsg, error) {
-	metrics := AuthMetricsFromContext(ctx)
+	metrics := authMetricsFromContext(ctx)
 
 	if msg.Event == nil {
 		logRejection(ctx, "auth", "missing_auth_event")

@@ -2,6 +2,8 @@ package mocrelay
 
 import (
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Router manages client connections and subscriptions.
@@ -15,7 +17,7 @@ type Router struct {
 	// connections maps connection ID to connection info.
 	connections map[string]*routerConnection
 
-	metrics *RouterMetrics
+	metrics *routerMetrics
 }
 
 // routerConnection represents a single client connection.
@@ -30,9 +32,11 @@ type routerConnection struct {
 // RouterOptions configures Router behavior.
 // All fields are optional; the zero value gives sensible defaults.
 type RouterOptions struct {
-	// Metrics is the Prometheus metrics collector for Router.
-	// If nil, no metrics are collected.
-	Metrics *RouterMetrics
+	// Registerer is the Prometheus registry that Router's internal metrics
+	// are registered with (mocrelay_router_messages_dropped_total and
+	// mocrelay_router_subscriptions_current). If nil, no metrics are
+	// collected.
+	Registerer prometheus.Registerer
 }
 
 // NewRouter creates a new Router.
@@ -43,7 +47,7 @@ func NewRouter(opts *RouterOptions) *Router {
 	}
 	return &Router{
 		connections: make(map[string]*routerConnection),
-		metrics:     opts.Metrics,
+		metrics:     newRouterMetrics(opts.Registerer),
 	}
 }
 

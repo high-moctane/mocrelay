@@ -272,8 +272,9 @@ review time, the label is probably too cardinal.
 `logRejection` is the single place where every middleware reports a
 rejection. It performs two side-effects from the same call site:
 
-1. Increments `mocrelay_rejections_total{middleware, reason}` via the
-   context-injected [RejectionMetrics] (no-op if absent).
+1. Increments the context-injected `mocrelay_rejections_total{middleware,
+   reason}` counter (installed by `Relay` when `RelayOptions.Registerer`
+   is set; no-op if absent).
 2. Emits a Debug-level structured log entry with the same `middleware`
    and `reason` fields.
 
@@ -296,56 +297,78 @@ The `middleware` axis lets operators scope further:
 | **Gauge** | Current level (connections, subscriptions, buffer depth) | Must have matched Inc / Dec (`defer`, cleanup, or `Set`) or it drifts upward forever |
 | **Histogram** | Latency / size distributions where the tail matters | More expensive than Counter; acceptable per REQ / per Store. For per-EVENT hot paths, audit buckets first |
 
-#### Nil-safe injection
+#### Registerer injection
 
-Metrics are optional, matching the philosophy of `Relay.Logger`. Two
-injection shapes coexist:
+Metrics are optional, matching the philosophy of `Relay.Logger`. Every
+component that owns instrumented behavior exposes a single
+`Registerer prometheus.Registerer` field on its `*Options` struct:
 
-- **Per-owner options** (`RelayMetrics`, `RouterMetrics`,
-  `StorageMetrics`, `MergeHandlerMetrics`, `CompositeStorageMetrics`):
-  passed through the owning
-  type's `*Options` struct. `nil` means "don't measure, don't allocate."
-  Call sites guard with a nil check so the instrument-free build path
-  has zero runtime cost and no Prometheus dependency surface. These
-  are all measured by the owning type itself (Relay measures Relay,
-  Storage measures Storage, …), so there is nothing request-scoped to
-  propagate — Options is the right place.
-- **Context-injected** (`RejectionMetrics`, `AuthMetrics`): threaded
-  through the request context, symmetric with `Logger`. `Relay`
-  installs them once per connection from `RelayOptions.RejectionMetrics`
-  / `RelayOptions.AuthMetrics`; middleware never holds a reference,
-  never needs a nil check — the middleware reads them via
-  `RejectionMetricsFromContext` / `AuthMetricsFromContext` and no-ops
-  on nil. The rule for picking this shape over Options is "the metric
-  is consumed by a unit that composes *into* a Relay
-  (handler / middleware), rather than by the unit itself." Logger
-  follows the same rule, which is why it shares the ctx path.
+- `RelayOptions.Registerer` — Relay's own conn / message / event
+  counters, *plus* the request-ctx-injected rejection and auth
+  counters (one field, three metric families registered).
+- `RouterOptions.Registerer` — router saturation.
+- `CompositeStorageOptions.Registerer` — search / index RED.
+- `MergeHandlerOptions.Registerer` — merge-handler USE.
+- `NewMetricsStorage(storage, reg)` — Storage RED (decorator, no
+  Options struct; see Constructor API exceptions below).
 
-Just as `Logger == nil` falls back to `slog.Default()`, both
-`Metrics == nil` and a ctx without `RejectionMetrics` / `AuthMetrics`
-fall back to silence.
+Setting the field causes the constructor to build and register every
+metric the component owns in one shot. Leaving it nil disables
+instrumentation: no collectors are created, every instrument site
+short-circuits on a nil check, and no Prometheus code runs on the
+hot path. The authoritative list of what each `Registerer` registers
+lives in `metrics.go`.
+
+Two consumption shapes coexist under the same field, determined by
+whether the metric's natural consumer is the owning type itself or
+something composed *into* a Relay:
+
+- **Self-owned** — Relay's own WS counters, Router, Composite, Merge,
+  the Storage decorator. The constructor builds the metrics struct
+  internally and the owning type calls into it directly.
+- **Ctx-injected** — the rejection and auth counters. The `Relay`
+  constructor builds both structs from `RelayOptions.Registerer`,
+  installs them into every request context, and the consuming
+  middleware reads them back via internal helpers — mirroring the
+  `ContextWithLogger` pattern. Middleware code never holds a
+  reference and never nil-checks. The rule for picking the ctx path
+  is "the metric's natural consumer is a unit that composes *into* a
+  Relay, rather than the Relay itself."
+
+These structs (`relayMetrics`, `rejectionMetrics`, `authMetrics`,
+etc.) and the accompanying `contextWith…` / `…FromContext` helpers
+are all unexported: the public API surface is just the `Registerer`
+field on each Options struct. Subregistry use cases
+(`prometheus.WrapRegistererWithPrefix`, etc.) compose naturally — wrap
+the registry and hand the wrapper in.
+
+Just as `Logger == nil` falls back to `slog.Default()`, every
+`Registerer == nil` path falls back to silence.
 
 `MergeHandlerMetrics` is the next candidate to consider for the
-context-injected set under the same rule (consumed by a handler that
-composes into Relay rather than by Relay itself). It is left on
-Options for now; a follow-up PR can evaluate the move once a concrete
-need arises.
+ctx-injected path under the same rule (a handler that composes into
+Relay rather than the Relay itself). It stays self-owned for now; a
+follow-up PR can evaluate the move once a concrete need arises.
 
 #### Coverage by layer (drives follow-up PRs)
 
+Series names below are the Prometheus metric names (all prefixed
+`mocrelay_`). The authoritative mapping to internal Go fields is in
+`metrics.go`; there is no `*Metrics` public type to reference.
+
 | Layer | Kind | Existing | Gaps (future PRs) |
 |---|---|---|---|
-| **Relay (WS conn)** | RED-R | `ConnectionsTotal`, `MessagesReceived{type}`, `MessagesSent{type}`, `EventsReceived{kind, type}` | — |
-| | RED-E | `WSParseErrors{reason}`, `WSWriteErrors{reason}` | — |
-| | RED-D | `WSWriteDuration` | — |
-| | USE-Sat | `ConnectionsCurrent` | — (see note below) |
-| **Router** | USE-Sat | `MessagesDropped`, `SubscriptionsCurrent` | — |
-| **Middleware: Auth** | RED-R+E | `AuthTotal{result}`, `AuthenticatedConnectionsCurrent`, rejections via unified `mocrelay_rejections_total{middleware="auth", reason}` | — |
-| **Middleware: others (10)** | RED-E | Rejections via unified `mocrelay_rejections_total{middleware, reason}` (wired automatically through `logRejection`) | — |
-| **StorageHandler** | RED-R+D+E | `EventsStored{kind, type, stored}`, `Store / QueryDuration`, `StoreErrors`, `QueryErrors` | — |
-| **MergeHandler** | USE-Sat+E | `LostChildrenTotal`, `BroadcastTimeoutsTotal`, `EventDrops{reason}` | — |
+| **Relay (WS conn)** | RED-R | `connections_total`, `messages_received_total{type}`, `messages_sent_total{type}`, `events_received_total{kind, type}` | — |
+| | RED-E | `ws_parse_errors_total{reason}`, `ws_write_errors_total{reason}` | — |
+| | RED-D | `ws_write_duration_seconds` | — |
+| | USE-Sat | `connections_current` | — (see note below) |
+| **Router** | USE-Sat | `router_messages_dropped_total`, `router_subscriptions_current` | — |
+| **Middleware: Auth** | RED-R+E | `auth_total{result}`, `auth_authenticated_connections_current`, rejections via unified `rejections_total{middleware="auth", reason}` | — |
+| **Middleware: others (10)** | RED-E | Rejections via unified `rejections_total{middleware, reason}` (wired automatically through `logRejection`) | — |
+| **StorageHandler** | RED-R+D+E | `events_stored_total{kind, type, stored}`, `store_duration_seconds`, `query_duration_seconds`, `store_errors_total`, `query_errors_total` | — |
+| **MergeHandler** | USE-Sat+E | `merge_lost_children_total`, `merge_broadcast_timeouts_total`, `merge_event_drops_total{reason}` | — |
 | **Pebble (internals)** | USE | — (caller-owned) | External: expose via caller's `*pebble.DB` — `db.Metrics()` → L0 files, compactions, WAL bytes |
-| **Bleve / SearchIndex (via CompositeStorage)** | RED-R+E | `SearchTotal`, `SearchErrors`, `IndexTotal`, `IndexErrors` (on `CompositeStorageMetrics`) | — |
+| **Bleve / SearchIndex (via CompositeStorage)** | RED-R+E | `search_total`, `search_errors_total`, `index_total`, `index_errors_total` | — |
 | | USE | — (caller-owned) | External: expose via caller's `bleve.Index` — `idx.StatsMap()` → doc count, batch stats |
 
 Notes on retracted gaps:
@@ -367,34 +390,22 @@ Notes on retracted gaps:
   recv-buffer-full drop (`recv_buf_full`) in a single counter. The
   broader name reflects the broader coverage.
 
-#### Metric name mapping (Go field ↔ Prometheus)
+#### Metric naming conventions
 
-The **Existing** column above lists Go struct field names from the
-various `*Metrics` Options structs (e.g. `QueryDuration`,
-`MessagesReceived`). These correspond to Prometheus time series under
-the `mocrelay_` prefix, lower-snake-cased, with the standard suffix of
-the instrument type (`_total`, `_seconds`, `_current`, or none for
-Histograms which emit `_bucket` / `_count` / `_sum`). Examples:
+All Prometheus series emitted by mocrelay use the `mocrelay_` prefix
+with standard instrument-type suffixes (`_total` for Counters,
+`_seconds` for duration Histograms, `_current` for Gauges tracking
+level, unsuffixed for plain Counters measuring sizes / offsets).
+Internal Go fields in `metrics.go` follow the unsuffixed,
+CamelCase counterpart (e.g. the Go field `QueryDuration` drives the
+series `mocrelay_query_duration_seconds`), but the fields are
+unexported: the authoritative list is the constructor body of each
+`new*Metrics` function.
 
-| Go field | Prometheus time series |
-|---|---|
-| `QueryDuration` | `mocrelay_query_duration_seconds` |
-| `StoreDuration` | `mocrelay_store_duration_seconds` |
-| `QueryErrors` | `mocrelay_query_errors_total` |
-| `WSWriteDuration` | `mocrelay_ws_write_duration_seconds` |
-| `WSWriteErrors{reason}` | `mocrelay_ws_write_errors_total{reason}` |
-| `MessagesReceived{type}` | `mocrelay_messages_received_total{type}` |
-| `EventsStored{kind, type, stored}` | `mocrelay_events_stored_total{kind, type, stored}` |
-| `AuthTotal{result}` | `mocrelay_auth_total{result}` |
-| `AuthenticatedConnectionsCurrent` | `mocrelay_auth_authenticated_connections_current` |
-| `SearchTotal` / `IndexTotal` | `mocrelay_search_total` / `mocrelay_index_total` |
-| `MessagesDropped` | `mocrelay_router_messages_dropped_total` |
-| `LostChildrenTotal` | `mocrelay_merge_lost_children_total` |
-
-The authoritative list is `metrics.go`. Notably there is **no
-`storage_` infix** for StorageHandler metrics — the series are flat
-(`mocrelay_query_duration_seconds`, `mocrelay_store_errors_total`,
-…), not `mocrelay_storage_query_*`. PromQL that naïvely prefixes with
+Notable gotcha: there is **no `storage_` infix** for StorageHandler
+series. They are flat — `mocrelay_query_duration_seconds`,
+`mocrelay_store_errors_total`, etc. — not
+`mocrelay_storage_query_*`. PromQL that naïvely prefixes with
 `storage` will match nothing.
 
 #### Known concerns (decide before v0.x freeze)
@@ -449,16 +460,18 @@ The authoritative list is `metrics.go`. Notably there is **no
    `(kind, type)` two-axis label.
 
    Implementation:
-   - `RejectionMetrics` lives in `metrics.go`; it wraps a single
+   - The unified counter lives in `metrics.go` as the internal
+     `rejectionMetrics` struct, wrapping a single
      `mocrelay_rejections_total` CounterVec.
-   - `Relay` installs it into the request context via
-     `ContextWithRejectionMetrics`, symmetric with `ContextWithLogger`.
+   - `Relay` builds and registers it from `RelayOptions.Registerer`
+     and installs it into the request context, mirroring
+     `ContextWithLogger`.
    - `logRejection` reads it from context on every call and increments
      `{middleware, reason}` alongside its Debug log line. Middleware
      authors don't touch metrics code at all.
-   - `AuthMetrics.RejectionsTotal` was removed as part of this pivot;
-     its auth-specific reasons (`event_unauthenticated`, `expired`, …)
-     now land on the unified counter with `middleware="auth"`.
+   - Auth-specific rejection reasons (`event_unauthenticated`,
+     `expired`, …) land on the unified counter with `middleware="auth"`;
+     there is no separate per-middleware rejection metric.
 
    Rejected alternatives: per-middleware `*Options` with a `Metrics`
    field (API bloat across 10 middleware, constructor signature churn
@@ -527,14 +540,12 @@ Rules:
   does not re-check for zero values. Writing `if x == 0 { x = default }`
   at call sites is a smell — it means the constructor did not finish
   its job.
-- **Metrics are a field of some `*Options` struct**, not a separate
-  positional arg or a post-construction field. Which Options depends on
-  the consumer: types that measure themselves (e.g. `RouterMetrics` on
-  `RouterOptions`) keep Metrics on their own Options; types that are
-  composed *into* `Relay` and measured while serving a request
-  (`AuthMetrics`, `RejectionMetrics`) put Metrics on `RelayOptions` and
-  let `Relay` install them into the request context. See the "Nil-safe
-  injection" section in the Metrics policy above for the full rule.
+- **Prometheus registration is a single `Registerer` field on `*Options`**,
+  never a separate positional arg or a post-construction field.
+  Each component owns the metrics it registers; metrics whose natural
+  consumer is a middleware (rejection, auth) are registered by the
+  Relay and ctx-injected. See the "Registerer injection" section in
+  the Metrics policy above for the full rule.
 
 This pattern is used by `NewRelay`, `NewRouter`, `NewAuthMiddlewareBase`,
 `NewPebbleStorage`, `NewBleveIndex`, `NewCompositeStorage`, and
@@ -544,10 +555,14 @@ same shape so third-party code composing with mocrelay has a predictable
 surface.
 
 Exceptions:
-- `MetricsStorage` uses the decorator pattern (`NewMetricsStorage(storage, metrics)`)
+- `MetricsStorage` uses the decorator pattern
+  (`NewMetricsStorage(storage Storage, reg prometheus.Registerer)`)
   because `Storage` is an interface with multiple implementations
   (InMemory / Pebble / Composite) and a decorator is the natural way
-  to inject cross-cutting behavior.
+  to inject cross-cutting behavior. It takes the Registerer
+  positionally rather than through an Options struct; `reg == nil` is
+  valid and makes every call pass straight through to the wrapped
+  storage.
 - Middlewares whose *entire* configuration is required (e.g.
   `NewMaxLimitMiddlewareBase(maxLimit, defaultLimit int64)`) skip the
   Options struct because there is nothing optional to collect.

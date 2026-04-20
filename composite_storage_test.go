@@ -269,9 +269,9 @@ func TestCompositeStorage_MetricsSearch(t *testing.T) {
 	search := &fakeSearchIndex{}
 
 	reg := prometheus.NewRegistry()
-	metrics := NewCompositeStorageMetrics(reg)
 
-	storage := NewCompositeStorage(primary, search, &CompositeStorageOptions{Metrics: metrics})
+	storage := NewCompositeStorage(primary, search, &CompositeStorageOptions{Registerer: reg})
+	metrics := storage.metrics
 
 	// Prime primary with one event so the fallback path returns something.
 	event := &Event{
@@ -338,9 +338,9 @@ func TestCompositeStorage_MetricsIndex(t *testing.T) {
 	search := &fakeSearchIndex{indexErr: errors.New("index down")}
 
 	reg := prometheus.NewRegistry()
-	metrics := NewCompositeStorageMetrics(reg)
 
-	storage := NewCompositeStorage(primary, search, &CompositeStorageOptions{Metrics: metrics})
+	storage := NewCompositeStorage(primary, search, &CompositeStorageOptions{Registerer: reg})
+	metrics := storage.metrics
 
 	// Store: primary succeeds, index fails. Store returns success
 	// because indexing is best-effort.

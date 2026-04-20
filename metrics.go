@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// RelayMetrics holds Prometheus metrics for Relay.
-type RelayMetrics struct {
+// relayMetrics holds Prometheus metrics for Relay.
+type relayMetrics struct {
 	ConnectionsCurrent prometheus.Gauge
 	ConnectionsTotal   prometheus.Counter
 	MessagesReceived   *prometheus.CounterVec
@@ -31,9 +31,14 @@ type RelayMetrics struct {
 	WSWriteDuration prometheus.Histogram
 }
 
-// NewRelayMetrics creates and registers Relay metrics with the given registry.
-func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
-	m := &RelayMetrics{
+// newRelayMetrics creates and registers Relay metrics with reg.
+// Returns nil if reg is nil so callers can treat a disabled registry as
+// "no metrics collected" via a simple nil check at each instrument site.
+func newRelayMetrics(reg prometheus.Registerer) *relayMetrics {
+	if reg == nil {
+		return nil
+	}
+	m := &relayMetrics{
 		ConnectionsCurrent: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "mocrelay_connections_current",
 			Help: "Current number of WebSocket connections",
@@ -88,8 +93,8 @@ func NewRelayMetrics(reg prometheus.Registerer) *RelayMetrics {
 	return m
 }
 
-// RouterMetrics holds Prometheus metrics for Router.
-type RouterMetrics struct {
+// routerMetrics holds Prometheus metrics for Router.
+type routerMetrics struct {
 	MessagesDropped prometheus.Counter
 
 	// SubscriptionsCurrent is the total number of active subscriptions
@@ -99,9 +104,13 @@ type RouterMetrics struct {
 	SubscriptionsCurrent prometheus.Gauge
 }
 
-// NewRouterMetrics creates and registers Router metrics with the given registry.
-func NewRouterMetrics(reg prometheus.Registerer) *RouterMetrics {
-	m := &RouterMetrics{
+// newRouterMetrics creates and registers Router metrics with reg.
+// Returns nil if reg is nil.
+func newRouterMetrics(reg prometheus.Registerer) *routerMetrics {
+	if reg == nil {
+		return nil
+	}
+	m := &routerMetrics{
 		MessagesDropped: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "mocrelay_router_messages_dropped_total",
 			Help: "Total number of messages dropped due to full send channel",
@@ -120,25 +129,29 @@ func NewRouterMetrics(reg prometheus.Registerer) *RouterMetrics {
 	return m
 }
 
-// AuthMetrics holds Prometheus metrics for AuthMiddleware.
+// authMetrics holds Prometheus metrics for AuthMiddleware.
 //
-// AuthMetrics is injected into the request context by [Relay] (via
-// [RelayOptions.AuthMetrics]); the auth middleware reads it via
-// [AuthMetricsFromContext] and no-ops on nil. Middleware code never holds a
-// reference directly, mirroring the [RejectionMetrics] / Logger pattern.
+// authMetrics is injected into the request context by [Relay] (constructed
+// from [RelayOptions.Registerer]); the auth middleware reads it via
+// [authMetricsFromContext] and no-ops on nil. Middleware code never holds a
+// reference directly, mirroring the [rejectionMetrics] / Logger pattern.
 //
 // Rejection metrics are not part of this struct. They are unified across all
-// middleware under [RejectionMetrics] and are wired automatically via
+// middleware under [rejectionMetrics] and are wired automatically via
 // [logRejection] — Auth contributes to the shared counter with label
 // middleware="auth".
-type AuthMetrics struct {
+type authMetrics struct {
 	AuthTotal                       *prometheus.CounterVec
 	AuthenticatedConnectionsCurrent prometheus.Gauge
 }
 
-// NewAuthMetrics creates and registers AuthMiddleware metrics with the given registry.
-func NewAuthMetrics(reg prometheus.Registerer) *AuthMetrics {
-	m := &AuthMetrics{
+// newAuthMetrics creates and registers AuthMiddleware metrics with reg.
+// Returns nil if reg is nil.
+func newAuthMetrics(reg prometheus.Registerer) *authMetrics {
+	if reg == nil {
+		return nil
+	}
+	m := &authMetrics{
 		AuthTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "mocrelay_auth_total",
 			Help: "Total number of authentication attempts",
@@ -159,24 +172,24 @@ func NewAuthMetrics(reg prometheus.Registerer) *AuthMetrics {
 
 type authMetricsKey struct{}
 
-// ContextWithAuthMetrics returns a new context carrying the given auth
+// contextWithAuthMetrics returns a new context carrying the given auth
 // metrics. [Relay] installs this at connection start so the auth middleware
 // downstream can record attempts and authenticated connections via
-// [AuthMetricsFromContext] without holding a direct reference.
-func ContextWithAuthMetrics(ctx context.Context, m *AuthMetrics) context.Context {
+// [authMetricsFromContext] without holding a direct reference.
+func contextWithAuthMetrics(ctx context.Context, m *authMetrics) context.Context {
 	return context.WithValue(ctx, authMetricsKey{}, m)
 }
 
-// AuthMetricsFromContext returns the auth metrics from the context, or nil
+// authMetricsFromContext returns the auth metrics from the context, or nil
 // if none was set. Callers must be nil-safe.
-func AuthMetricsFromContext(ctx context.Context) *AuthMetrics {
-	if m, ok := ctx.Value(authMetricsKey{}).(*AuthMetrics); ok {
+func authMetricsFromContext(ctx context.Context) *authMetrics {
+	if m, ok := ctx.Value(authMetricsKey{}).(*authMetrics); ok {
 		return m
 	}
 	return nil
 }
 
-// RejectionMetrics holds the unified rejection counter shared across every
+// rejectionMetrics holds the unified rejection counter shared across every
 // middleware in mocrelay. Each middleware reports its rejections through
 // [logRejection], which increments this counter with labels
 // {middleware, reason} — the same pair that appears in the structured log
@@ -185,19 +198,22 @@ func AuthMetricsFromContext(ctx context.Context) *AuthMetrics {
 // The (middleware, reason) pair is a functional relationship (each middleware
 // emits a fixed, small enum of reasons), so the label set is bounded and
 // does not form a cardinality cross-product — analogous to the (kind, type)
-// two-axis label on [RelayMetrics.EventsReceived].
+// two-axis label on [relayMetrics.EventsReceived].
 //
-// RejectionMetrics is injected into the request context by [Relay] (via
-// [RelayOptions.RejectionMetrics]); middleware code never holds a reference
-// and never needs a nil check — [logRejection] handles both.
-type RejectionMetrics struct {
+// rejectionMetrics is injected into the request context by [Relay]
+// (constructed from [RelayOptions.Registerer]); middleware code never holds
+// a reference and never needs a nil check — [logRejection] handles both.
+type rejectionMetrics struct {
 	Total *prometheus.CounterVec
 }
 
-// NewRejectionMetrics creates and registers the unified rejection counter
-// with the given registry.
-func NewRejectionMetrics(reg prometheus.Registerer) *RejectionMetrics {
-	m := &RejectionMetrics{
+// newRejectionMetrics creates and registers the unified rejection counter
+// with reg. Returns nil if reg is nil.
+func newRejectionMetrics(reg prometheus.Registerer) *rejectionMetrics {
+	if reg == nil {
+		return nil
+	}
+	m := &rejectionMetrics{
 		Total: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "mocrelay_rejections_total",
 			Help: "Total number of client messages rejected by middleware, " +
@@ -214,26 +230,26 @@ func NewRejectionMetrics(reg prometheus.Registerer) *RejectionMetrics {
 
 type rejectionMetricsKey struct{}
 
-// ContextWithRejectionMetrics returns a new context carrying the given
+// contextWithRejectionMetrics returns a new context carrying the given
 // rejection metrics. [Relay] installs this at connection start so middleware
 // downstream can report rejections via [logRejection] without holding a
 // direct reference.
-func ContextWithRejectionMetrics(ctx context.Context, m *RejectionMetrics) context.Context {
+func contextWithRejectionMetrics(ctx context.Context, m *rejectionMetrics) context.Context {
 	return context.WithValue(ctx, rejectionMetricsKey{}, m)
 }
 
-// RejectionMetricsFromContext returns the rejection metrics from the context,
-// or nil if none was set. Callers (in practice only [logRejection]) must be
-// nil-safe.
-func RejectionMetricsFromContext(ctx context.Context) *RejectionMetrics {
-	if m, ok := ctx.Value(rejectionMetricsKey{}).(*RejectionMetrics); ok {
+// rejectionMetricsFromContext returns the rejection metrics from the
+// context, or nil if none was set. Callers (in practice only
+// [logRejection]) must be nil-safe.
+func rejectionMetricsFromContext(ctx context.Context) *rejectionMetrics {
+	if m, ok := ctx.Value(rejectionMetricsKey{}).(*rejectionMetrics); ok {
 		return m
 	}
 	return nil
 }
 
-// StorageMetrics holds Prometheus metrics for Storage.
-type StorageMetrics struct {
+// storageMetrics holds Prometheus metrics for Storage.
+type storageMetrics struct {
 	EventsStored  *prometheus.CounterVec
 	StoreDuration prometheus.Histogram
 	QueryDuration prometheus.Histogram
@@ -248,9 +264,13 @@ type StorageMetrics struct {
 	QueryErrors prometheus.Counter
 }
 
-// NewStorageMetrics creates and registers Storage metrics with the given registry.
-func NewStorageMetrics(reg prometheus.Registerer) *StorageMetrics {
-	m := &StorageMetrics{
+// newStorageMetrics creates and registers Storage metrics with reg.
+// Returns nil if reg is nil.
+func newStorageMetrics(reg prometheus.Registerer) *storageMetrics {
+	if reg == nil {
+		return nil
+	}
+	m := &storageMetrics{
 		EventsStored: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "mocrelay_events_stored_total",
 			Help: "Total number of event store attempts",
@@ -286,7 +306,7 @@ func NewStorageMetrics(reg prometheus.Registerer) *StorageMetrics {
 	return m
 }
 
-// CompositeStorageMetrics holds Prometheus metrics for [CompositeStorage].
+// compositeStorageMetrics holds Prometheus metrics for [CompositeStorage].
 //
 // These instrument the two places where [CompositeStorage] would otherwise
 // silently swallow backend failures:
@@ -305,7 +325,7 @@ func NewStorageMetrics(reg prometheus.Registerer) *StorageMetrics {
 // size, batch statistics) lives on the caller's [bleve.Index] and should
 // be collected directly from idx.StatsMap() by the caller — see the
 // "Caller-owned *pebble.DB and bleve.Index" section in CLAUDE.md.
-type CompositeStorageMetrics struct {
+type compositeStorageMetrics struct {
 	// SearchTotal counts Query calls that hit the search backend (Search
 	// filter non-empty and a search index is configured). Paired with
 	// SearchErrors to derive a search error rate.
@@ -328,10 +348,13 @@ type CompositeStorageMetrics struct {
 	IndexErrors prometheus.Counter
 }
 
-// NewCompositeStorageMetrics creates and registers CompositeStorage
-// metrics with the given registry.
-func NewCompositeStorageMetrics(reg prometheus.Registerer) *CompositeStorageMetrics {
-	m := &CompositeStorageMetrics{
+// newCompositeStorageMetrics creates and registers CompositeStorage
+// metrics with reg. Returns nil if reg is nil.
+func newCompositeStorageMetrics(reg prometheus.Registerer) *compositeStorageMetrics {
+	if reg == nil {
+		return nil
+	}
+	m := &compositeStorageMetrics{
 		SearchTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "mocrelay_search_total",
 			Help: "Total number of Query calls that hit the search backend " +
@@ -367,13 +390,13 @@ func NewCompositeStorageMetrics(reg prometheus.Registerer) *CompositeStorageMetr
 	return m
 }
 
-// MergeHandlerMetrics holds Prometheus metrics for [NewMergeHandler].
+// mergeHandlerMetrics holds Prometheus metrics for [NewMergeHandler].
 //
 // These surface the USE-Saturation and USE-Errors axes of the merge
 // handler: how often downstream children are retired or stall on control
 // broadcasts, and how many EVENT messages are dropped (on the way in,
 // or during dedup/sort/limit enforcement on the way out).
-type MergeHandlerMetrics struct {
+type mergeHandlerMetrics struct {
 	// LostChildrenTotal counts child handlers retired mid-flight. A lost
 	// child contributes a synthesized accepted=false OK to its pending
 	// responses (see MergeHandlerOKLostHandlerMessage) and prompts the
@@ -400,10 +423,13 @@ type MergeHandlerMetrics struct {
 	EventDrops *prometheus.CounterVec
 }
 
-// NewMergeHandlerMetrics creates and registers merge handler metrics with
-// the given registry.
-func NewMergeHandlerMetrics(reg prometheus.Registerer) *MergeHandlerMetrics {
-	m := &MergeHandlerMetrics{
+// newMergeHandlerMetrics creates and registers merge handler metrics with
+// reg. Returns nil if reg is nil.
+func newMergeHandlerMetrics(reg prometheus.Registerer) *mergeHandlerMetrics {
+	if reg == nil {
+		return nil
+	}
+	m := &mergeHandlerMetrics{
 		LostChildrenTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "mocrelay_merge_lost_children_total",
 			Help: "Total number of merge-handler child handlers retired " +
