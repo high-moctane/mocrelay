@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"log/slog"
 	"slices"
 )
 
@@ -144,6 +145,25 @@ func (f *ReqFilter) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(obj)
+}
+
+// reqFiltersLogValue returns a slog.Value that renders a []*ReqFilter as a
+// single compact JSON array (the Nostr wire form). Used by StorageHandler
+// slow-query logs and similar operator-facing diagnostics where the filter
+// shape (ids, authors, kinds, tags, since, until, limit, search) is the
+// key observation.
+//
+// Kept unexported, and intentionally **not** paired with a slog.LogValuer
+// method on *ReqFilter: exposing either would grow the public API surface
+// without an external use case today. External callers who want the same
+// rendering can json.Marshal(filter) themselves, which the public
+// MarshalJSON already supports.
+func reqFiltersLogValue(filters []*ReqFilter) slog.Value {
+	b, err := json.Marshal(filters)
+	if err != nil {
+		return slog.StringValue(fmt.Sprintf("(marshal error: %v)", err))
+	}
+	return slog.StringValue(string(b))
 }
 
 // Valid checks if the filter has valid format.

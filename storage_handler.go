@@ -300,7 +300,7 @@ func (h *storageHandler) maybeLogSlowReq(
 	scan := max(total-sendWait, 0)
 	LoggerFromContext(ctx).WarnContext(ctx, "storage: slow REQ",
 		"subscription_id", msg.SubscriptionID,
-		"filters", msg.Filters,
+		"filters", reqFiltersLogValue(msg.Filters),
 		"events_sent", eventsSent,
 		"total_ms", total.Milliseconds(),
 		"scan_ms", scan.Milliseconds(),
@@ -326,7 +326,7 @@ func (h *storageHandler) maybeLogSlowCount(
 	}
 	LoggerFromContext(ctx).WarnContext(ctx, "storage: slow COUNT",
 		"subscription_id", msg.SubscriptionID,
-		"filters", msg.Filters,
+		"filters", reqFiltersLogValue(msg.Filters),
 		"count", count,
 		"total_ms", total.Milliseconds(),
 	)
