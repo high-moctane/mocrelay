@@ -2,6 +2,7 @@ package mocrelay
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"time"
 )
@@ -10,6 +11,10 @@ import (
 // logging a slow REQ / COUNT subscription when
 // [StorageHandlerOptions.SlowQueryThreshold] is zero.
 const DefaultStorageHandlerSlowQueryThreshold = 1 * time.Second
+
+// queryTimeoutCLOSEDReason is the CLOSED message body sent when a REQ or
+// COUNT is aborted by [StorageHandlerOptions.QueryTimeout].
+const queryTimeoutCLOSEDReason = "error: query timeout"
 
 // StorageHandlerOptions configures the storage handler returned by
 // [NewStorageHandler].
@@ -29,6 +34,31 @@ type StorageHandlerOptions struct {
 	// A zero value selects [DefaultStorageHandlerSlowQueryThreshold] (1s).
 	// A negative value disables slow-query logging entirely.
 	SlowQueryThreshold time.Duration
+
+	// QueryTimeout aborts a REQ or COUNT whose total duration exceeds it.
+	// When the timeout fires, the storage handler stops iterating, sends a
+	// CLOSED message with reason "error: query timeout", and returns —
+	// neither the trailing EOSE (for REQ) nor the COUNT reply is emitted.
+	// The slow-query log (if enabled) still fires with completed=false, so
+	// the abort is recorded alongside other slow subscriptions.
+	//
+	// The context passed to Storage.Query is wrapped with
+	// [context.WithTimeout], so any Storage implementation that respects
+	// ctx can short-circuit its own scan; implementations that don't (e.g.
+	// Pebble) are stopped at the next event boundary where the iteration
+	// loop polls ctx.Err.
+	//
+	// The primary use case is a live but slow-consuming client — one that
+	// keeps the WebSocket alive (so ping_timeout never fires) yet drains
+	// EVENTs so slowly that a broad REQ can stall the handler's iterator
+	// for hours. Setting QueryTimeout gives the relay a hard ceiling.
+	//
+	// A zero value disables the timeout (default, preserves prior
+	// behavior). A negative value also disables it. When non-zero, it
+	// should typically be set well above SlowQueryThreshold so the
+	// threshold logs fire first and give operators a chance to observe
+	// slow REQs before they are aborted.
+	QueryTimeout time.Duration
 }
 
 // NewStorageHandler returns a [Handler] that serves EVENT and REQ messages
@@ -45,6 +75,7 @@ type StorageHandlerOptions struct {
 // subscription.
 func NewStorageHandler(storage Storage, opts *StorageHandlerOptions) Handler {
 	threshold := DefaultStorageHandlerSlowQueryThreshold
+	var queryTimeout time.Duration // zero == disabled
 	if opts != nil {
 		switch {
 		case opts.SlowQueryThreshold < 0:
@@ -52,10 +83,14 @@ func NewStorageHandler(storage Storage, opts *StorageHandlerOptions) Handler {
 		case opts.SlowQueryThreshold > 0:
 			threshold = opts.SlowQueryThreshold
 		}
+		if opts.QueryTimeout > 0 {
+			queryTimeout = opts.QueryTimeout
+		}
 	}
 	return NewSimpleHandler(&storageHandler{
 		storage:            storage,
 		slowQueryThreshold: threshold,
+		queryTimeout:       queryTimeout,
 	})
 }
 
@@ -64,6 +99,9 @@ type storageHandler struct {
 	// slowQueryThreshold is the effective threshold for slow-query logging.
 	// Zero means disabled.
 	slowQueryThreshold time.Duration
+	// queryTimeout is the effective abort timeout for REQ / COUNT.
+	// Zero means disabled.
+	queryTimeout time.Duration
 }
 
 func (h *storageHandler) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
@@ -123,6 +161,16 @@ func (h *storageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Se
 		// (index seek, snapshot creation, etc.) counts toward total.
 		start := time.Now()
 
+		// Apply QueryTimeout by wrapping the context. Storage implementations
+		// that respect ctx will short-circuit; the iteration loop below polls
+		// ctx.Err so implementations that don't (e.g. Pebble) are stopped at
+		// the next event boundary.
+		if h.queryTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, h.queryTimeout)
+			defer cancel()
+		}
+
 		events, errFn, closeFn := h.storage.Query(ctx, msg.Filters)
 		defer closeFn()
 
@@ -136,8 +184,9 @@ func (h *storageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Se
 		eventsSent := 0
 
 		// yieldTracked wraps yield so every emission contributes to
-		// sendWait, including the trailing EOSE — which matters when
-		// the stall is on the client side (EOSE never arrives either).
+		// sendWait, including the trailing EOSE / CLOSED — which matters
+		// when the stall is on the client side (the terminal message
+		// never arrives either).
 		yieldTracked := func(m *ServerMsg) bool {
 			s := time.Now()
 			ok := yield(m)
@@ -146,6 +195,13 @@ func (h *storageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Se
 		}
 
 		for event := range events {
+			// Fast path first: timeout fired while scanning / waiting to
+			// send the previous event. Abort before emitting another one.
+			if ctx.Err() != nil {
+				yieldTracked(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
+				h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, false)
+				return
+			}
 			if !yieldTracked(NewServerEventMsg(msg.SubscriptionID, event)) {
 				h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, false)
 				return
@@ -153,7 +209,15 @@ func (h *storageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Se
 			eventsSent++
 		}
 
-		// Check for errors after iteration
+		// Distinguish timeout from other errFn failures. Storage impls
+		// that respect ctx may surface context.DeadlineExceeded via
+		// errFn; treat that the same as a ctx.Err-driven abort.
+		if ctx.Err() != nil || errors.Is(errFn(), context.DeadlineExceeded) {
+			yieldTracked(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
+			h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, false)
+			return
+		}
+
 		if err := errFn(); err != nil {
 			LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", err, "subscription_id", msg.SubscriptionID)
 			yieldTracked(NewServerEOSEMsg(msg.SubscriptionID))
@@ -179,12 +243,29 @@ func (h *storageHandler) handleCount(ctx context.Context, msg *ClientMsg) (iter.
 		// iterator-initialization cost counts toward total.
 		start := time.Now()
 
+		if h.queryTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, h.queryTimeout)
+			defer cancel()
+		}
+
 		events, errFn, closeFn := h.storage.Query(ctx, msg.Filters)
 		defer closeFn()
 
 		count := uint64(0)
 		for range events {
+			if ctx.Err() != nil {
+				yield(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
+				h.maybeLogSlowCount(ctx, msg, start, count)
+				return
+			}
 			count++
+		}
+
+		if ctx.Err() != nil || errors.Is(errFn(), context.DeadlineExceeded) {
+			yield(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
+			h.maybeLogSlowCount(ctx, msg, start, count)
+			return
 		}
 
 		if err := errFn(); err != nil {
