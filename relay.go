@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/coder/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Relay wraps a Handler to serve it over HTTP/WebSocket.
@@ -25,9 +26,9 @@ type Relay struct {
 	pingInterval     time.Duration
 	pingTimeout      time.Duration
 	info             *RelayInfo
-	metrics          *RelayMetrics
-	rejectionMetrics *RejectionMetrics
-	authMetrics      *AuthMetrics
+	metrics          *relayMetrics
+	rejectionMetrics *rejectionMetrics
+	authMetrics      *authMetrics
 	connIDFunc       func() string
 
 	mu      sync.Mutex
@@ -64,24 +65,31 @@ type RelayOptions struct {
 	// Accept: application/nostr+json header.
 	Info *RelayInfo
 
-	// Metrics is the Prometheus metrics collector.
-	// If set, the relay will collect connection and message metrics.
-	Metrics *RelayMetrics
-
-	// RejectionMetrics is the unified rejection counter shared across every
-	// middleware. If set, the relay installs it into the request context so
-	// that logRejection (called from every middleware drop) auto-increments
-	// the counter alongside its structured log entry. If nil, rejections are
-	// only logged — no counter is incremented.
-	RejectionMetrics *RejectionMetrics
-
-	// AuthMetrics is the Prometheus metrics collector for the auth
-	// middleware (NIP-42). If set, the relay installs it into the request
-	// context so that NewAuthMiddlewareBase downstream records attempts
-	// and authenticated connections via AuthMetricsFromContext. If nil,
-	// auth events are not measured (rejections are still counted via
-	// RejectionMetrics with middleware="auth" where applicable).
-	AuthMetrics *AuthMetrics
+	// Registerer is the Prometheus registry that mocrelay's internal
+	// metrics are registered with. Setting this single field turns on every
+	// metric mocrelay exports from the Relay's own scope:
+	//
+	//   - Connection / message / event counters on the Relay itself
+	//     (mocrelay_connections_*, mocrelay_messages_*, mocrelay_events_received_*,
+	//     mocrelay_ws_parse_errors_*, mocrelay_ws_write_errors_*,
+	//     mocrelay_ws_write_duration_seconds).
+	//   - The unified rejection counter
+	//     (mocrelay_rejections_total{middleware, reason}), automatically
+	//     installed into the request context so that every middleware's
+	//     logRejection call increments it.
+	//   - Auth middleware counters (mocrelay_auth_*,
+	//     mocrelay_auth_authenticated_connections_current), also installed
+	//     into the request context and read by the auth middleware.
+	//
+	// Metrics owned by types that compose *into* Relay (Router, Storage,
+	// CompositeStorage, MergeHandler, MetricsStorage) are registered from
+	// their own constructors; pass the same Registerer to each of those
+	// Options structs (typically prometheus.DefaultRegisterer) to collect
+	// everything under one registry.
+	//
+	// If nil, no metrics are registered from this Relay and all internal
+	// instrumentation no-ops.
+	Registerer prometheus.Registerer
 
 	// ConnIDFunc generates a unique connection ID string.
 	// If nil, a default monotonic counter ("1", "2", ...) is used.
@@ -122,9 +130,9 @@ func NewRelay(handler Handler, opts *RelayOptions) *Relay {
 		pingInterval:     pingInterval,
 		pingTimeout:      pingTimeout,
 		info:             opts.Info,
-		metrics:          opts.Metrics,
-		rejectionMetrics: opts.RejectionMetrics,
-		authMetrics:      opts.AuthMetrics,
+		metrics:          newRelayMetrics(opts.Registerer),
+		rejectionMetrics: newRejectionMetrics(opts.Registerer),
+		authMetrics:      newAuthMetrics(opts.Registerer),
 		connIDFunc:       opts.ConnIDFunc,
 	}
 }
@@ -238,10 +246,10 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	logger := r.logger.With("conn_id", connID)
 	ctx = ContextWithLogger(ctx, logger)
 	if r.rejectionMetrics != nil {
-		ctx = ContextWithRejectionMetrics(ctx, r.rejectionMetrics)
+		ctx = contextWithRejectionMetrics(ctx, r.rejectionMetrics)
 	}
 	if r.authMetrics != nil {
-		ctx = ContextWithAuthMetrics(ctx, r.authMetrics)
+		ctx = contextWithAuthMetrics(ctx, r.authMetrics)
 	}
 
 	// Metrics: connection tracking

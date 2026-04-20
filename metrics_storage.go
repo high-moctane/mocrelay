@@ -6,24 +6,40 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-// MetricsStorage wraps a Storage and collects Prometheus metrics.
+// MetricsStorage wraps a Storage and collects Prometheus metrics for each
+// Store / Query call (mocrelay_events_stored_total, mocrelay_store_duration_seconds,
+// mocrelay_query_duration_seconds, mocrelay_store_errors_total,
+// mocrelay_query_errors_total).
+//
+// Because mocrelay's Storage interface has multiple implementations
+// (InMemory / Pebble / Composite), MetricsStorage is a decorator rather than
+// an Options-style constructor: wrap whatever Storage you want to measure.
 type MetricsStorage struct {
 	storage Storage
-	metrics *StorageMetrics
+	metrics *storageMetrics
 }
 
-// NewMetricsStorage creates a new MetricsStorage that wraps the given storage.
-func NewMetricsStorage(storage Storage, metrics *StorageMetrics) *MetricsStorage {
+// NewMetricsStorage creates a MetricsStorage wrapping storage. Metrics are
+// registered against reg; if reg is nil, all metric calls no-op and the
+// decorator is effectively a pass-through (no registration happens and no
+// Prometheus collectors are created).
+func NewMetricsStorage(storage Storage, reg prometheus.Registerer) *MetricsStorage {
 	return &MetricsStorage{
 		storage: storage,
-		metrics: metrics,
+		metrics: newStorageMetrics(reg),
 	}
 }
 
 // Store implements Storage.Store with metrics collection.
 func (s *MetricsStorage) Store(ctx context.Context, event *Event) (bool, error) {
+	if s.metrics == nil {
+		return s.storage.Store(ctx, event)
+	}
+
 	start := time.Now()
 	stored, err := s.storage.Store(ctx, event)
 	duration := time.Since(start)
@@ -42,6 +58,10 @@ func (s *MetricsStorage) Store(ctx context.Context, event *Event) (bool, error) 
 
 // Query implements Storage.Query with metrics collection.
 func (s *MetricsStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.Seq[*Event], func() error, func() error) {
+	if s.metrics == nil {
+		return s.storage.Query(ctx, filters)
+	}
+
 	start := time.Now()
 	events, errFn, closeFn := s.storage.Query(ctx, filters)
 

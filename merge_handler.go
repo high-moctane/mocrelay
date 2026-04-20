@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // DefaultMergeHandlerBroadcastTimeout is the default per-child broadcast
@@ -140,28 +142,29 @@ type MergeHandlerOptions struct {
 	// A zero value selects [DefaultMergeHandlerBroadcastTimeout] (30s).
 	BroadcastTimeout time.Duration
 
-	// Metrics is the Prometheus metrics collector for merge-handler
-	// saturation and error signals (lost children, broadcast timeouts,
-	// EVENT drops). If nil, no metrics are collected.
-	Metrics *MergeHandlerMetrics
+	// Registerer is the Prometheus registry that merge-handler saturation
+	// and error signals are registered with (mocrelay_merge_lost_children_total,
+	// mocrelay_merge_broadcast_timeouts_total,
+	// mocrelay_merge_event_drops_total). If nil, no metrics are collected.
+	Registerer prometheus.Registerer
 }
 
 // NewMergeHandler returns a [Handler] that fans messages out to every handler
 // in handlers and merges their responses. Pass nil for opts to use defaults.
 func NewMergeHandler(handlers []Handler, opts *MergeHandlerOptions) Handler {
 	timeout := DefaultMergeHandlerBroadcastTimeout
-	var metrics *MergeHandlerMetrics
+	var reg prometheus.Registerer
 	if opts != nil {
 		if opts.BroadcastTimeout > 0 {
 			timeout = opts.BroadcastTimeout
 		}
-		metrics = opts.Metrics
+		reg = opts.Registerer
 	}
 	return &mergeHandler{
 		handlers:         handlers,
 		broadcastTimeout: timeout,
 		childRecvBuffer:  defaultChildRecvBuffer,
-		metrics:          metrics,
+		metrics:          newMergeHandlerMetrics(reg),
 	}
 }
 
@@ -169,7 +172,7 @@ type mergeHandler struct {
 	handlers         []Handler
 	broadcastTimeout time.Duration
 	childRecvBuffer  int
-	metrics          *MergeHandlerMetrics
+	metrics          *mergeHandlerMetrics
 }
 
 func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) error {
@@ -355,7 +358,7 @@ type mergeSession struct {
 	pendingEOSEs  map[string]*pendingEOSE  // subscriptionID -> pending EOSE state
 	pendingCounts map[string]*pendingCount // subscriptionID -> pending COUNT state
 	completedSubs map[string]bool          // subscriptionID -> true if EOSE already sent
-	metrics       *MergeHandlerMetrics
+	metrics       *mergeHandlerMetrics
 }
 
 // recordEventDrop increments the merge-handler EVENT drop counter under the
@@ -411,7 +414,7 @@ type pendingEOSE struct {
 	handlerEOSESent []bool
 }
 
-func newMergeSession(numHandlers int, metrics *MergeHandlerMetrics) *mergeSession {
+func newMergeSession(numHandlers int, metrics *mergeHandlerMetrics) *mergeSession {
 	return &mergeSession{
 		numHandlers:   numHandlers,
 		pendingOKs:    make(map[string]*pendingOK),

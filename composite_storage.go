@@ -3,6 +3,8 @@ package mocrelay
 import (
 	"context"
 	"iter"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // CompositeStorage combines a primary Storage with a SearchIndex.
@@ -26,16 +28,22 @@ import (
 type CompositeStorage struct {
 	primary Storage
 	search  SearchIndex
-	metrics *CompositeStorageMetrics
+	metrics *compositeStorageMetrics
 }
 
 // CompositeStorageOptions configures [CompositeStorage]. Pass nil for
 // defaults.
 type CompositeStorageOptions struct {
-	// Metrics collects search and indexing observability signals. nil
-	// disables instrumentation (zero runtime cost, no Prometheus
-	// dependency on the caller).
-	Metrics *CompositeStorageMetrics
+	// Registerer is the Prometheus registry that CompositeStorage's
+	// internal search / indexing counters are registered with
+	// (mocrelay_search_total, mocrelay_search_errors_total,
+	// mocrelay_index_total, mocrelay_index_errors_total). If nil, no
+	// metrics are collected (zero runtime cost at each instrument site).
+	//
+	// The underlying Bleve / SearchIndex resource state itself (doc count,
+	// index size, batch statistics) lives on the caller's [bleve.Index]
+	// and should be collected directly from idx.StatsMap() by the caller.
+	Registerer prometheus.Registerer
 }
 
 // NewCompositeStorage creates a new CompositeStorage.
@@ -43,14 +51,14 @@ type CompositeStorageOptions struct {
 // search provides full-text search capabilities (can be nil to disable search).
 // opts can be nil; see [CompositeStorageOptions] for configurable options.
 func NewCompositeStorage(primary Storage, search SearchIndex, opts *CompositeStorageOptions) *CompositeStorage {
-	var metrics *CompositeStorageMetrics
+	var reg prometheus.Registerer
 	if opts != nil {
-		metrics = opts.Metrics
+		reg = opts.Registerer
 	}
 	return &CompositeStorage{
 		primary: primary,
 		search:  search,
-		metrics: metrics,
+		metrics: newCompositeStorageMetrics(reg),
 	}
 }
 

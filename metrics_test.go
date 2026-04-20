@@ -38,9 +38,8 @@ func (s *errStorage) Query(ctx context.Context, filters []*ReqFilter) (iter.Seq[
 // and asserts that each rejection lands on its labeled WSParseErrors counter.
 func TestMetrics_RelayWSParseErrors(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	metrics := NewRelayMetrics(reg)
 
-	relay := NewRelay(NewNopHandler(), &RelayOptions{Metrics: metrics})
+	relay := NewRelay(NewNopHandler(), &RelayOptions{Registerer: reg})
 	server := httptest.NewServer(relay)
 	defer server.Close()
 
@@ -74,7 +73,7 @@ func TestMetrics_RelayWSParseErrors(t *testing.T) {
 	}
 
 	got := func(reason string) float64 {
-		return testutil.ToFloat64(metrics.WSParseErrors.WithLabelValues(reason))
+		return testutil.ToFloat64(relay.metrics.WSParseErrors.WithLabelValues(reason))
 	}
 	assert.Equal(t, float64(1), got("binary_message"))
 	assert.Equal(t, float64(1), got("invalid_utf8"))
@@ -88,11 +87,10 @@ func TestMetrics_RelayWSParseErrors(t *testing.T) {
 // CLOSE" case.
 func TestMetrics_Router_SubscriptionsCurrent(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	metrics := NewRouterMetrics(reg)
-	router := NewRouter(&RouterOptions{Metrics: metrics})
+	router := NewRouter(&RouterOptions{Registerer: reg})
 
 	gauge := func() float64 {
-		return testutil.ToFloat64(metrics.SubscriptionsCurrent)
+		return testutil.ToFloat64(router.metrics.SubscriptionsCurrent)
 	}
 
 	sendA := make(chan *ServerMsg, 1)
@@ -131,27 +129,25 @@ func TestMetrics_Router_SubscriptionsCurrent(t *testing.T) {
 // failing Store and stays at zero otherwise.
 func TestMetrics_MetricsStorage_StoreErrors(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	metrics := NewStorageMetrics(reg)
 
 	underlying := &errStorage{storeErr: errors.New("disk gone")}
-	ms := NewMetricsStorage(underlying, metrics)
+	ms := NewMetricsStorage(underlying, reg)
 
 	_, err := ms.Store(context.Background(), makeEvent("e1", "pubkey01", 1, 100))
 	assert.Error(t, err)
 	_, err = ms.Store(context.Background(), makeEvent("e2", "pubkey01", 1, 200))
 	assert.Error(t, err)
 
-	assert.Equal(t, float64(2), testutil.ToFloat64(metrics.StoreErrors))
+	assert.Equal(t, float64(2), testutil.ToFloat64(ms.metrics.StoreErrors))
 }
 
 // TestMetrics_MetricsStorage_QueryErrors asserts QueryErrors increments exactly
 // once per failed Query, even if the caller invokes errFn multiple times.
 func TestMetrics_MetricsStorage_QueryErrors(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	metrics := NewStorageMetrics(reg)
 
 	underlying := &errStorage{queryErr: errors.New("corrupt index")}
-	ms := NewMetricsStorage(underlying, metrics)
+	ms := NewMetricsStorage(underlying, reg)
 
 	_, errFn, closeFn := ms.Query(context.Background(), []*ReqFilter{{}})
 	// Iteration yields nothing; errFn reports the error.
@@ -165,7 +161,7 @@ func TestMetrics_MetricsStorage_QueryErrors(t *testing.T) {
 	assert.Error(t, errFn2())
 	assert.NoError(t, closeFn2())
 
-	assert.Equal(t, float64(2), testutil.ToFloat64(metrics.QueryErrors))
+	assert.Equal(t, float64(2), testutil.ToFloat64(ms.metrics.QueryErrors))
 }
 
 // TestMetrics_MetricsStorage_NoErrorsOnSuccess asserts the counters stay at
@@ -173,9 +169,8 @@ func TestMetrics_MetricsStorage_QueryErrors(t *testing.T) {
 // branch.
 func TestMetrics_MetricsStorage_NoErrorsOnSuccess(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	metrics := NewStorageMetrics(reg)
 
-	ms := NewMetricsStorage(NewInMemoryStorage(), metrics)
+	ms := NewMetricsStorage(NewInMemoryStorage(), reg)
 
 	_, err := ms.Store(context.Background(), makeEvent("e1", "pubkey01", 1, 100))
 	assert.NoError(t, err)
@@ -190,8 +185,8 @@ func TestMetrics_MetricsStorage_NoErrorsOnSuccess(t *testing.T) {
 	assert.NoError(t, errFn())
 	assert.NoError(t, closeFn())
 
-	assert.Equal(t, float64(0), testutil.ToFloat64(metrics.StoreErrors))
-	assert.Equal(t, float64(0), testutil.ToFloat64(metrics.QueryErrors))
+	assert.Equal(t, float64(0), testutil.ToFloat64(ms.metrics.StoreErrors))
+	assert.Equal(t, float64(0), testutil.ToFloat64(ms.metrics.QueryErrors))
 }
 
 // TestMetrics_MergeHandler_LostChildAndBroadcastTimeout asserts that a stuck
@@ -201,7 +196,7 @@ func TestMetrics_MetricsStorage_NoErrorsOnSuccess(t *testing.T) {
 func TestMetrics_MergeHandler_LostChildAndBroadcastTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		metrics := NewMergeHandlerMetrics(reg)
+		metrics := newMergeHandlerMetrics(reg)
 
 		stuck := &stuckHandler{}
 		h := &mergeHandler{
@@ -245,7 +240,6 @@ func TestMetrics_MergeHandler_LostChildAndBroadcastTimeout(t *testing.T) {
 func TestMetrics_MergeHandler_EventDrops_Duplicate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		metrics := NewMergeHandlerMetrics(reg)
 
 		storage1 := NewInMemoryStorage()
 		storage2 := NewInMemoryStorage()
@@ -256,8 +250,9 @@ func TestMetrics_MergeHandler_EventDrops_Duplicate(t *testing.T) {
 
 		mh := NewMergeHandler(
 			[]Handler{NewStorageHandler(storage1, nil), NewStorageHandler(storage2, nil)},
-			&MergeHandlerOptions{Metrics: metrics},
-		)
+			&MergeHandlerOptions{Registerer: reg},
+		).(*mergeHandler)
+		metrics := mh.metrics
 
 		ctx2, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -281,7 +276,7 @@ func TestMetrics_MergeHandler_EventDrops_Duplicate(t *testing.T) {
 func TestMetrics_MergeHandler_EventDrops_RecvBufFull(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		metrics := NewMergeHandlerMetrics(reg)
+		metrics := newMergeHandlerMetrics(reg)
 
 		stuck := &stuckHandler{}
 		h := &mergeHandler{
