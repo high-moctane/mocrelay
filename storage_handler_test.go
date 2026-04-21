@@ -3,6 +3,7 @@ package mocrelay
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"iter"
 	"log/slog"
 	"strings"
@@ -697,5 +698,75 @@ func TestStorageHandler_QueryTimeout_NegativeDisables(t *testing.T) {
 		require.Len(t, msgs, 2)
 		assert.Equal(t, MsgTypeEvent, msgs[0].Type)
 		assert.Equal(t, MsgTypeEOSE, msgs[1].Type)
+	})
+}
+
+// TestStorageHandler_QueryTimeout_ReqAbortsOnStalledConsumer exercises the
+// "live but slow client" class of stall — the motivating case that
+// QueryTimeout was introduced for. Query returns fast but the receiver
+// stops draining send, so the handler's yield blocks on send<-msg.
+// QueryTimeout must fire at the *send boundary* too: a ctx.WithTimeout
+// scoped to Query alone lets the stall continue indefinitely once yield
+// is blocked (scan is already done; the scan loop's ctx.Err check never
+// re-runs).
+func TestStorageHandler_QueryTimeout_ReqAbortsOnStalledConsumer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		base := NewInMemoryStorage()
+		// Populate more than one event so there is a second yield that
+		// actually stalls on send<-msg (the first fits in the
+		// receiver-side handoff that the test performs below).
+		for i := range 5 {
+			base.Store(ctx, makeEvent(
+				fmt.Sprintf("event-%02d", i),
+				"pubkey01",
+				1,
+				int64(100+i),
+			))
+		}
+
+		handler := NewStorageHandler(base, &StorageHandlerOptions{
+			QueryTimeout:       100 * time.Millisecond,
+			SlowQueryThreshold: 50 * time.Millisecond,
+		})
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		send := make(chan *ServerMsg) // unbuffered: 2nd yield stalls
+		recv := make(chan *ClientMsg, 1)
+		errCh := make(chan error, 1)
+		go func() { errCh <- handler.ServeNostr(ctx, send, recv) }()
+
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		// Receive exactly one EVENT, then stop draining so the next yield
+		// blocks. The handler is now parked on send<-msg for event #2.
+		first := <-send
+		require.Equal(t, MsgTypeEvent, first.Type)
+
+		// Advance the fake clock well past QueryTimeout. A correctly
+		// scoped QueryTimeout must unblock the stalled send and fall
+		// through to the CLOSED abort path.
+		time.Sleep(300 * time.Millisecond)
+		synctest.Wait()
+
+		// The next message the handler sends must be CLOSED, not another
+		// EVENT — time has moved past the abort deadline.
+		select {
+		case msg := <-send:
+			assert.Equal(t, MsgTypeClosed, msg.Type)
+			assert.Equal(t, "sub1", msg.SubscriptionID)
+			assert.Equal(t, queryTimeoutCLOSEDReason, msg.Message)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("handler did not send CLOSED after QueryTimeout — send-side stall is not honoring the timeout")
+		}
+
+		cancel()
+		synctest.Wait()
+		<-errCh
 	})
 }
