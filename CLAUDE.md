@@ -849,6 +849,15 @@ if newEvent.CreatedAt > lastSentCreatedAt {
   child and never restarts it; a Handler that wraps a recoverable
   external resource (e.g. an upstream relay) should absorb short-term
   contention and reconnect internally.
+- Each child runs under its **own cancelable sub-ctx** of the
+  merge-wide ctx, and a retired child's sub-ctx is canceled
+  immediately (on BroadcastTimeout or send-channel close) — not at
+  end-of-connection. Sharing the merge-wide ctx across children would
+  leak a retired child's goroutine (and any held subscription /
+  storage cursor resources) for the lifetime of the connection,
+  manifesting at production scale as a "live but slow client" REQ
+  wedging the relay even with `StorageHandlerOptions.QueryTimeout`
+  set.
 
 **Handler contract for use under MergeHandler**:
 - A Handler MUST drain its `recv` channel in a timely fashion. Brief
@@ -860,6 +869,12 @@ if newEvent.CreatedAt > lastSentCreatedAt {
 - A Handler that exits early (`return err`) leaves its child recv channel
   alive but unread; MergeHandler sees the close-of-childSends and runs
   `handlerClosed`. No additional cleanup is required from the Handler.
+- When MergeHandler retires a Handler (BroadcastTimeout hit or
+  send-channel self-close), it cancels that Handler's ctx immediately
+  — not at end-of-connection. Handlers that block on `<-ctx.Done()`
+  observe the cancel promptly upon retirement, and any cleanup /
+  resource release tied to ctx cancel runs in the per-child window
+  rather than the merge-wide window.
 
 **Considerations**:
 - If a handler never sends EOSE *and* never gets retired, session maps
