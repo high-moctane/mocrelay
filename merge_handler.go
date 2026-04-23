@@ -228,9 +228,14 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 			if err := handler.ServeNostr(childCtxs[i], childSends[i], childRecvs[i]); err != nil {
 				logger := LoggerFromContext(ctx)
 				if errors.Is(err, context.Canceled) {
-					// Normal shutdown path: parent ctx was canceled and the
-					// child propagated it back. Not worth a Warn — Relay
-					// already logs "connection end (canceled)" at Info.
+					// Normal shutdown path: either the merge-wide parent
+					// ctx or this child's per-child sub-ctx (canceled on
+					// retire — BroadcastTimeout hit or send-channel
+					// self-close) was canceled, and the child propagated
+					// it back. Not worth a Warn — Relay already logs
+					// "connection end (canceled)" at Info, and retirement
+					// is logged separately at Warn in broadcastAll / the
+					// default branch.
 					logger.DebugContext(ctx,
 						"merge handler: child canceled",
 						"handler_index", i,

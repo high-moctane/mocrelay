@@ -1712,6 +1712,10 @@ func TestMergeHandler_DeadChild_GoroutineReleasedPromptly(t *testing.T) {
 			Filters:        []*ReqFilter{{}},
 		}
 
+		// 2× broadcastTimeout (100ms) under synctest's fake clock: long
+		// enough for the Slow-path timer in broadcastAll to fire and flip
+		// the child to dead-retired, before we assert on the post-retire
+		// goroutine state.
 		time.Sleep(200 * time.Millisecond)
 		synctest.Wait()
 
