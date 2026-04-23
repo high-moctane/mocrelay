@@ -1644,3 +1644,110 @@ func TestMergeHandler_Broadcast_OKForcedFalseOnTimeout(t *testing.T) {
 		<-errCh
 	})
 }
+
+// trackedStuckHandler is stuckHandler + a signal that fires when ServeNostr
+// returns. Used to assert on child-goroutine lifecycle (released vs leaked)
+// independently from merge-level merged-response behaviour.
+type trackedStuckHandler struct {
+	returned chan struct{}
+}
+
+func (h *trackedStuckHandler) ServeNostr(
+	ctx context.Context,
+	send chan<- *ServerMsg,
+	recv <-chan *ClientMsg,
+) error {
+	defer close(h.returned)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// TestMergeHandler_DeadChild_GoroutineReleasedPromptly asserts that when a
+// child handler is declared dead by BroadcastTimeout, its goroutine is
+// released promptly — not left running until the whole merge connection
+// ends.
+//
+// Today this test is EXPECTED TO FAIL on main: dead-retired children share
+// the merge-wide ctx and only observe cancel when the entire connection
+// unwinds. The symptom at production scale (salmon) is a "live but slow
+// client" REQ that wedges for tens of minutes even with QueryTimeout set,
+// because the merge parent loop silently ignores the retired child's
+// childSends[i] (cases[2+idx].Chan = nil) while the child keeps pushing
+// events into that channel until it blocks on cap=10.
+//
+// The structural fix (future PR) is to give each child its own cancelable
+// sub-ctx and cancel it at the moment handlerClosed runs on broadcast
+// timeout. Once that lands, this test should PASS as-written.
+func TestMergeHandler_DeadChild_GoroutineReleasedPromptly(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		child := &trackedStuckHandler{returned: make(chan struct{})}
+
+		mergeHandler := &mergeHandler{
+			handlers:         []Handler{child},
+			broadcastTimeout: 100 * time.Millisecond,
+			childRecvBuffer:  1,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		send := make(chan *ServerMsg, 32)
+		recv := make(chan *ClientMsg, 32)
+
+		mergeErr := make(chan error, 1)
+		go func() {
+			mergeErr <- mergeHandler.ServeNostr(ctx, send, recv)
+		}()
+
+		// Fill child's recv buffer (cap=1) — first REQ succeeds fast-path.
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+		// Second REQ trips the slow path → BroadcastTimeout → dead retire.
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub2",
+			Filters:        []*ReqFilter{{}},
+		}
+
+		// 2× broadcastTimeout (100ms) under synctest's fake clock: long
+		// enough for the Slow-path timer in broadcastAll to fire and flip
+		// the child to dead-retired, before we assert on the post-retire
+		// goroutine state.
+		time.Sleep(200 * time.Millisecond)
+		synctest.Wait()
+
+		// At this point, child should be dead-retired. handlerClosed has
+		// advanced the pending EOSEs; drain them so we're looking at a
+		// post-retirement state.
+	drain:
+		for {
+			select {
+			case <-send:
+			default:
+				break drain
+			}
+		}
+
+		// Ideal behaviour (post-fix): the child's ServeNostr has returned
+		// because the merge handler canceled its per-child sub-ctx.
+		// Current behaviour (buggy): the child is still blocked on
+		// <-ctx.Done() because the merge-wide ctx has not been canceled.
+		select {
+		case <-child.returned:
+			t.Log("child goroutine released promptly after dead-retire (ideal)")
+		default:
+			t.Fatal("dead-retired child goroutine is still running " +
+				"(leak): expected per-child ctx to be canceled " +
+				"immediately after BroadcastTimeout, but the child is " +
+				"still waiting on merge-wide ctx.Done().")
+		}
+
+		cancel()
+		synctest.Wait()
+		<-mergeErr
+		<-child.returned
+	})
+}

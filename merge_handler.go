@@ -184,6 +184,26 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 	logger := LoggerFromContext(ctx)
 	logger.DebugContext(ctx, "merge handler: started", "num_handlers", numHandlers)
 
+	// Per-child cancelable sub-ctx. Retiring a child on BroadcastTimeout
+	// or early send-channel close must cancel that child's ServeNostr
+	// directly; otherwise the child keeps blocking on <-ctx.Done() for
+	// the merge-wide ctx and only exits when the entire connection
+	// unwinds — leaking the goroutine (and any held subscription /
+	// storage cursor resources) for potentially minutes until the
+	// client disconnects. At production scale this manifested as a
+	// "live but slow client" REQ wedging the relay even with
+	// StorageHandlerOptions.QueryTimeout set.
+	childCtxs := make([]context.Context, numHandlers)
+	childCancels := make([]context.CancelFunc, numHandlers)
+	for i := range h.handlers {
+		childCtxs[i], childCancels[i] = context.WithCancel(ctx)
+	}
+	defer func() {
+		for _, c := range childCancels {
+			c()
+		}
+	}()
+
 	// Create channels for each child handler. childRecvs uses an internal
 	// default buffer size; childSends is fixed because the merger drains it
 	// directly from the main loop and no buffering matters beyond a small
@@ -205,12 +225,17 @@ func (h *mergeHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, r
 		go func(i int, handler Handler) {
 			defer wg.Done()
 			defer close(childSends[i])
-			if err := handler.ServeNostr(ctx, childSends[i], childRecvs[i]); err != nil {
+			if err := handler.ServeNostr(childCtxs[i], childSends[i], childRecvs[i]); err != nil {
 				logger := LoggerFromContext(ctx)
 				if errors.Is(err, context.Canceled) {
-					// Normal shutdown path: parent ctx was canceled and the
-					// child propagated it back. Not worth a Warn — Relay
-					// already logs "connection end (canceled)" at Info.
+					// Normal shutdown path: either the merge-wide parent
+					// ctx or this child's per-child sub-ctx (canceled on
+					// retire — BroadcastTimeout hit or send-channel
+					// self-close) was canceled, and the child propagated
+					// it back. Not worth a Warn — Relay already logs
+					// "connection end (canceled)" at Info, and retirement
+					// is logged separately at Warn in broadcastAll / the
+					// default branch.
 					logger.DebugContext(ctx,
 						"merge handler: child canceled",
 						"handler_index", i,
@@ -290,6 +315,13 @@ loop:
 				break loop
 			}
 			for _, idx := range deadIndices {
+				// Release the retired child's goroutine immediately.
+				// Without this cancel, the child keeps blocking on the
+				// shared merge-wide ctx and leaks until the connection
+				// unwinds — the exact scenario
+				// TestMergeHandler_DeadChild_GoroutineReleasedPromptly
+				// pins down.
+				childCancels[idx]()
 				cases[2+idx].Chan = reflect.ValueOf(nil)
 				childRecvs[idx] = nil
 				if h.metrics != nil {
@@ -307,12 +339,19 @@ loop:
 			if !ok {
 				// Child closed: disable this case and advance any pending
 				// state still waiting on this handler so the client isn't
-				// left hanging on OK / EOSE / COUNT.
+				// left hanging on OK / EOSE / COUNT. Also cancel the
+				// child's sub-ctx (idempotent; the child is already
+				// returning) and nil the recv channel so subsequent
+				// broadcasts skip this index — otherwise a later control
+				// message would push into a recv buffer nobody is
+				// draining and trip BroadcastTimeout again.
 				LoggerFromContext(ctx).WarnContext(ctx,
 					"merge handler: child closed its send channel",
 					"handler_index", handlerIndex,
 				)
+				childCancels[handlerIndex]()
 				cases[chosen].Chan = reflect.ValueOf(nil)
+				childRecvs[handlerIndex] = nil
 				if h.metrics != nil {
 					h.metrics.LostChildrenTotal.Inc()
 				}
