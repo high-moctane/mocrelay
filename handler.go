@@ -64,6 +64,12 @@ type simpleHandler struct {
 	base SimpleHandlerBase
 }
 
+// simpleHandlerMsgQueueBuffer sizes the internal queue between the recv-drain
+// goroutine and the main loop. Any positive cap guarantees recv drain never
+// fully stops while the main loop is blocked yielding a response. 10 mirrors
+// MergeHandler.childRecvs so both layers share the same backpressure budget.
+const simpleHandlerMsgQueueBuffer = 10
+
 func (h *simpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) (err error) {
 	ctx, startMsg, startErr := h.base.OnStart(ctx)
 	if startErr != nil {
@@ -90,12 +96,45 @@ func (h *simpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, 
 		}
 	}
 
+	// Decouple recv drain from response forwarding. A blocked `send <- msg`
+	// in the main loop below must not stop recv drain — otherwise a slow
+	// downstream wedges the whole handler and upstream broadcasters (e.g.
+	// MergeHandler) pile up on their own child-recv buffers. This is the
+	// "deadlock spring" shape observed at production scale
+	// (diary 2026-04-24).
+	//
+	// The drain goroutine exits on either:
+	//   - ctx cancel (caller-driven shutdown — every ServeNostr caller in
+	//     this module cancels ctx immediately after ServeNostr returns, so
+	//     a main-loop return reliably reaps this goroutine).
+	//   - recv close (client disconnect); closing msgQueue then drives the
+	//     main loop to return nil naturally.
+	msgQueue := make(chan *ClientMsg, simpleHandlerMsgQueueBuffer)
+	go func() {
+		defer close(msgQueue)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-recv:
+				if !ok {
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case msgQueue <- msg:
+				}
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
-		case msg, ok := <-recv:
+		case msg, ok := <-msgQueue:
 			if !ok {
 				// recv channel closed, client disconnected
 				return nil
