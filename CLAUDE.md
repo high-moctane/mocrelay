@@ -82,6 +82,36 @@ default:
 - Usually completes in milliseconds, acceptable
 - Long blocking indicates bigger problems
 
+**iter.Seq response with concurrent recv drain**:
+
+When a Handler returns `iter.Seq[*ServerMsg]` from `HandleMsg` and
+consumes it on the same goroutine that reads `recv`, a blocked
+`send <- msg` inside the yield loop also stops recv drain. Under an
+upstream broadcaster with a small buffer (e.g. `MergeHandler.childRecvs`,
+cap 10) this wedges into a "deadlock spring":
+
+```text
+Storage yields → childSends (cap 10) fills → yield blocks on send
+  → simpleHandler stops reading recv
+  → MergeHandler childRecvs fills on the next client msg
+  → broadcastAll hits BroadcastTimeout → child retired
+```
+
+Resolution: split recv drain into a dedicated goroutine with a bounded
+internal queue. `simpleHandler` does this with
+`simpleHandlerMsgQueueBuffer = 10`; any queue depth ≥ 1 is sufficient
+for the invariant "recv drain never fully stops while yield is
+blocked", and the outer ctx cancel (every in-module `ServeNostr`
+caller cancels ctx immediately after return) reliably reaps the drain
+goroutine on all return paths.
+
+Handlers that implement `Handler` directly and consume `iter.Seq`
+responses must follow the same shape. Handlers composed via
+`NewSimpleMiddleware` are already fine — its pipeline loop uses a
+nil-channel + pending-queue form, and middleware HandleClientMsg /
+HandleServerMsg return a single value rather than an iterator, so the
+spooling risk that blocks the iter.Seq path does not apply.
+
 ### Memory Leak Prevention (State Management)
 
 **Problem**: If a Handler holds per-subscription state and the connection drops without CLOSE, state may persist.
