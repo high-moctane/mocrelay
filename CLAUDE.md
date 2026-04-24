@@ -101,9 +101,18 @@ Resolution: split recv drain into a dedicated goroutine with a bounded
 internal queue. `simpleHandler` does this with
 `simpleHandlerMsgQueueBuffer = 10`; any queue depth ≥ 1 is sufficient
 for the invariant "recv drain never fully stops while yield is
-blocked", and the outer ctx cancel (every in-module `ServeNostr`
-caller cancels ctx immediately after return) reliably reaps the drain
-goroutine on all return paths.
+blocked". The drain goroutine runs under a sub-ctx canceled by `defer`
+on every main-loop return path, so it is reliably reaped without
+depending on caller-side ctx cancel — important for third-party code
+that calls `ServeNostr` directly.
+
+When `msgQueue` itself fills (sustained slow consumer that cannot
+drain the send side), the drain goroutine naturally blocks on
+`msgQueue <- msg`, propagating backpressure upstream (MergeHandler
+`childRecvs` → Relay read loop → the WebSocket peer). In practice
+Relay's 10s write timeout disconnects the slow consumer long before
+cap 10 matters, so the bound exists as a conservative margin aligned
+with MergeHandler rather than as a correctness requirement.
 
 Handlers that implement `Handler` directly and consume `iter.Seq`
 responses must follow the same shape. Handlers composed via

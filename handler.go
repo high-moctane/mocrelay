@@ -103,25 +103,28 @@ func (h *simpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, 
 	// "deadlock spring" shape observed at production scale
 	// (diary 2026-04-24).
 	//
-	// The drain goroutine exits on either:
-	//   - ctx cancel (caller-driven shutdown — every ServeNostr caller in
-	//     this module cancels ctx immediately after ServeNostr returns, so
-	//     a main-loop return reliably reaps this goroutine).
-	//   - recv close (client disconnect); closing msgQueue then drives the
-	//     main loop to return nil naturally.
+	// The drain goroutine's lifetime is bounded by drainCtx, a sub-ctx of
+	// the connection ctx. `defer drainCancel()` below runs on every main-
+	// loop return path (ctx cancel, msgQueue close / recv close, HandleMsg
+	// error, normal completion), so the drain goroutine is reliably reaped
+	// without depending on the caller to cancel the outer ctx. Recv close
+	// additionally closes msgQueue, which drives the main loop to return
+	// nil naturally.
+	drainCtx, drainCancel := context.WithCancel(ctx)
+	defer drainCancel()
 	msgQueue := make(chan *ClientMsg, simpleHandlerMsgQueueBuffer)
 	go func() {
 		defer close(msgQueue)
 		for {
 			select {
-			case <-ctx.Done():
+			case <-drainCtx.Done():
 				return
 			case msg, ok := <-recv:
 				if !ok {
 					return
 				}
 				select {
-				case <-ctx.Done():
+				case <-drainCtx.Done():
 					return
 				case msgQueue <- msg:
 				}
