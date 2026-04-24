@@ -328,21 +328,26 @@ func TestSimpleHandler_DrainsRecvWhileYieldBlocks(t *testing.T) {
 		synctest.Wait()
 
 		// Second message: with concurrent recv drain (the desired behaviour),
-		// HandleMsg is invoked a second time even though the first yield's
-		// send is still blocked. Push from a helper goroutine because if
-		// recv drain has stopped, the push itself blocks; make it ctx-aware
-		// so the final cancel cleanup reliably reaps the helper.
+		// the push below completes even though the first yield's send is
+		// still blocked. We do not observe HandleMsg being invoked a second
+		// time — the main loop is still parked on the first response's
+		// send — we only observe that recv itself keeps flowing. Push from
+		// a helper goroutine so that the test can distinguish "push
+		// succeeded" from "push is still blocked"; make it ctx-aware so the
+		// final cancel cleanup reliably reaps the helper.
+		delivered := make(chan struct{})
 		go func() {
 			select {
 			case recv <- &ClientMsg{Type: MsgTypeEvent}:
 			case <-ctx.Done():
 			}
+			close(delivered)
 		}()
 		synctest.Wait()
 
 		var drainStalled bool
 		select {
-		case <-handledMsgs:
+		case <-delivered:
 			t.Log("simpleHandler drained recv while yield was blocked (ideal)")
 		default:
 			drainStalled = true
