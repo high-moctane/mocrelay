@@ -5,6 +5,7 @@ import (
 	"errors"
 	"iter"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -279,6 +280,89 @@ func TestSimpleHandler_MultipleMessages(t *testing.T) {
 	if len(send) != 6 { // 3 messages * 2 responses each
 		t.Errorf("expected 6 messages sent, got %d", len(send))
 	}
+}
+
+// TestSimpleHandler_DrainsRecvWhileYieldBlocks asserts that simpleHandler keeps
+// draining its recv channel while HandleMsg's response iterator is blocked on
+// sending. Without concurrent recv drain, a slow downstream (unread `send`)
+// stalls the handler itself and any upstream broadcaster (e.g. MergeHandler)
+// wedges on a full child-recv buffer — the "deadlock spring" shape observed at
+// production scale (see problem D, diary 2026-04-24).
+//
+// Today this test is EXPECTED TO FAIL on main: simpleHandler consumes
+// HandleMsg's iter.Seq synchronously on the same goroutine that reads recv, so
+// a blocked `send <- msg` pauses recv drain until the receiver unblocks.
+//
+// The structural fix (later commits in this branch) is to decouple recv drain
+// from response forwarding — e.g. a dedicated recv-drain goroutine feeding an
+// internal queue. Once that lands, this test should PASS as-written.
+func TestSimpleHandler_DrainsRecvWhileYieldBlocks(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		handledMsgs := make(chan *ClientMsg, 10)
+		mock := &mockSimpleHandlerBase{
+			handleMsgFunc: func(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
+				handledMsgs <- msg
+				return func(yield func(*ServerMsg) bool) {
+					yield(NewServerOKMsg("dummy", true, ""))
+				}, nil
+			},
+		}
+
+		handler := NewSimpleHandler(mock)
+		send := make(chan *ServerMsg) // unbuffered, intentionally never drained
+		recv := make(chan *ClientMsg) // unbuffered, so drain pauses are observable
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() {
+			done <- handler.ServeNostr(ctx, send, recv)
+		}()
+
+		// First message: handled, yields one response, then blocks on
+		// `send <- msg` because `send` has no reader. simpleHandler's
+		// goroutine is parked on that send from here on.
+		recv <- &ClientMsg{Type: MsgTypeEvent}
+		<-handledMsgs
+		synctest.Wait()
+
+		// Second message: with concurrent recv drain (the desired behaviour),
+		// the push below completes even though the first yield's send is
+		// still blocked. We do not observe HandleMsg being invoked a second
+		// time — the main loop is still parked on the first response's
+		// send — we only observe that recv itself keeps flowing. Push from
+		// a helper goroutine so that the test can distinguish "push
+		// succeeded" from "push is still blocked"; make it ctx-aware so the
+		// final cancel cleanup reliably reaps the helper.
+		delivered := make(chan struct{})
+		go func() {
+			select {
+			case recv <- &ClientMsg{Type: MsgTypeEvent}:
+			case <-ctx.Done():
+			}
+			close(delivered)
+		}()
+		synctest.Wait()
+
+		var drainStalled bool
+		select {
+		case <-delivered:
+			t.Log("simpleHandler drained recv while yield was blocked (ideal)")
+		default:
+			drainStalled = true
+		}
+
+		cancel()
+		synctest.Wait()
+		<-done
+
+		if drainStalled {
+			t.Fatal("simpleHandler stopped draining recv while HandleMsg's " +
+				"yield was blocked on send — this is the 'deadlock spring' " +
+				"shape that wedges MergeHandler childRecvs at production scale.")
+		}
+	})
 }
 
 func TestHandlerFunc(t *testing.T) {

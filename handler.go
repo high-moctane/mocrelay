@@ -64,6 +64,12 @@ type simpleHandler struct {
 	base SimpleHandlerBase
 }
 
+// simpleHandlerMsgQueueBuffer sizes the internal queue between the recv-drain
+// goroutine and the main loop. Any positive cap guarantees recv drain never
+// fully stops while the main loop is blocked yielding a response. 10 mirrors
+// MergeHandler.childRecvs so both layers share the same backpressure budget.
+const simpleHandlerMsgQueueBuffer = 10
+
 func (h *simpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, recv <-chan *ClientMsg) (err error) {
 	ctx, startMsg, startErr := h.base.OnStart(ctx)
 	if startErr != nil {
@@ -90,12 +96,48 @@ func (h *simpleHandler) ServeNostr(ctx context.Context, send chan<- *ServerMsg, 
 		}
 	}
 
+	// Decouple recv drain from response forwarding. A blocked `send <- msg`
+	// in the main loop below must not stop recv drain — otherwise a slow
+	// downstream wedges the whole handler and upstream broadcasters (e.g.
+	// MergeHandler) pile up on their own child-recv buffers. This is the
+	// "deadlock spring" shape observed at production scale
+	// (diary 2026-04-24).
+	//
+	// The drain goroutine's lifetime is bounded by drainCtx, a sub-ctx of
+	// the connection ctx. `defer drainCancel()` below runs on every main-
+	// loop return path (ctx cancel, msgQueue close / recv close, HandleMsg
+	// error, normal completion), so the drain goroutine is reliably reaped
+	// without depending on the caller to cancel the outer ctx. Recv close
+	// additionally closes msgQueue, which drives the main loop to return
+	// nil naturally.
+	drainCtx, drainCancel := context.WithCancel(ctx)
+	defer drainCancel()
+	msgQueue := make(chan *ClientMsg, simpleHandlerMsgQueueBuffer)
+	go func() {
+		defer close(msgQueue)
+		for {
+			select {
+			case <-drainCtx.Done():
+				return
+			case msg, ok := <-recv:
+				if !ok {
+					return
+				}
+				select {
+				case <-drainCtx.Done():
+					return
+				case msgQueue <- msg:
+				}
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
-		case msg, ok := <-recv:
+		case msg, ok := <-msgQueue:
 			if !ok {
 				// recv channel closed, client disconnected
 				return nil
