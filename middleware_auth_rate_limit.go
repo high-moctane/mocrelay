@@ -5,23 +5,15 @@ import (
 	"time"
 )
 
-// AuthRateLimitMiddlewareOptions configures the middleware returned by
-// [NewAuthRateLimitMiddlewareBase]. Both fields are required; zero or
-// negative values cause the constructor to panic.
-type AuthRateLimitMiddlewareOptions struct {
-	// Rate is the long-term sustained rate of AUTH (NIP-42) messages
-	// allowed per connection, in AUTHs per second.
-	Rate float64
-
-	// Burst is the maximum number of AUTH messages a connection may
-	// submit in a tight window before rate-limiting kicks in. The bucket
-	// starts full at connection start.
-	Burst float64
-}
-
 // NewAuthRateLimitMiddlewareBase returns a middleware base that rate-limits
 // incoming AUTH (NIP-42) messages on a per-connection basis using a token
 // bucket.
+//
+// rate is the long-term sustained rate of AUTH messages allowed per
+// connection, in AUTHs per second; must be positive.
+// burst is the maximum number of AUTH messages a connection may submit
+// in a tight window before rate-limiting kicks in. The bucket starts
+// full at connection start; must be positive.
 //
 // When the bucket is empty, the offending AUTH is dropped and a
 // `["OK", <event_id>, false, "rate-limited: too many auth attempts"]` is
@@ -33,32 +25,29 @@ type AuthRateLimitMiddlewareOptions struct {
 // limit those independently.
 //
 // Use this middleware to defend against AUTH challenge-response brute
-// force; a typical setting is a low Rate (e.g. 0.1 = one attempt every
-// 10 seconds long-term) with a small Burst (e.g. 3) so legitimate
+// force; a typical setting is a low rate (e.g. 0.1 = one attempt every
+// 10 seconds long-term) with a small burst (e.g. 3) so legitimate
 // reconnects still work but credential stuffing is throttled.
 //
 // Each connection gets its own token bucket via OnStart + context.
 //
-// Panics if opts is nil or if Rate / Burst is not positive.
-func NewAuthRateLimitMiddlewareBase(opts *AuthRateLimitMiddlewareOptions) SimpleMiddlewareBase {
-	if opts == nil {
-		panic("opts must not be nil")
+// Panics if rate <= 0 or burst < 1.
+func NewAuthRateLimitMiddlewareBase(rate float64, burst int) SimpleMiddlewareBase {
+	if rate <= 0 {
+		panic("rate must be positive")
 	}
-	if opts.Rate <= 0 {
-		panic("Rate must be positive")
-	}
-	if opts.Burst <= 0 {
-		panic("Burst must be positive")
+	if burst < 1 {
+		panic("burst must be positive")
 	}
 	return &authRateLimitMiddleware{
-		rate:  opts.Rate,
-		burst: opts.Burst,
+		rate:  rate,
+		burst: burst,
 	}
 }
 
 type authRateLimitMiddleware struct {
 	rate  float64
-	burst float64
+	burst int
 }
 
 type authRateLimitCtxKey struct{}

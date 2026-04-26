@@ -26,9 +26,7 @@ func sendEventDrainOK(t *testing.T, recv chan<- *ClientMsg, send <-chan *ServerM
 
 func TestEventRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(
-			&EventRateLimitMiddlewareOptions{Rate: 1, Burst: 3},
-		))
+		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(1, 3))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -60,9 +58,7 @@ func TestEventRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 
 func TestEventRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(
-			&EventRateLimitMiddlewareOptions{Rate: 1, Burst: 2},
-		))
+		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(1, 2))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -109,9 +105,7 @@ func TestEventRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 
 func TestEventRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(
-			&EventRateLimitMiddlewareOptions{Rate: 2, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(2, 1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -139,6 +133,7 @@ func TestEventRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 
 		// Wait 1 second: rate=2 -> 2 tokens accumulated, but capped at burst=1.
 		// So one more allowed, then again rate-limited.
+		// (synctest.Test bubble: time.Sleep advances the fake clock, no real wait.)
 		time.Sleep(1 * time.Second)
 
 		third := sendEventDrainOK(t, recv, send, "ev")
@@ -158,9 +153,7 @@ func TestEventRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 
 func TestEventRateLimitMiddleware_NonEventPassThrough(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(
-			&EventRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewEventRateLimitMiddlewareBase(1, 1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -207,9 +200,7 @@ func TestEventRateLimitMiddleware_NonEventPassThrough(t *testing.T) {
 func TestEventRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
 	// Two independent connections share the same middleware instance.
 	// Draining one must NOT affect the other.
-	base := NewEventRateLimitMiddlewareBase(
-		&EventRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-	)
+	base := NewEventRateLimitMiddlewareBase(1, 1)
 
 	runConn := func(t *testing.T) *ServerMsg {
 		var got *ServerMsg
@@ -241,47 +232,38 @@ func TestEventRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
 	}
 }
 
-func TestNewEventRateLimitMiddlewareBase_PanicOnNilOpts(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for nil opts")
-		}
-	}()
-	NewEventRateLimitMiddlewareBase(nil)
-}
-
 func TestNewEventRateLimitMiddlewareBase_PanicOnZeroRate(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Rate=0")
+			t.Fatal("expected panic for rate=0")
 		}
 	}()
-	NewEventRateLimitMiddlewareBase(&EventRateLimitMiddlewareOptions{Rate: 0, Burst: 1})
+	NewEventRateLimitMiddlewareBase(0, 1)
 }
 
 func TestNewEventRateLimitMiddlewareBase_PanicOnNegativeRate(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for negative Rate")
+			t.Fatal("expected panic for negative rate")
 		}
 	}()
-	NewEventRateLimitMiddlewareBase(&EventRateLimitMiddlewareOptions{Rate: -1, Burst: 1})
+	NewEventRateLimitMiddlewareBase(-1, 1)
 }
 
 func TestNewEventRateLimitMiddlewareBase_PanicOnZeroBurst(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Burst=0")
+			t.Fatal("expected panic for burst=0")
 		}
 	}()
-	NewEventRateLimitMiddlewareBase(&EventRateLimitMiddlewareOptions{Rate: 1, Burst: 0})
+	NewEventRateLimitMiddlewareBase(1, 0)
 }
 
 func TestNewEventRateLimitMiddlewareBase_PanicOnNegativeBurst(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for negative Burst")
+			t.Fatal("expected panic for negative burst")
 		}
 	}()
-	NewEventRateLimitMiddlewareBase(&EventRateLimitMiddlewareOptions{Rate: 1, Burst: -1})
+	NewEventRateLimitMiddlewareBase(1, -1)
 }

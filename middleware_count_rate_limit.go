@@ -5,23 +5,15 @@ import (
 	"time"
 )
 
-// CountRateLimitMiddlewareOptions configures the middleware returned by
-// [NewCountRateLimitMiddlewareBase]. Both fields are required; zero or
-// negative values cause the constructor to panic.
-type CountRateLimitMiddlewareOptions struct {
-	// Rate is the long-term sustained rate of COUNT (NIP-45) messages
-	// allowed per connection, in COUNTs per second.
-	Rate float64
-
-	// Burst is the maximum number of COUNT messages a connection may
-	// submit in a tight window before rate-limiting kicks in. The bucket
-	// starts full at connection start.
-	Burst float64
-}
-
 // NewCountRateLimitMiddlewareBase returns a middleware base that rate-limits
 // incoming COUNT (NIP-45) messages on a per-connection basis using a token
 // bucket.
+//
+// rate is the long-term sustained rate of COUNT messages allowed per
+// connection, in COUNTs per second; must be positive.
+// burst is the maximum number of COUNT messages a connection may submit
+// in a tight window before rate-limiting kicks in. The bucket starts
+// full at connection start; must be positive.
 //
 // When the bucket is empty, the offending COUNT is dropped and a
 // `["CLOSED", <sub_id>, "rate-limited: too many counts"]` is sent to the
@@ -34,26 +26,23 @@ type CountRateLimitMiddlewareOptions struct {
 // appropriate. Each connection gets its own token bucket via OnStart +
 // context.
 //
-// Panics if opts is nil or if Rate / Burst is not positive.
-func NewCountRateLimitMiddlewareBase(opts *CountRateLimitMiddlewareOptions) SimpleMiddlewareBase {
-	if opts == nil {
-		panic("opts must not be nil")
+// Panics if rate <= 0 or burst < 1.
+func NewCountRateLimitMiddlewareBase(rate float64, burst int) SimpleMiddlewareBase {
+	if rate <= 0 {
+		panic("rate must be positive")
 	}
-	if opts.Rate <= 0 {
-		panic("Rate must be positive")
-	}
-	if opts.Burst <= 0 {
-		panic("Burst must be positive")
+	if burst < 1 {
+		panic("burst must be positive")
 	}
 	return &countRateLimitMiddleware{
-		rate:  opts.Rate,
-		burst: opts.Burst,
+		rate:  rate,
+		burst: burst,
 	}
 }
 
 type countRateLimitMiddleware struct {
 	rate  float64
-	burst float64
+	burst int
 }
 
 type countRateLimitCtxKey struct{}

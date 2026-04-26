@@ -51,9 +51,7 @@ func sendAuthDrain(t *testing.T, recv chan<- *ClientMsg, send <-chan *ServerMsg,
 
 func TestAuthRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(
-			&AuthRateLimitMiddlewareOptions{Rate: 1, Burst: 3},
-		))
+		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(1, 3))
 		handler := middleware(authEchoHandler())
 
 		recv := make(chan *ClientMsg)
@@ -85,9 +83,7 @@ func TestAuthRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 
 func TestAuthRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(
-			&AuthRateLimitMiddlewareOptions{Rate: 1, Burst: 2},
-		))
+		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(1, 2))
 		handler := middleware(authEchoHandler())
 
 		recv := make(chan *ClientMsg)
@@ -134,9 +130,7 @@ func TestAuthRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 
 func TestAuthRateLimitMiddleware_RejectMissingEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(
-			&AuthRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(1, 1))
 		handler := middleware(authEchoHandler())
 
 		recv := make(chan *ClientMsg)
@@ -185,9 +179,7 @@ func TestAuthRateLimitMiddleware_RejectMissingEvent(t *testing.T) {
 
 func TestAuthRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(
-			&AuthRateLimitMiddlewareOptions{Rate: 2, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(2, 1))
 		handler := middleware(authEchoHandler())
 
 		recv := make(chan *ClientMsg)
@@ -211,6 +203,7 @@ func TestAuthRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 			t.Error("expected second AUTH rate-limited")
 		}
 
+		// (synctest.Test bubble: time.Sleep advances the fake clock, no real wait.)
 		time.Sleep(1 * time.Second)
 
 		third := sendAuthDrain(t, recv, send, "a")
@@ -230,9 +223,7 @@ func TestAuthRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 
 func TestAuthRateLimitMiddleware_NonAuthPassThrough(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(
-			&AuthRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewAuthRateLimitMiddlewareBase(1, 1))
 		// Use NopHandler here because we want EVENT/REQ pass-through
 		// behavior, not AUTH. Drain the AUTH bucket first via the echo
 		// handler test above; here just verify EVENT passes through with
@@ -274,9 +265,7 @@ func TestAuthRateLimitMiddleware_NonAuthPassThrough(t *testing.T) {
 }
 
 func TestAuthRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
-	base := NewAuthRateLimitMiddlewareBase(
-		&AuthRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-	)
+	base := NewAuthRateLimitMiddlewareBase(1, 1)
 
 	runConn := func(t *testing.T) *ServerMsg {
 		var got *ServerMsg
@@ -307,29 +296,38 @@ func TestAuthRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
 	}
 }
 
-func TestNewAuthRateLimitMiddlewareBase_PanicOnNilOpts(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for nil opts")
-		}
-	}()
-	NewAuthRateLimitMiddlewareBase(nil)
-}
-
 func TestNewAuthRateLimitMiddlewareBase_PanicOnZeroRate(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Rate=0")
+			t.Fatal("expected panic for rate=0")
 		}
 	}()
-	NewAuthRateLimitMiddlewareBase(&AuthRateLimitMiddlewareOptions{Rate: 0, Burst: 1})
+	NewAuthRateLimitMiddlewareBase(0, 1)
+}
+
+func TestNewAuthRateLimitMiddlewareBase_PanicOnNegativeRate(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative rate")
+		}
+	}()
+	NewAuthRateLimitMiddlewareBase(-1, 1)
 }
 
 func TestNewAuthRateLimitMiddlewareBase_PanicOnZeroBurst(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Burst=0")
+			t.Fatal("expected panic for burst=0")
 		}
 	}()
-	NewAuthRateLimitMiddlewareBase(&AuthRateLimitMiddlewareOptions{Rate: 1, Burst: 0})
+	NewAuthRateLimitMiddlewareBase(1, 0)
+}
+
+func TestNewAuthRateLimitMiddlewareBase_PanicOnNegativeBurst(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative burst")
+		}
+	}()
+	NewAuthRateLimitMiddlewareBase(1, -1)
 }

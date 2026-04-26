@@ -783,15 +783,18 @@ handler dispatch).
 | `CountRateLimit` ✅ | per-connection COUNT rate limit | CLOSED `"rate-limited: too many counts"` |
 | `AuthRateLimit` ✅ | per-connection AUTH rate limit | OK `accepted=false` `"rate-limited: too many auth attempts"` |
 
-All four share the same Options shape (just with the type-specific
-name) and the same internal `tokenBucket` helper:
+All four share the same constructor shape and the same internal
+`tokenBucket` helper. Both arguments are required (no defaults), so the
+constructors take them positionally without an Options struct -- the
+same shape as `NewMaxLimitMiddlewareBase`:
 
 ```go
-type {Type}RateLimitMiddlewareOptions struct {
-    Rate  float64 // tokens per second; positive
-    Burst float64 // max burst, bucket starts full at OnStart; positive
-}
+New{Type}RateLimitMiddlewareBase(rate float64, burst int) SimpleMiddlewareBase
 ```
+
+`rate` is tokens per second (must be > 0). `burst` is the maximum
+number of messages a connection may submit in a tight window (must be
+>= 1; the bucket starts full at OnStart).
 
 **Per-connection isolation**: each middleware owns its own bucket
 scoped per connection (created in `OnStart`, stored in the request

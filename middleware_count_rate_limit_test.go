@@ -28,9 +28,7 @@ func sendCountDrain(t *testing.T, recv chan<- *ClientMsg, send <-chan *ServerMsg
 
 func TestCountRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(
-			&CountRateLimitMiddlewareOptions{Rate: 1, Burst: 3},
-		))
+		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(1, 3))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -59,9 +57,7 @@ func TestCountRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 
 func TestCountRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(
-			&CountRateLimitMiddlewareOptions{Rate: 1, Burst: 2},
-		))
+		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(1, 2))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -102,9 +98,7 @@ func TestCountRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 
 func TestCountRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(
-			&CountRateLimitMiddlewareOptions{Rate: 2, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(2, 1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -129,6 +123,7 @@ func TestCountRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 		}
 
 		// Wait 1 second: bucket refilled (capped at burst=1)
+		// (synctest.Test bubble: time.Sleep advances the fake clock, no real wait.)
 		time.Sleep(1 * time.Second)
 
 		third := sendCountDrain(t, recv, send, "s")
@@ -148,9 +143,7 @@ func TestCountRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 
 func TestCountRateLimitMiddleware_NonCountPassThrough(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(
-			&CountRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewCountRateLimitMiddlewareBase(1, 1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -193,9 +186,7 @@ func TestCountRateLimitMiddleware_NonCountPassThrough(t *testing.T) {
 }
 
 func TestCountRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
-	base := NewCountRateLimitMiddlewareBase(
-		&CountRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-	)
+	base := NewCountRateLimitMiddlewareBase(1, 1)
 
 	runConn := func(t *testing.T) *ServerMsg {
 		var got *ServerMsg
@@ -226,29 +217,38 @@ func TestCountRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
 	}
 }
 
-func TestNewCountRateLimitMiddlewareBase_PanicOnNilOpts(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for nil opts")
-		}
-	}()
-	NewCountRateLimitMiddlewareBase(nil)
-}
-
 func TestNewCountRateLimitMiddlewareBase_PanicOnZeroRate(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Rate=0")
+			t.Fatal("expected panic for rate=0")
 		}
 	}()
-	NewCountRateLimitMiddlewareBase(&CountRateLimitMiddlewareOptions{Rate: 0, Burst: 1})
+	NewCountRateLimitMiddlewareBase(0, 1)
+}
+
+func TestNewCountRateLimitMiddlewareBase_PanicOnNegativeRate(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative rate")
+		}
+	}()
+	NewCountRateLimitMiddlewareBase(-1, 1)
 }
 
 func TestNewCountRateLimitMiddlewareBase_PanicOnZeroBurst(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Burst=0")
+			t.Fatal("expected panic for burst=0")
 		}
 	}()
-	NewCountRateLimitMiddlewareBase(&CountRateLimitMiddlewareOptions{Rate: 1, Burst: 0})
+	NewCountRateLimitMiddlewareBase(1, 0)
+}
+
+func TestNewCountRateLimitMiddlewareBase_PanicOnNegativeBurst(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative burst")
+		}
+	}()
+	NewCountRateLimitMiddlewareBase(1, -1)
 }

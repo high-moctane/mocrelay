@@ -28,9 +28,7 @@ func sendReqDrain(t *testing.T, recv chan<- *ClientMsg, send <-chan *ServerMsg, 
 
 func TestReqRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(
-			&ReqRateLimitMiddlewareOptions{Rate: 1, Burst: 3},
-		))
+		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(1, 3))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -59,9 +57,7 @@ func TestReqRateLimitMiddleware_AllowWithinBurst(t *testing.T) {
 
 func TestReqRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(
-			&ReqRateLimitMiddlewareOptions{Rate: 1, Burst: 2},
-		))
+		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(1, 2))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -102,9 +98,7 @@ func TestReqRateLimitMiddleware_RejectAfterBurst(t *testing.T) {
 
 func TestReqRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(
-			&ReqRateLimitMiddlewareOptions{Rate: 2, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(2, 1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -129,6 +123,7 @@ func TestReqRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 		}
 
 		// Wait 1 second: bucket refilled (capped at burst=1)
+		// (synctest.Test bubble: time.Sleep advances the fake clock, no real wait.)
 		time.Sleep(1 * time.Second)
 
 		third := sendReqDrain(t, recv, send, "s")
@@ -148,9 +143,7 @@ func TestReqRateLimitMiddleware_RecoversAfterWait(t *testing.T) {
 
 func TestReqRateLimitMiddleware_NonReqPassThrough(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(
-			&ReqRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-		))
+		middleware := NewSimpleMiddleware(NewReqRateLimitMiddlewareBase(1, 1))
 		handler := middleware(NewNopHandler())
 
 		recv := make(chan *ClientMsg)
@@ -194,9 +187,7 @@ func TestReqRateLimitMiddleware_NonReqPassThrough(t *testing.T) {
 }
 
 func TestReqRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
-	base := NewReqRateLimitMiddlewareBase(
-		&ReqRateLimitMiddlewareOptions{Rate: 1, Burst: 1},
-	)
+	base := NewReqRateLimitMiddlewareBase(1, 1)
 
 	runConn := func(t *testing.T) *ServerMsg {
 		var got *ServerMsg
@@ -227,29 +218,38 @@ func TestReqRateLimitMiddleware_PerConnectionIsolation(t *testing.T) {
 	}
 }
 
-func TestNewReqRateLimitMiddlewareBase_PanicOnNilOpts(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for nil opts")
-		}
-	}()
-	NewReqRateLimitMiddlewareBase(nil)
-}
-
 func TestNewReqRateLimitMiddlewareBase_PanicOnZeroRate(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Rate=0")
+			t.Fatal("expected panic for rate=0")
 		}
 	}()
-	NewReqRateLimitMiddlewareBase(&ReqRateLimitMiddlewareOptions{Rate: 0, Burst: 1})
+	NewReqRateLimitMiddlewareBase(0, 1)
+}
+
+func TestNewReqRateLimitMiddlewareBase_PanicOnNegativeRate(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative rate")
+		}
+	}()
+	NewReqRateLimitMiddlewareBase(-1, 1)
 }
 
 func TestNewReqRateLimitMiddlewareBase_PanicOnZeroBurst(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic for Burst=0")
+			t.Fatal("expected panic for burst=0")
 		}
 	}()
-	NewReqRateLimitMiddlewareBase(&ReqRateLimitMiddlewareOptions{Rate: 1, Burst: 0})
+	NewReqRateLimitMiddlewareBase(1, 0)
+}
+
+func TestNewReqRateLimitMiddlewareBase_PanicOnNegativeBurst(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative burst")
+		}
+	}()
+	NewReqRateLimitMiddlewareBase(1, -1)
 }

@@ -23,12 +23,15 @@ type tokenBucket struct {
 }
 
 // newTokenBucket constructs a token bucket with the given rate and burst,
-// starting full at the given time.
-func newTokenBucket(rate, burst float64, now time.Time) *tokenBucket {
+// starting full at the given time. Burst is taken as int because messages
+// are integral; the bucket itself stores tokens as float64 internally so
+// fractional refills (e.g. half a token after 0.5s at rate=1) accumulate
+// correctly across calls.
+func newTokenBucket(rate float64, burst int, now time.Time) *tokenBucket {
 	return &tokenBucket{
 		rate:       rate,
-		burst:      burst,
-		tokens:     burst,
+		burst:      float64(burst),
+		tokens:     float64(burst),
 		lastUpdate: now,
 	}
 }
