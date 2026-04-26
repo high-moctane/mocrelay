@@ -772,9 +772,17 @@ This is mocrelay's main value proposition.
 
 #### Operational Hardening (NIP-independent) ✅
 
-These middlewares are not tied to any NIP. They throttle abusive client
-behavior at the application layer (after parse, before storage /
-handler dispatch).
+mocrelay throttles abusive per-connection traffic at two complementary
+layers: the **readLoop layer** (a coarse total cap that stalls before
+parse / verify) and the **application layer** (per-message-type
+middlewares that reject after parse). They compose -- enable both for
+defense in depth.
+
+##### Application-layer middlewares
+
+These middlewares run after parse / signature verify and reject
+offending messages with a category-specific reason. Use them to tune
+budgets per message type.
 
 | Middleware | Purpose | Reject |
 |------------|---------|--------|
@@ -807,11 +815,50 @@ interact across types. A typical hardened relay enables all four with
 deliberately different limits — e.g. `Rate=10, Burst=20` for EVENT but
 `Rate=0.1, Burst=3` for AUTH to throttle credential stuffing.
 
-**Out of scope**: per-IP / per-pubkey / global limits, and limiting
-the total WebSocket message rate before parse. Those belong in a
-different layer (the WebSocket readLoop or an external reverse proxy)
-and would couple to identity / network topology that the middleware
-layer cannot see.
+##### readLoop-layer rate limit (`RelayOptions.ReadRate` / `ReadBurst`)
+
+`RelayOptions.ReadRate` / `ReadBurst` is a per-connection token bucket
+that **stalls** the readLoop *before* `conn.Read` when the budget is
+exhausted, rather than rejecting after parse. Throttled clients never
+cost the relay parse or signature-verification CPU; back-pressure
+rides on the TCP receive window once the OS-level WebSocket buffer
+fills, so the slowdown propagates all the way to the misbehaving peer
+without any explicit reject signal.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ReadRate` | float64 | messages/sec; `<= 0` disables (default) |
+| `ReadBurst` | int | bucket capacity; must be `>= 1` if `ReadRate > 0` (constructor panics otherwise) |
+
+Internally uses the same `tokenBucket` helper as the application-layer
+middlewares plus a `waitDuration(now)` method (returns when the next
+token will refill). The `readStall` helper drives the wait loop, runs
+once per readLoop iteration before `conn.Read`, and short-circuits to
+nil on `bucket == nil` so the disabled path costs only a nil check
+per message.
+
+**Observability**: `mocrelay_read_stalls_total` counter increments
+**once per stall window** (one entry into the slow path = one client
+hitting the budget). Inner-loop retries inside `readStall` do not
+double-count, so the rate of this counter is "how many distinct stall
+events" rather than "how many sleep cycles," matching how an operator
+thinks about throttling.
+
+##### Layer composition
+
+readLoop is the **coarse floodgate** (category-agnostic, total
+messages/sec cap, stops parse / verify cost). Middlewares **refine per
+category** (after parse, with full message-type awareness, reject
+semantics). A typical hardened relay sets `ReadRate` / `ReadBurst`
+generously to absorb normal bursts, then tightens category caps via
+the middlewares -- e.g. `ReadRate=50, ReadBurst=100` paired with
+`AuthRateLimit(0.1, 3)` and `EventRateLimit(10, 20)`.
+
+**Out of scope** at both layers: per-IP / per-pubkey / global limits.
+Those belong in an external reverse proxy or a higher-level identity
+layer; mocrelay does not see network topology, and per-pubkey would
+require parse + verify before classification (defeating the readLoop
+layer's CPU savings).
 
 #### Future NIP Implementation Priority
 
