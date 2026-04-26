@@ -72,13 +72,14 @@ func (tb *tokenBucket) allow(now time.Time) bool {
 // allow(): the bucket never credits clock skew, so the reported wait is
 // always the conservative "full refill from current state" duration.
 //
-// Invariant: when allow() would return false (bucket has < 1 token), the
-// returned duration is strictly positive -- never zero. readStall's loop
-// relies on this to avoid a tight retry spin: a zero duration would make
-// time.After(0) fire immediately, allow() would still fail, and the loop
-// would burn CPU until refill caught up. If you ever change the formula
-// here so that it can return 0 for the "no token" case, you must add a
-// floor in readStall as well.
+// Practical note on rounding: in normal use the returned duration is
+// strictly positive whenever allow() would return false. But the
+// float-to-int64 conversion can round (1 - tokens) / rate down to 0 ns
+// in extreme cases -- e.g. tokens = 0.9999999999 with a high rate, where
+// the true deficit is < 1 ns. readStall guards against the resulting
+// tight-spin with a millisecond floor in its sleep loop; treat that
+// floor as part of waitDuration's contract in any caller that wants to
+// drive a stall loop with the same invariant.
 func (tb *tokenBucket) waitDuration(now time.Time) time.Duration {
 	elapsed := now.Sub(tb.lastUpdate).Seconds()
 	tokens := tb.tokens
@@ -132,6 +133,16 @@ func readStall(ctx context.Context, bucket *tokenBucket, onStall func()) error {
 	}
 	for {
 		d := bucket.waitDuration(time.Now())
+		// Floor against rounding-to-zero. waitDuration computes
+		// (1 - tokens) / rate in float and converts to int64 ns, which can
+		// drop to 0 for tiny fractional deficits at high rates. time.After(0)
+		// would fire immediately, allow() would still fail, and the loop
+		// would tight-spin until refill caught up. A 1ms floor keeps the
+		// backoff bounded; real refill windows in production are orders of
+		// magnitude larger so the floor is invisible to legitimate callers.
+		if d <= 0 {
+			d = time.Millisecond
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
