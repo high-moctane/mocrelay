@@ -3,7 +3,6 @@ package mocrelay
 import (
 	"context"
 	"errors"
-	"iter"
 	"time"
 )
 
@@ -87,13 +86,21 @@ func NewStorageHandler(storage Storage, opts *StorageHandlerOptions) Handler {
 			queryTimeout = opts.QueryTimeout
 		}
 	}
-	return NewSimpleHandler(&storageHandler{
+	return &storageHandler{
 		storage:            storage,
 		slowQueryThreshold: threshold,
 		queryTimeout:       queryTimeout,
-	})
+	}
 }
 
+// storageHandler implements [Handler] directly rather than routing through
+// [SimpleHandlerBase]. The reason is QueryTimeout: a per-REQ abort deadline
+// must be visible at the send<-msg boundary as well as during scan. The
+// SimpleHandlerBase path routes yields through a per-connection ctx that
+// is not scoped to the in-flight REQ, so a blocked send (stalled receiver)
+// survives past the timeout indefinitely — the "live but slow client"
+// stall observed on salmon. Owning ServeNostr directly lets us attach the
+// timeout ctx to the exact send sites that can stall.
 type storageHandler struct {
 	storage Storage
 	// slowQueryThreshold is the effective threshold for slow-query logging.
@@ -104,180 +111,289 @@ type storageHandler struct {
 	queryTimeout time.Duration
 }
 
-func (h *storageHandler) OnStart(ctx context.Context) (context.Context, *ServerMsg, error) {
-	return ctx, nil, nil
-}
+// storageHandlerMsgQueueBuffer sizes the internal queue between the
+// recv-drain goroutine and the main loop. Any positive cap guarantees recv
+// drain never fully stops while the main loop is parked on a yield's
+// send<-msg. 10 mirrors [simpleHandlerMsgQueueBuffer] and
+// MergeHandler.childRecvs so all three layers share the same backpressure
+// budget.
+const storageHandlerMsgQueueBuffer = 10
 
-func (h *storageHandler) OnEnd(ctx context.Context) (*ServerMsg, error) {
-	return nil, nil
-}
+func (h *storageHandler) ServeNostr(
+	ctx context.Context,
+	send chan<- *ServerMsg,
+	recv <-chan *ClientMsg,
+) error {
+	// Decouple recv drain from response forwarding. handleReq's iter.Seq
+	// loop forwards events to send<-msg on this same goroutine, so a
+	// stalled receiver would otherwise stop recv drain entirely. Under an
+	// upstream MergeHandler (childRecvs cap 10) that wedges into the
+	// "deadlock spring" shape recorded in CLAUDE.md and the diary entry
+	// for 2026-04-24: childSends fills, yield blocks, recv stops draining,
+	// childRecvs fills, broadcastAll trips BroadcastTimeout, child gets
+	// retired. simpleHandler solved the same problem in #78; the CLAUDE.md
+	// rule "Handlers that implement Handler directly and consume iter.Seq
+	// responses must follow the same shape" applies here verbatim.
+	//
+	// drainCtx is a sub-ctx of the connection ctx. `defer drainCancel()`
+	// runs on every main-loop return path (ctx cancel, msgQueue close /
+	// recv close, handle* error, normal completion), so the drain
+	// goroutine is reliably reaped without depending on caller-side ctx
+	// cancel — important for third-party callers invoking ServeNostr
+	// directly. Recv close additionally closes msgQueue, which drives the
+	// main loop to return nil naturally.
+	drainCtx, drainCancel := context.WithCancel(ctx)
+	defer drainCancel()
+	msgQueue := make(chan *ClientMsg, storageHandlerMsgQueueBuffer)
+	go func() {
+		defer close(msgQueue)
+		for {
+			select {
+			case <-drainCtx.Done():
+				return
+			case msg, ok := <-recv:
+				if !ok {
+					return
+				}
+				select {
+				case <-drainCtx.Done():
+					return
+				case msgQueue <- msg:
+				}
+			}
+		}
+	}()
 
-func (h *storageHandler) HandleMsg(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
-	switch msg.Type {
-	case MsgTypeEvent:
-		return h.handleEvent(ctx, msg)
-	case MsgTypeReq:
-		return h.handleReq(ctx, msg)
-	case MsgTypeClose:
-		// StorageHandler doesn't manage subscriptions, so CLOSE is a no-op
-		return nil, nil
-	case MsgTypeCount:
-		return h.handleCount(ctx, msg)
-	default:
-		return nil, nil
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-msgQueue:
+			if !ok {
+				// recv was closed (drain goroutine returned and
+				// closed msgQueue); client disconnected.
+				return nil
+			}
+			switch msg.Type {
+			case MsgTypeEvent:
+				if err := h.handleEvent(ctx, send, msg); err != nil {
+					return err
+				}
+			case MsgTypeReq:
+				if err := h.handleReq(ctx, send, msg); err != nil {
+					return err
+				}
+			case MsgTypeCount:
+				if err := h.handleCount(ctx, send, msg); err != nil {
+					return err
+				}
+			case MsgTypeClose:
+				// StorageHandler doesn't manage subscriptions, so
+				// CLOSE is a no-op. Pair with RouterHandler via
+				// MergeHandler to route CLOSE to the router.
+			}
+		}
 	}
 }
 
-func (h *storageHandler) handleEvent(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
-	return func(yield func(*ServerMsg) bool) {
-		if msg.Event == nil {
-			yield(NewServerOKMsg("", false, "error: no event provided"))
-			return
-		}
+// sendServerMsg forwards m on send, returning ctx.Err() if ctx is
+// cancelled before the send completes.
+func sendServerMsg(ctx context.Context, send chan<- *ServerMsg, m *ServerMsg) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case send <- m:
+		return nil
+	}
+}
 
-		stored, err := h.storage.Store(ctx, msg.Event)
+func (h *storageHandler) handleEvent(
+	ctx context.Context,
+	send chan<- *ServerMsg,
+	msg *ClientMsg,
+) error {
+	if msg.Event == nil {
+		return sendServerMsg(ctx, send, NewServerOKMsg("", false, "error: no event provided"))
+	}
+	stored, err := h.storage.Store(ctx, msg.Event)
+	if err != nil {
+		LoggerFromContext(ctx).ErrorContext(ctx, "store error", "error", err, "event_id", msg.Event.ID)
+		return sendServerMsg(ctx, send, NewServerOKMsg(msg.Event.ID, false, "error: internal error"))
+	}
+	if stored {
+		return sendServerMsg(ctx, send, NewServerOKMsg(msg.Event.ID, true, ""))
+	}
+	// Not stored: could be duplicate, older replaceable, deleted, or ephemeral.
+	return sendServerMsg(ctx, send, NewServerOKMsg(msg.Event.ID, true, "duplicate: already have this event"))
+}
+
+func (h *storageHandler) handleReq(
+	ctx context.Context,
+	send chan<- *ServerMsg,
+	msg *ClientMsg,
+) error {
+	if msg.SubscriptionID == "" {
+		return nil
+	}
+
+	// start is taken before Query so the iterator-initialization cost
+	// (index seek, snapshot creation, etc.) counts toward total.
+	start := time.Now()
+
+	// queryCtx derives from the connection ctx and expires at QueryTimeout.
+	// It is the abort signal for BOTH scan and send<-msg below. Keeping
+	// the timeout scoped to this function means a stalled receiver can't
+	// outlive the deadline — the "live but slow client" regression.
+	queryCtx := ctx
+	if h.queryTimeout > 0 {
+		var cancel context.CancelFunc
+		queryCtx, cancel = context.WithTimeout(ctx, h.queryTimeout)
+		defer cancel()
+	}
+
+	events, errFn, closeFn := h.storage.Query(queryCtx, msg.Filters)
+	defer closeFn()
+
+	// sendWait accumulates time spent blocked on send<-msg (send wait) as
+	// opposed to scan; they partition total (iter.Seq is pull-driven so a
+	// blocked send also pauses the iterator). Both are still reported
+	// separately because which side owns a stall determines the fix.
+	var sendWait time.Duration
+	eventsSent := 0
+
+	// trySendEvent forwards m on send, watching queryCtx (QueryTimeout)
+	// alongside the normal delivery path. Return values:
+	//   (true,  nil) → queryCtx fired; caller should break and emit CLOSED
+	//   (false, err) → outer ctx cancelled or other fatal; caller returns
+	//   (false, nil) → event delivered; caller continues
+	trySendEvent := func(m *ServerMsg) (aborted bool, err error) {
+		s := time.Now()
+		defer func() { sendWait += time.Since(s) }()
+		select {
+		case send <- m:
+			return false, nil
+		case <-queryCtx.Done():
+			// queryCtx fires for timeout *or* outer-ctx cancel (it is
+			// derived from ctx). Distinguish via ctx.Err.
+			if ctx.Err() != nil {
+				return false, ctx.Err()
+			}
+			return true, nil
+		}
+	}
+
+	for event := range events {
+		// Fast path: timeout fired while scanning / waiting to send the
+		// previous event. Abort before emitting another one.
+		if queryCtx.Err() != nil {
+			break
+		}
+		aborted, err := trySendEvent(NewServerEventMsg(msg.SubscriptionID, event))
 		if err != nil {
-			LoggerFromContext(ctx).ErrorContext(ctx, "store error", "error", err, "event_id", msg.Event.ID)
-			yield(NewServerOKMsg(msg.Event.ID, false, "error: internal error"))
-			return
-		}
-
-		if stored {
-			yield(NewServerOKMsg(msg.Event.ID, true, ""))
-		} else {
-			// Not stored: could be duplicate, older replaceable, deleted, or ephemeral
-			yield(NewServerOKMsg(msg.Event.ID, true, "duplicate: already have this event"))
-		}
-	}, nil
-}
-
-func (h *storageHandler) handleReq(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
-	return func(yield func(*ServerMsg) bool) {
-		if msg.SubscriptionID == "" {
-			return
-		}
-
-		// start is taken before Query so the iterator-initialization cost
-		// (index seek, snapshot creation, etc.) counts toward total.
-		start := time.Now()
-
-		// Apply QueryTimeout by wrapping the context. Storage implementations
-		// that respect ctx will short-circuit; the iteration loop below polls
-		// ctx.Err so implementations that don't (e.g. Pebble) are stopped at
-		// the next event boundary.
-		if h.queryTimeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, h.queryTimeout)
-			defer cancel()
-		}
-
-		events, errFn, closeFn := h.storage.Query(ctx, msg.Filters)
-		defer closeFn()
-
-		// Measure time spent inside yield (send wait) vs outside yield
-		// (scan). iter.Seq is pull-driven so yield blocking also pauses
-		// the storage iterator — the two are entangled. But the split
-		// is still operationally meaningful: a large sendWait relative
-		// to scan points at a stalled client; the reverse points at
-		// filter / index / data-volume costs.
-		var sendWait time.Duration
-		eventsSent := 0
-
-		// yieldTracked wraps yield so every emission contributes to
-		// sendWait, including the trailing EOSE / CLOSED — which matters
-		// when the stall is on the client side (the terminal message
-		// never arrives either).
-		yieldTracked := func(m *ServerMsg) bool {
-			s := time.Now()
-			ok := yield(m)
-			sendWait += time.Since(s)
-			return ok
-		}
-
-		for event := range events {
-			// Fast path first: timeout fired while scanning / waiting to
-			// send the previous event. Abort before emitting another one.
-			if ctx.Err() != nil {
-				yieldTracked(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
-				h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, false)
-				return
-			}
-			if !yieldTracked(NewServerEventMsg(msg.SubscriptionID, event)) {
-				h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, false)
-				return
-			}
-			eventsSent++
-		}
-
-		// Distinguish timeout from other errFn failures. Storage impls
-		// that respect ctx may surface context.DeadlineExceeded via
-		// errFn; treat that the same as a ctx.Err-driven abort.
-		if ctx.Err() != nil || errors.Is(errFn(), context.DeadlineExceeded) {
-			yieldTracked(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
 			h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, false)
-			return
+			return err
 		}
-
-		if err := errFn(); err != nil {
-			LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", err, "subscription_id", msg.SubscriptionID)
-			yieldTracked(NewServerEOSEMsg(msg.SubscriptionID))
-			h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, true)
-			return
+		if aborted {
+			break
 		}
+		eventsSent++
+	}
 
-		// Send EOSE to signal end of stored events
-		yieldTracked(NewServerEOSEMsg(msg.SubscriptionID))
-		h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, true)
-	}, nil
+	// Capture the query result once. Storage.Query's errFn contract does
+	// not promise idempotence across calls, so we must not re-invoke it
+	// after using its return value in the abort-decision predicate below.
+	queryErr := errFn()
+
+	// Terminal-message decision. A queryCtx failure while outer ctx is
+	// still alive means QueryTimeout fired → send CLOSED. Storage impls
+	// that respect ctx may also surface context.DeadlineExceeded via
+	// errFn; treat that the same as a queryCtx-driven abort.
+	if (queryCtx.Err() != nil && ctx.Err() == nil) ||
+		errors.Is(queryErr, context.DeadlineExceeded) {
+		// Emit CLOSED on the outer ctx. If outer ctx is cancelled the
+		// send will just fail and we'll return its err — the connection
+		// is going away anyway.
+		s := time.Now()
+		err := sendServerMsg(ctx, send, NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
+		sendWait += time.Since(s)
+		h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, false)
+		return err
+	}
+
+	if queryErr != nil {
+		LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", queryErr, "subscription_id", msg.SubscriptionID)
+		// Even on query error we still try to send EOSE so the client
+		// isn't left hanging — matches prior behavior.
+	}
+
+	// Send EOSE to signal end of stored events. The slow-query
+	// `completed` flag below is `err == nil`, i.e. true only when the
+	// EOSE actually made it onto send. Treat it as "the relay finished
+	// the subscription cleanly" rather than "the client received it" —
+	// the latter can't be observed from this side. An EOSE that fails
+	// because the outer ctx was cancelled mid-send is logged with
+	// completed=false, matching the abort path's semantics.
+	s := time.Now()
+	err := sendServerMsg(ctx, send, NewServerEOSEMsg(msg.SubscriptionID))
+	sendWait += time.Since(s)
+	h.maybeLogSlowReq(ctx, msg, start, sendWait, eventsSent, err == nil)
+	return err
 }
 
-func (h *storageHandler) handleCount(ctx context.Context, msg *ClientMsg) (iter.Seq[*ServerMsg], error) {
-	return func(yield func(*ServerMsg) bool) {
-		if msg.SubscriptionID == "" {
-			return
+func (h *storageHandler) handleCount(
+	ctx context.Context,
+	send chan<- *ServerMsg,
+	msg *ClientMsg,
+) error {
+	if msg.SubscriptionID == "" {
+		return nil
+	}
+
+	// COUNT emits a single terminal message, so there is no meaningful
+	// send-wait component during iteration — total duration is dominated
+	// by scan. start is taken before Query so iterator-initialization
+	// cost counts toward total.
+	start := time.Now()
+
+	queryCtx := ctx
+	if h.queryTimeout > 0 {
+		var cancel context.CancelFunc
+		queryCtx, cancel = context.WithTimeout(ctx, h.queryTimeout)
+		defer cancel()
+	}
+
+	events, errFn, closeFn := h.storage.Query(queryCtx, msg.Filters)
+	defer closeFn()
+
+	var count uint64
+	for range events {
+		if queryCtx.Err() != nil {
+			break
 		}
+		count++
+	}
 
-		// COUNT emits a single terminal message, so there is no
-		// meaningful send-wait component during iteration — total
-		// duration is dominated by scan. start is taken before Query so
-		// iterator-initialization cost counts toward total.
-		start := time.Now()
+	// Capture the query result once; see handleReq for why errFn must not
+	// be re-invoked.
+	queryErr := errFn()
 
-		if h.queryTimeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, h.queryTimeout)
-			defer cancel()
-		}
-
-		events, errFn, closeFn := h.storage.Query(ctx, msg.Filters)
-		defer closeFn()
-
-		count := uint64(0)
-		for range events {
-			if ctx.Err() != nil {
-				yield(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
-				h.maybeLogSlowCount(ctx, msg, start, count)
-				return
-			}
-			count++
-		}
-
-		if ctx.Err() != nil || errors.Is(errFn(), context.DeadlineExceeded) {
-			yield(NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
-			h.maybeLogSlowCount(ctx, msg, start, count)
-			return
-		}
-
-		if err := errFn(); err != nil {
-			LoggerFromContext(ctx).WarnContext(ctx, "count query error", "error", err, "subscription_id", msg.SubscriptionID)
-			yield(NewServerCountMsg(msg.SubscriptionID, 0, nil))
-			h.maybeLogSlowCount(ctx, msg, start, count)
-			return
-		}
-
-		yield(NewServerCountMsg(msg.SubscriptionID, count, nil))
+	if (queryCtx.Err() != nil && ctx.Err() == nil) ||
+		errors.Is(queryErr, context.DeadlineExceeded) {
+		err := sendServerMsg(ctx, send, NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
 		h.maybeLogSlowCount(ctx, msg, start, count)
-	}, nil
+		return err
+	}
+
+	if queryErr != nil {
+		LoggerFromContext(ctx).WarnContext(ctx, "count query error", "error", queryErr, "subscription_id", msg.SubscriptionID)
+		sendErr := sendServerMsg(ctx, send, NewServerCountMsg(msg.SubscriptionID, 0, nil))
+		h.maybeLogSlowCount(ctx, msg, start, count)
+		return sendErr
+	}
+
+	err := sendServerMsg(ctx, send, NewServerCountMsg(msg.SubscriptionID, count, nil))
+	h.maybeLogSlowCount(ctx, msg, start, count)
+	return err
 }
 
 // maybeLogSlowReq emits a Warn log when the REQ total duration exceeds the
