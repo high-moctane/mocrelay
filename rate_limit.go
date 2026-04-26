@@ -1,6 +1,7 @@
 package mocrelay
 
 import (
+	"context"
 	"math"
 	"time"
 )
@@ -81,4 +82,46 @@ func (tb *tokenBucket) waitDuration(now time.Time) time.Duration {
 	}
 	needed := 1 - tokens
 	return time.Duration(needed / tb.rate * float64(time.Second))
+}
+
+// readStall blocks until bucket allows one token, or ctx is done.
+//
+// This drives the readLoop-level rate limit (RelayOptions.ReadRate /
+// ReadBurst), where the policy is to STALL the read rather than reject
+// the message: the WebSocket conn.Read is simply not invoked until a
+// token is available. Back-pressure propagates naturally to the client
+// via the TCP receive window once the OS buffer fills.
+//
+// A nil bucket means rate limiting is disabled and readStall returns
+// immediately without consulting ctx -- the caller pays no overhead.
+//
+// onStall is invoked exactly once per stall window: when the fast path
+// fails and the slow loop is entered. Subsequent allow() failures inside
+// the loop (which happen if the clock jitters or refill rate is very
+// low) do not re-trigger it. Pass nil to skip. This shape lets callers
+// increment a "stalls" Counter (one stall = one client throttled at
+// least once) without double-counting noise from the inner loop.
+//
+// Returns nil on success, ctx.Err() on cancel.
+func readStall(ctx context.Context, bucket *tokenBucket, onStall func()) error {
+	if bucket == nil {
+		return nil
+	}
+	if bucket.allow(time.Now()) {
+		return nil
+	}
+	if onStall != nil {
+		onStall()
+	}
+	for {
+		d := bucket.waitDuration(time.Now())
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(d):
+		}
+		if bucket.allow(time.Now()) {
+			return nil
+		}
+	}
 }

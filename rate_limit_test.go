@@ -1,7 +1,9 @@
 package mocrelay
 
 import (
+	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -206,4 +208,74 @@ func TestTokenBucket_WaitDurationBackwardsClockIgnored(t *testing.T) {
 	if d := tb.waitDuration(earlier); d != time.Second {
 		t.Fatalf("expected 1s with backwards clock, got %v", d)
 	}
+}
+
+func TestReadStall_NilBucket(t *testing.T) {
+	// A nil bucket means rate limiting is disabled. readStall must return
+	// immediately without ever consulting ctx.
+	if err := readStall(context.Background(), nil, nil); err != nil {
+		t.Fatalf("expected nil error with nil bucket, got %v", err)
+	}
+}
+
+func TestReadStall_FastPathDoesNotCallOnStall(t *testing.T) {
+	// When the bucket has tokens available, readStall returns immediately
+	// and onStall must NOT fire -- the callback exists to count actual
+	// stalls, not every successful read.
+	now := time.Now()
+	bucket := newTokenBucket(1, 3, now)
+
+	called := 0
+	if err := readStall(context.Background(), bucket, func() { called++ }); err != nil {
+		t.Fatalf("expected nil err, got %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("onStall called %d times on fast path; expected 0", called)
+	}
+}
+
+func TestReadStall_StallsUntilTokenAvailable(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		bucket := newTokenBucket(1, 1, time.Now())
+		// Consume the burst -- next allow needs ~1s of refill.
+		if !bucket.allow(time.Now()) {
+			t.Fatal("expected initial allow")
+		}
+
+		called := 0
+		start := time.Now()
+		err := readStall(context.Background(), bucket, func() { called++ })
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatalf("expected nil err, got %v", err)
+		}
+		// At rate=1, full refill takes ~1s. synctest fake clock should
+		// advance time deterministically to that moment.
+		if elapsed < time.Second {
+			t.Fatalf("expected >=1s stall, got %v", elapsed)
+		}
+		// onStall fires exactly once per stall window: when the slow path
+		// kicks in. Subsequent re-checks inside the loop must not double-count.
+		if called != 1 {
+			t.Fatalf("expected onStall called once, got %d", called)
+		}
+	})
+}
+
+func TestReadStall_CtxCancelExits(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		bucket := newTokenBucket(1, 1, time.Now())
+		if !bucket.allow(time.Now()) {
+			t.Fatal("expected initial allow")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		// Cancel partway through the stall -- well before the 1s refill.
+		time.AfterFunc(100*time.Millisecond, cancel)
+
+		err := readStall(ctx, bucket, nil)
+		if err != context.Canceled {
+			t.Fatalf("expected context.Canceled, got %v", err)
+		}
+	})
 }

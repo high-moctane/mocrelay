@@ -136,3 +136,38 @@ func TestRelay_Shutdown(t *testing.T) {
 		}
 	})
 }
+
+func TestNewRelay_ReadRateLimitValidation(t *testing.T) {
+	t.Run("disabled accepts any ReadBurst", func(t *testing.T) {
+		// ReadRate <= 0 disables the limit and ReadBurst is ignored entirely,
+		// so even ReadBurst=0 (the zero value) must not panic.
+		_ = NewRelay(NewNopHandler(), &RelayOptions{ReadRate: 0, ReadBurst: 0})
+		_ = NewRelay(NewNopHandler(), &RelayOptions{ReadRate: -1, ReadBurst: -5})
+	})
+
+	t.Run("enabled with valid burst", func(t *testing.T) {
+		_ = NewRelay(NewNopHandler(), &RelayOptions{ReadRate: 10, ReadBurst: 1})
+		_ = NewRelay(NewNopHandler(), &RelayOptions{ReadRate: 10, ReadBurst: 100})
+	})
+
+	t.Run("enabled with invalid burst panics", func(t *testing.T) {
+		// Burst < 1 with rate > 0 means a freshly-connected client would
+		// stall on its very first read for 1/rate seconds -- almost
+		// certainly a misconfiguration. Fail loudly at construction time
+		// rather than silently degrading. Mirrors the per-message-type
+		// rate limit middlewares.
+		for _, burst := range []int{0, -1, -100} {
+			func() {
+				defer func() {
+					if recover() == nil {
+						t.Errorf("expected panic for ReadBurst=%d, got none", burst)
+					}
+				}()
+				_ = NewRelay(NewNopHandler(), &RelayOptions{
+					ReadRate:  10,
+					ReadBurst: burst,
+				})
+			}()
+		}
+	})
+}

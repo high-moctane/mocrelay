@@ -29,6 +29,16 @@ type relayMetrics struct {
 	// writeLoop. Diagnoses slow clients / saturated send paths that can
 	// cause write timeouts and ping-starvation.
 	WSWriteDuration prometheus.Histogram
+
+	// ReadStallsTotal counts how many times the readLoop has been forced
+	// to wait on the per-connection read rate limit (RelayOptions.ReadRate
+	// / ReadBurst). Counted at most once per stall window: a client that
+	// is throttled across many consecutive reads bumps this once per slow
+	// path entry, not per inner-loop retry.
+	//
+	// Zero on relays that don't configure ReadRate; nonzero rates here
+	// mean at least one client is exceeding the configured read budget.
+	ReadStallsTotal prometheus.Counter
 }
 
 // newRelayMetrics creates and registers Relay metrics with reg.
@@ -77,6 +87,12 @@ func newRelayMetrics(reg prometheus.Registerer) *relayMetrics {
 			Help:    "Time spent in each WebSocket conn.Write call in the writeLoop",
 			Buckets: prometheus.DefBuckets,
 		}),
+		ReadStallsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "mocrelay_read_stalls_total",
+			Help: "Total number of times the readLoop stalled waiting on the " +
+				"per-connection read rate limit (RelayOptions.ReadRate). Counted " +
+				"once per stall window, not per inner-loop retry.",
+		}),
 	}
 
 	reg.MustRegister(
@@ -88,6 +104,7 @@ func newRelayMetrics(reg prometheus.Registerer) *relayMetrics {
 		m.WSParseErrors,
 		m.WSWriteErrors,
 		m.WSWriteDuration,
+		m.ReadStallsTotal,
 	)
 
 	return m
