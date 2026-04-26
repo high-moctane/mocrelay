@@ -770,3 +770,97 @@ func TestStorageHandler_QueryTimeout_ReqAbortsOnStalledConsumer(t *testing.T) {
 		<-errCh
 	})
 }
+
+// TestStorageHandler_DrainsRecvWhileYieldBlocks asserts that storageHandler
+// keeps draining its recv channel while a REQ response is parked on
+// send<-msg. The motivating concern is the "deadlock spring" shape recorded
+// in CLAUDE.md: when a Handler implements [Handler] directly (as
+// storageHandler does, since #76) and consumes its iter.Seq response on the
+// same goroutine that reads recv, a stalled send pauses recv drain — which
+// in turn wedges upstream broadcasters such as MergeHandler on their own
+// child-recv buffers (childRecvs cap 10) until BroadcastTimeout retires the
+// child.
+//
+// simpleHandler addressed this in #78 by spawning a dedicated recv-drain
+// goroutine fed by an internal cap-10 queue. The CLAUDE.md rule "Handlers
+// that implement Handler directly and consume iter.Seq responses must
+// follow the same shape" applies to storageHandler too: this test exercises
+// that contract.
+func TestStorageHandler_DrainsRecvWhileYieldBlocks(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		base := NewInMemoryStorage()
+		// Two events: the first event is delivered into the unbuffered send
+		// below, the second yield then blocks on send<-msg. That blocked
+		// send is the condition we want to verify recv drain survives.
+		for i := range 2 {
+			base.Store(t.Context(), makeEvent(
+				fmt.Sprintf("event-%02d", i),
+				"pubkey01",
+				1,
+				int64(100+i),
+			))
+		}
+
+		// QueryTimeout left at zero (disabled) on purpose: the test must
+		// observe recv drain survival on the indefinite-stall path that
+		// QueryTimeout would otherwise mask.
+		handler := NewStorageHandler(base, nil)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		send := make(chan *ServerMsg) // unbuffered: 2nd yield stalls
+		recv := make(chan *ClientMsg) // unbuffered: drain pauses are observable
+
+		done := make(chan error, 1)
+		go func() { done <- handler.ServeNostr(ctx, send, recv) }()
+
+		// Push a REQ. The handler will yield event-00, drain it via the
+		// receive on `send` below, then yield event-01 — at which point
+		// the main loop is parked on send<-msg with `send` having no
+		// further reader.
+		recv <- &ClientMsg{
+			Type:           MsgTypeReq,
+			SubscriptionID: "sub1",
+			Filters:        []*ReqFilter{{}},
+		}
+		first := <-send
+		require.Equal(t, MsgTypeEvent, first.Type)
+		synctest.Wait()
+
+		// Push a second client message. With concurrent recv drain (the
+		// desired behaviour), this push completes even though the main
+		// loop is still parked on the first response's stalled send. We
+		// don't need the handler to *act on* the second message — just to
+		// keep flowing recv. Push from a helper goroutine so we can
+		// distinguish "push succeeded" from "push is still blocked"; make
+		// it ctx-aware so the final cancel cleanup reliably reaps it.
+		delivered := make(chan struct{})
+		go func() {
+			select {
+			case recv <- &ClientMsg{Type: MsgTypeEvent}:
+			case <-ctx.Done():
+			}
+			close(delivered)
+		}()
+		synctest.Wait()
+
+		var drainStalled bool
+		select {
+		case <-delivered:
+			t.Log("storageHandler drained recv while yield was blocked (ideal)")
+		default:
+			drainStalled = true
+		}
+
+		cancel()
+		synctest.Wait()
+		<-done
+
+		if drainStalled {
+			t.Fatal("storageHandler stopped draining recv while a REQ " +
+				"response was blocked on send — this is the 'deadlock " +
+				"spring' shape that wedges MergeHandler childRecvs at " +
+				"production scale (CLAUDE.md iter.Seq recv-drain rule).")
+		}
+	})
+}
