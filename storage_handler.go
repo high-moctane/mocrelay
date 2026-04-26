@@ -111,17 +111,67 @@ type storageHandler struct {
 	queryTimeout time.Duration
 }
 
+// storageHandlerMsgQueueBuffer sizes the internal queue between the
+// recv-drain goroutine and the main loop. Any positive cap guarantees recv
+// drain never fully stops while the main loop is parked on a yield's
+// send<-msg. 10 mirrors [simpleHandlerMsgQueueBuffer] and
+// MergeHandler.childRecvs so all three layers share the same backpressure
+// budget.
+const storageHandlerMsgQueueBuffer = 10
+
 func (h *storageHandler) ServeNostr(
 	ctx context.Context,
 	send chan<- *ServerMsg,
 	recv <-chan *ClientMsg,
 ) error {
+	// Decouple recv drain from response forwarding. handleReq's iter.Seq
+	// loop forwards events to send<-msg on this same goroutine, so a
+	// stalled receiver would otherwise stop recv drain entirely. Under an
+	// upstream MergeHandler (childRecvs cap 10) that wedges into the
+	// "deadlock spring" shape recorded in CLAUDE.md and the diary entry
+	// for 2026-04-24: childSends fills, yield blocks, recv stops draining,
+	// childRecvs fills, broadcastAll trips BroadcastTimeout, child gets
+	// retired. simpleHandler solved the same problem in #78; the CLAUDE.md
+	// rule "Handlers that implement Handler directly and consume iter.Seq
+	// responses must follow the same shape" applies here verbatim.
+	//
+	// drainCtx is a sub-ctx of the connection ctx. `defer drainCancel()`
+	// runs on every main-loop return path (ctx cancel, msgQueue close /
+	// recv close, handle* error, normal completion), so the drain
+	// goroutine is reliably reaped without depending on caller-side ctx
+	// cancel — important for third-party callers invoking ServeNostr
+	// directly. Recv close additionally closes msgQueue, which drives the
+	// main loop to return nil naturally.
+	drainCtx, drainCancel := context.WithCancel(ctx)
+	defer drainCancel()
+	msgQueue := make(chan *ClientMsg, storageHandlerMsgQueueBuffer)
+	go func() {
+		defer close(msgQueue)
+		for {
+			select {
+			case <-drainCtx.Done():
+				return
+			case msg, ok := <-recv:
+				if !ok {
+					return
+				}
+				select {
+				case <-drainCtx.Done():
+					return
+				case msgQueue <- msg:
+				}
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case msg, ok := <-recv:
+		case msg, ok := <-msgQueue:
 			if !ok {
+				// recv was closed (drain goroutine returned and
+				// closed msgQueue); client disconnected.
 				return nil
 			}
 			switch msg.Type {
