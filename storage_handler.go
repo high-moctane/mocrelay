@@ -299,12 +299,17 @@ func (h *storageHandler) handleReq(
 		eventsSent++
 	}
 
+	// Capture the query result once. Storage.Query's errFn contract does
+	// not promise idempotence across calls, so we must not re-invoke it
+	// after using its return value in the abort-decision predicate below.
+	queryErr := errFn()
+
 	// Terminal-message decision. A queryCtx failure while outer ctx is
 	// still alive means QueryTimeout fired → send CLOSED. Storage impls
 	// that respect ctx may also surface context.DeadlineExceeded via
 	// errFn; treat that the same as a queryCtx-driven abort.
 	if (queryCtx.Err() != nil && ctx.Err() == nil) ||
-		errors.Is(errFn(), context.DeadlineExceeded) {
+		errors.Is(queryErr, context.DeadlineExceeded) {
 		// Emit CLOSED on the outer ctx. If outer ctx is cancelled the
 		// send will just fail and we'll return its err — the connection
 		// is going away anyway.
@@ -315,13 +320,19 @@ func (h *storageHandler) handleReq(
 		return err
 	}
 
-	if err := errFn(); err != nil {
-		LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", err, "subscription_id", msg.SubscriptionID)
+	if queryErr != nil {
+		LoggerFromContext(ctx).WarnContext(ctx, "query error", "error", queryErr, "subscription_id", msg.SubscriptionID)
 		// Even on query error we still try to send EOSE so the client
 		// isn't left hanging — matches prior behavior.
 	}
 
-	// Send EOSE to signal end of stored events.
+	// Send EOSE to signal end of stored events. The slow-query
+	// `completed` flag below is `err == nil`, i.e. true only when the
+	// EOSE actually made it onto send. Treat it as "the relay finished
+	// the subscription cleanly" rather than "the client received it" —
+	// the latter can't be observed from this side. An EOSE that fails
+	// because the outer ctx was cancelled mid-send is logged with
+	// completed=false, matching the abort path's semantics.
 	s := time.Now()
 	err := sendServerMsg(ctx, send, NewServerEOSEMsg(msg.SubscriptionID))
 	sendWait += time.Since(s)
@@ -362,15 +373,19 @@ func (h *storageHandler) handleCount(
 		count++
 	}
 
+	// Capture the query result once; see handleReq for why errFn must not
+	// be re-invoked.
+	queryErr := errFn()
+
 	if (queryCtx.Err() != nil && ctx.Err() == nil) ||
-		errors.Is(errFn(), context.DeadlineExceeded) {
+		errors.Is(queryErr, context.DeadlineExceeded) {
 		err := sendServerMsg(ctx, send, NewServerClosedMsg(msg.SubscriptionID, queryTimeoutCLOSEDReason))
 		h.maybeLogSlowCount(ctx, msg, start, count)
 		return err
 	}
 
-	if err := errFn(); err != nil {
-		LoggerFromContext(ctx).WarnContext(ctx, "count query error", "error", err, "subscription_id", msg.SubscriptionID)
+	if queryErr != nil {
+		LoggerFromContext(ctx).WarnContext(ctx, "count query error", "error", queryErr, "subscription_id", msg.SubscriptionID)
 		sendErr := sendServerMsg(ctx, send, NewServerCountMsg(msg.SubscriptionID, 0, nil))
 		h.maybeLogSlowCount(ctx, msg, start, count)
 		return sendErr
