@@ -71,6 +71,14 @@ func (tb *tokenBucket) allow(now time.Time) bool {
 // Backwards or zero elapsed time is treated as zero elapsed, mirroring
 // allow(): the bucket never credits clock skew, so the reported wait is
 // always the conservative "full refill from current state" duration.
+//
+// Invariant: when allow() would return false (bucket has < 1 token), the
+// returned duration is strictly positive -- never zero. readStall's loop
+// relies on this to avoid a tight retry spin: a zero duration would make
+// time.After(0) fire immediately, allow() would still fail, and the loop
+// would burn CPU until refill caught up. If you ever change the formula
+// here so that it can return 0 for the "no token" case, you must add a
+// floor in readStall as well.
 func (tb *tokenBucket) waitDuration(now time.Time) time.Duration {
 	elapsed := now.Sub(tb.lastUpdate).Seconds()
 	tokens := tb.tokens
@@ -103,9 +111,18 @@ func (tb *tokenBucket) waitDuration(now time.Time) time.Duration {
 // least once) without double-counting noise from the inner loop.
 //
 // Returns nil on success, ctx.Err() on cancel.
+//
+// A pre-canceled ctx short-circuits before allow() is consulted, so a
+// connection that's already going away cannot debit a token from the
+// bucket. This keeps readStall consistent with the readLoop's other ctx
+// observation points -- conn.Read(ctx) would also fail immediately on a
+// canceled ctx -- and avoids burning bucket capacity on dead conns.
 func readStall(ctx context.Context, bucket *tokenBucket, onStall func()) error {
 	if bucket == nil {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if bucket.allow(time.Now()) {
 		return nil

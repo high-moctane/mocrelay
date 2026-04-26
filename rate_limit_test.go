@@ -234,6 +234,33 @@ func TestReadStall_FastPathDoesNotCallOnStall(t *testing.T) {
 	}
 }
 
+func TestReadStall_PreCanceledCtxRejectsBeforeAllow(t *testing.T) {
+	// If ctx is already canceled at entry, readStall must return ctx.Err()
+	// without consuming a token from the bucket -- even when the bucket has
+	// tokens available. This keeps the readLoop's ctx semantics consistent
+	// across both layers (the subsequent conn.Read(ctx) would also fail
+	// immediately) and avoids burning bucket capacity on a connection that
+	// is already going away.
+	bucket := newTokenBucket(1, 5, time.Now())
+	beforeTokens := bucket.tokens
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	called := 0
+	err := readStall(ctx, bucket, func() { called++ })
+	if err != context.Canceled {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("onStall must not fire on pre-canceled ctx, got %d calls", called)
+	}
+	if bucket.tokens != beforeTokens {
+		t.Fatalf("bucket must not be debited on pre-canceled ctx: before=%v after=%v",
+			beforeTokens, bucket.tokens)
+	}
+}
+
 func TestReadStall_StallsUntilTokenAvailable(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		bucket := newTokenBucket(1, 1, time.Now())
