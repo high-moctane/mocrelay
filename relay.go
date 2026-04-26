@@ -25,6 +25,8 @@ type Relay struct {
 	maxMessageLength int64
 	pingInterval     time.Duration
 	pingTimeout      time.Duration
+	readRate         float64
+	readBurst        int
 	info             *RelayInfo
 	metrics          *relayMetrics
 	rejectionMetrics *rejectionMetrics
@@ -59,6 +61,31 @@ type RelayOptions struct {
 	// If a pong or write does not complete within this duration, the connection is closed.
 	// Default: 10 seconds
 	PingTimeout time.Duration
+
+	// ReadRate is the maximum messages-per-second the readLoop will pull
+	// off the WebSocket on a single connection. When the per-connection
+	// budget is exhausted the readLoop STALLS -- conn.Read is simply not
+	// invoked until a token refills -- so back-pressure propagates to the
+	// client through the TCP receive window. The relay never spends parse
+	// or signature-verification CPU on throttled traffic.
+	//
+	// This is the readLoop-level total cap and is independent of the
+	// per-message-type rate limit middlewares (Event/Req/Count/Auth),
+	// which run after parse and let operators tune category-specific
+	// budgets. Both layers compose: readLoop acts first as a coarse
+	// floodgate, middlewares then refine.
+	//
+	// Zero or negative disables the limit (default).
+	ReadRate float64
+
+	// ReadBurst is the bucket capacity for the readLoop rate limit. Must
+	// be >= 1 if ReadRate > 0; the constructor panics on misconfiguration
+	// rather than silently degrading. The bucket starts full at OnStart
+	// so a freshly-connected client can burst up to ReadBurst messages
+	// immediately, then is throttled to ReadRate long-term.
+	//
+	// Ignored when ReadRate <= 0.
+	ReadBurst int
 
 	// Info is the NIP-11 Relay Information Document.
 	// If set, the relay will respond to HTTP requests with
@@ -123,12 +150,18 @@ func NewRelay(handler Handler, opts *RelayOptions) *Relay {
 		pingTimeout = 10 * time.Second
 	}
 
+	if opts.ReadRate > 0 && opts.ReadBurst < 1 {
+		panic("mocrelay: RelayOptions.ReadBurst must be >= 1 when ReadRate > 0")
+	}
+
 	return &Relay{
 		handler:          handler,
 		logger:           logger,
 		maxMessageLength: maxMessageLength,
 		pingInterval:     pingInterval,
 		pingTimeout:      pingTimeout,
+		readRate:         opts.ReadRate,
+		readBurst:        opts.ReadBurst,
 		info:             opts.Info,
 		metrics:          newRelayMetrics(opts.Registerer),
 		rejectionMetrics: newRejectionMetrics(opts.Registerer),
@@ -330,7 +363,26 @@ func (r *Relay) readLoop(
 	recv chan<- *ClientMsg,
 	send chan<- *ServerMsg,
 ) error {
+	// Per-connection token bucket for the readLoop-level rate limit.
+	// Disabled when ReadRate <= 0; readStall short-circuits on nil bucket.
+	var bucket *tokenBucket
+	if r.readRate > 0 {
+		bucket = newTokenBucket(r.readRate, r.readBurst, time.Now())
+	}
+
+	var onStall func()
+	if r.metrics != nil {
+		onStall = r.metrics.ReadStallsTotal.Inc
+	}
+
 	for {
+		// Stall before conn.Read so a throttled client never costs us a
+		// frame read, parse, or signature verify. Back-pressure rides on
+		// the TCP receive window once the OS-level WebSocket buffer fills.
+		if err := readStall(ctx, bucket, onStall); err != nil {
+			return err
+		}
+
 		typ, payload, err := conn.Read(ctx)
 		if err != nil {
 			return err
