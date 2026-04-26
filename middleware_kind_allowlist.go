@@ -8,7 +8,14 @@ import (
 // whose kind is NOT in kinds. This is useful for restricting a relay to a
 // well-known set of kinds (e.g., the kinds documented in the NIPs README).
 //
-// An empty allowlist rejects all events.
+// An empty allowlist rejects all events. Range-style kinds (e.g., NIP-90 Job
+// Request 5000-5999) are expanded into individual entries by the caller:
+//
+//	kinds := []int64{0, 1, 3}
+//	for k := int64(5000); k <= 5999; k++ {
+//		kinds = append(kinds, k)
+//	}
+//	mw := NewKindAllowlistMiddlewareBase(kinds)
 func NewKindAllowlistMiddlewareBase(kinds []int64) SimpleMiddlewareBase {
 	allowlist := make(map[int64]struct{}, len(kinds))
 	for _, k := range kinds {
@@ -39,7 +46,7 @@ func (m *kindAllowlistMiddleware) HandleClientMsg(ctx context.Context, msg *Clie
 	}
 
 	if _, allowed := m.allowlist[msg.Event.Kind]; !allowed {
-		logRejection(ctx, "kind_allowlist", "kind_not_allowed",
+		logRejection(ctx, "kind_allowlist", "kind_blocked",
 			"event_id", msg.Event.ID,
 			"kind", msg.Event.Kind,
 		)
