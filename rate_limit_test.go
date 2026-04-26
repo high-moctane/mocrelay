@@ -112,3 +112,98 @@ func TestTokenBucket_BackwardsClockIgnored(t *testing.T) {
 		t.Fatal("expected reject when clock moves backwards")
 	}
 }
+
+func TestTokenBucket_WaitDurationZeroWhenAvailable(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tb := newTokenBucket(1, 3, now)
+
+	// Initially full, waitDuration must be 0.
+	if d := tb.waitDuration(now); d != 0 {
+		t.Fatalf("expected 0 at full bucket, got %v", d)
+	}
+
+	// After consuming 1 of 3, still 2 left -> waitDuration still 0.
+	if !tb.allow(now) {
+		t.Fatal("expected initial allow")
+	}
+	if d := tb.waitDuration(now); d != 0 {
+		t.Fatalf("expected 0 with tokens remaining, got %v", d)
+	}
+}
+
+func TestTokenBucket_WaitDurationAfterExhaustion(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tb := newTokenBucket(2, 1, now) // 2 tokens/sec, burst 1
+
+	// Exhaust the burst.
+	if !tb.allow(now) {
+		t.Fatal("expected initial allow")
+	}
+
+	// At rate=2, one token refills in 0.5s exactly.
+	if d := tb.waitDuration(now); d != 500*time.Millisecond {
+		t.Fatalf("expected 500ms after exhaustion, got %v", d)
+	}
+}
+
+func TestTokenBucket_WaitDurationAccountsForElapsed(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tb := newTokenBucket(1, 1, now) // 1 token/sec, burst 1
+
+	// Exhaust the burst.
+	if !tb.allow(now) {
+		t.Fatal("expected initial allow")
+	}
+
+	// After 0.3s elapsed, 0.3 token has accumulated lazily; we still need
+	// 0.7 more, which at rate=1 means 0.7s of additional wait.
+	now = now.Add(300 * time.Millisecond)
+	if d := tb.waitDuration(now); d != 700*time.Millisecond {
+		t.Fatalf("expected 700ms with 0.3s elapsed, got %v", d)
+	}
+}
+
+func TestTokenBucket_WaitDurationDoesNotMutateState(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tb := newTokenBucket(1, 1, now) // 1 token/sec, burst 1
+
+	// Exhaust the burst.
+	if !tb.allow(now) {
+		t.Fatal("expected initial allow")
+	}
+
+	// Calling waitDuration repeatedly with the same `now` must return the
+	// same answer -- it must not credit elapsed time on its own.
+	later := now.Add(400 * time.Millisecond)
+	d1 := tb.waitDuration(later)
+	d2 := tb.waitDuration(later)
+	if d1 != d2 {
+		t.Fatalf("waitDuration not idempotent: %v vs %v", d1, d2)
+	}
+
+	// And after we wait the reported duration, allow at that exact instant
+	// must succeed -- proving waitDuration isn't lying about when refill
+	// completes (and hasn't silently consumed a token already).
+	target := later.Add(d1)
+	if !tb.allow(target) {
+		t.Fatalf("expected allow at later+waitDuration (=%v), got reject", target)
+	}
+}
+
+func TestTokenBucket_WaitDurationBackwardsClockIgnored(t *testing.T) {
+	// Mirroring TestTokenBucket_BackwardsClockIgnored: a backwards clock
+	// must not credit negative elapsed time. waitDuration with `earlier`
+	// should report the full refill window (1s at rate=1), same as if no
+	// time had passed at all -- never a negative or wrapped duration.
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tb := newTokenBucket(1, 1, start)
+
+	if !tb.allow(start) {
+		t.Fatal("expected initial allow")
+	}
+
+	earlier := start.Add(-10 * time.Second)
+	if d := tb.waitDuration(earlier); d != time.Second {
+		t.Fatalf("expected 1s with backwards clock, got %v", d)
+	}
+}

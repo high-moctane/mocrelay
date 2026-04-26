@@ -6,11 +6,12 @@ import (
 )
 
 // tokenBucket is an internal token-bucket rate limiter used by the
-// per-message-type rate limit middlewares (Event/Req/Count/Auth).
+// per-message-type rate limit middlewares (Event/Req/Count/Auth) and by
+// the Relay's readLoop-level stall (RelayOptions.ReadRate).
 //
 // It is intentionally not safe for concurrent use: each instance is owned
-// by a single connection and accessed only from the simpleMiddlewarePipelineLoop
-// goroutine that drives that connection.
+// by a single connection and accessed only from the goroutine that drives
+// that connection (a simpleMiddlewarePipelineLoop, or the readLoop itself).
 //
 // The bucket starts full (tokens = burst) so a freshly-connected client can
 // burst up to `burst` requests immediately, then is rate-limited to `rate`
@@ -55,4 +56,29 @@ func (tb *tokenBucket) allow(now time.Time) bool {
 		return true
 	}
 	return false
+}
+
+// waitDuration returns how long the caller must wait before allow() would
+// next succeed. Returns 0 if a token is already available.
+//
+// This is a pure read of the bucket state: it does not consume tokens and
+// does not advance lastUpdate, so calling it twice in a row with the same
+// `now` returns the same answer. Callers driving a stall loop call
+// waitDuration to compute a sleep target, sleep, then call allow() to
+// actually claim the token.
+//
+// Backwards or zero elapsed time is treated as zero elapsed, mirroring
+// allow(): the bucket never credits clock skew, so the reported wait is
+// always the conservative "full refill from current state" duration.
+func (tb *tokenBucket) waitDuration(now time.Time) time.Duration {
+	elapsed := now.Sub(tb.lastUpdate).Seconds()
+	tokens := tb.tokens
+	if elapsed > 0 {
+		tokens = math.Min(tb.burst, tokens+elapsed*tb.rate)
+	}
+	if tokens >= 1 {
+		return 0
+	}
+	needed := 1 - tokens
+	return time.Duration(needed / tb.rate * float64(time.Second))
 }
