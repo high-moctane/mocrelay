@@ -770,6 +770,49 @@ This is mocrelay's main value proposition.
 | `ProtectedEventsMiddleware` ✅ | NIP-70 | Prevent republishing `["-"]` tagged events (requires NIP-42 AUTH) |
 | `CompositeStorage` ✅ | NIP-50 | Full-text search via Bleve with CJK support |
 
+#### Operational Hardening (NIP-independent) ✅
+
+These middlewares are not tied to any NIP. They throttle abusive client
+behavior at the application layer (after parse, before storage /
+handler dispatch).
+
+| Middleware | Purpose | Reject |
+|------------|---------|--------|
+| `EventRateLimit` ✅ | per-connection EVENT rate limit | OK `accepted=false` `"rate-limited: too many events"` |
+| `ReqRateLimit` ✅ | per-connection REQ rate limit | CLOSED `"rate-limited: too many subscriptions"` |
+| `CountRateLimit` ✅ | per-connection COUNT rate limit | CLOSED `"rate-limited: too many counts"` |
+| `AuthRateLimit` ✅ | per-connection AUTH rate limit | OK `accepted=false` `"rate-limited: too many auth attempts"` |
+
+All four share the same constructor shape and the same internal
+`tokenBucket` helper. Both arguments are required (no defaults), so the
+constructors take them positionally without an Options struct -- the
+same shape as `NewMaxLimitMiddlewareBase`:
+
+```go
+New{Type}RateLimitMiddlewareBase(rate float64, burst int) SimpleMiddlewareBase
+```
+
+`rate` is tokens per second (must be > 0). `burst` is the maximum
+number of messages a connection may submit in a tight window (must be
+>= 1; the bucket starts full at OnStart).
+
+**Per-connection isolation**: each middleware owns its own bucket
+scoped per connection (created in `OnStart`, stored in the request
+context). The middleware instance itself is shared across connections;
+only the bucket state is per-connection. Memory cost is therefore
+`O(connections × middlewares_enabled)`.
+
+**Composition**: enable only the types you need; counters never
+interact across types. A typical hardened relay enables all four with
+deliberately different limits — e.g. `Rate=10, Burst=20` for EVENT but
+`Rate=0.1, Burst=3` for AUTH to throttle credential stuffing.
+
+**Out of scope**: per-IP / per-pubkey / global limits, and limiting
+the total WebSocket message rate before parse. Those belong in a
+different layer (the WebSocket readLoop or an external reverse proxy)
+and would couple to identity / network topology that the middleware
+layer cannot see.
+
 #### Future NIP Implementation Priority
 
 **Special features (as needed)**:
