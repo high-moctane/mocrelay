@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/blevesearch/bleve/v2 v2.6.0
-	github.com/btcsuite/btcd/btcec/v2 v2.3.6
+	github.com/btcsuite/btcd/btcec/v2 v2.5.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coder/websocket v1.8.14
 	github.com/prometheus/client_golang v1.23.2
@@ -34,7 +34,7 @@ require (
 	github.com/blevesearch/zapx/v15 v15.4.3 // indirect
 	github.com/blevesearch/zapx/v16 v16.3.4 // indirect
 	github.com/blevesearch/zapx/v17 v17.1.2 // indirect
-	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
+	github.com/btcsuite/btcd/chainhash/v2 v2.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
@@ -42,8 +42,8 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/decred/dcrd/crypto/blake256 v1.0.0 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
+	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
