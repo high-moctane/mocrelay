@@ -1,8 +1,7 @@
 name: Auto Tag
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
 
 permissions:
@@ -16,7 +15,6 @@ concurrency:
 
 jobs:
   auto-tag:
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,22 +35,25 @@ jobs:
             echo "bootstrap=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Bootstrap mode: until someone pushes v0.1.0 manually, skip the
-      # rest of the job. After the first manual tag, merges will start
-      # bumping automatically.
+      - name: Find associated PR
+        id: pr
+        if: steps.latest.outputs.bootstrap != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_info=$(gh api "/repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" 2>/dev/null || echo "[]")
+          pr_number=$(echo "$pr_info" | jq -r '.[0].number // empty')
+          pr_author=$(echo "$pr_info" | jq -r '.[0].user.login // empty')
+          echo "PR: #${pr_number:-none} by ${pr_author:-unknown}"
+          echo "number=${pr_number}" >> "$GITHUB_OUTPUT"
+          echo "author=${pr_author}" >> "$GITHUB_OUTPUT"
 
       - name: Check Go-relevant files
         id: files
         if: steps.latest.outputs.bootstrap != 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          range="${BASE_SHA}..${MERGE_SHA}"
+          range="${{ github.event.before }}..${{ github.sha }}"
           echo "Checking range: $range"
-          # Only bump the version when consumers of the library could be
-          # affected (Go sources, go.mod, go.sum). Docs-only / CI-only
-          # PRs don't produce a tag.
           if git diff --name-only "$range" \
             | grep -qE '(^|/)[^/]+\.go$|(^|/)go\.(mod|sum)$'; then
             echo "go_touched=true" >> "$GITHUB_OUTPUT"
@@ -65,13 +66,11 @@ jobs:
       - name: Determine bump
         id: bump
         if: steps.latest.outputs.bootstrap != 'true' && steps.files.outputs.go_touched == 'true'
-        env:
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          echo "PR author: $PR_AUTHOR"
-          # dependabot-only PRs → patch bump. Anything else → minor bump.
-          # Squash-merge is assumed, so one PR == one commit == one author.
-          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+          pr_author="${{ steps.pr.outputs.author }}"
+          echo "PR author: ${pr_author:-"(direct push)"}"
+          # dependabot-only PRs -> patch bump. Anything else -> minor bump.
+          if [ "$pr_author" = "dependabot[bot]" ]; then
             echo "bump=patch" >> "$GITHUB_OUTPUT"
           else
             echo "bump=minor" >> "$GITHUB_OUTPUT"
@@ -91,7 +90,7 @@ jobs:
           esac
           next="v${major}.${minor}.${patch}"
           echo "next=$next" >> "$GITHUB_OUTPUT"
-          echo "Base: $latest → Next: $next ($bump bump)"
+          echo "Base: $latest -> Next: $next ($bump bump)"
 
       - name: Summarize
         if: always()
@@ -99,7 +98,13 @@ jobs:
           {
             echo "## Auto Tag Summary"
             echo ""
-            echo "- PR: #${{ github.event.pull_request.number }} by \`${{ github.event.pull_request.user.login }}\`"
+            pr_number="${{ steps.pr.outputs.number }}"
+            pr_author="${{ steps.pr.outputs.author }}"
+            if [ -n "$pr_number" ]; then
+              echo "- PR: #${pr_number} by \`${pr_author}\`"
+            else
+              echo "- Push by \`${{ github.actor }}\`"
+            fi
             if [ "${{ steps.latest.outputs.bootstrap }}" = "true" ]; then
               echo "- **Bootstrap mode**: no \`v*\` tag exists yet."
               echo "- Push \`v0.1.0\` manually to start versioning."
@@ -117,9 +122,8 @@ jobs:
         if: steps.latest.outputs.bootstrap != 'true' && steps.files.outputs.go_touched == 'true'
         env:
           NEXT: ${{ steps.next.outputs.next }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          git tag "$NEXT" "$MERGE_SHA"
+          git tag "$NEXT" "${{ github.sha }}"
           git push origin "$NEXT"
-          echo "Pushed $NEXT at $MERGE_SHA"
+          echo "Pushed $NEXT at ${{ github.sha }}"
           echo "- ✅ Pushed \`$NEXT\`" >> "$GITHUB_STEP_SUMMARY"
