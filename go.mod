@@ -6,7 +6,7 @@ require (
 	github.com/blevesearch/bleve/v2 v2.6.0
 	github.com/btcsuite/btcd/btcec/v2 v2.5.0
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/coder/websocket v1.8.14
+	github.com/coder/websocket v1.8.15
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 )
