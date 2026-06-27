@@ -17,3 +17,13 @@ updates:
       all-dependencies:
         patterns:
           - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    reviewers:
+      - high-moctane
+    open-pull-requests-limit: 5
