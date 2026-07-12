@@ -8,8 +8,6 @@ updates:
       timezone: Asia/Tokyo
     commit-message:
       prefix: "deps"
-    reviewers:
-      - high-moctane
     ignore:
       - dependency-name: "go"
       - dependency-name: "toolchain"
