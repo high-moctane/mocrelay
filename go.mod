@@ -8,7 +8,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coder/websocket v1.8.15
 	github.com/prometheus/client_golang v1.24.1
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.0
 )
 
 require (
