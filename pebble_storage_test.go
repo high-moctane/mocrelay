@@ -120,7 +120,7 @@ func TestPebbleStorage_Query_WithLimit(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, 400))
 	_, _ = s.Store(ctx, makeEvent("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, 500))
 
-	events := queryPebble(t, s, ctx, []*ReqFilter{{Limit: toPtr[int64](3)}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Limit: new(int64(3))}})
 	require.Len(t, events, 3)
 
 	// Should be the 3 newest
@@ -195,7 +195,7 @@ func TestPebbleStorage_Query_FilterBySince(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
 
 	// since=200 means created_at >= 200
-	events := queryPebble(t, s, ctx, []*ReqFilter{{Since: toPtr[int64](200)}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Since: new(int64(200))}})
 	require.Len(t, events, 3)
 
 	assert.Equal(t, "4444444444444444444444444444444444444444444444444444444444444444", events[0].ID)
@@ -215,7 +215,7 @@ func TestPebbleStorage_Query_FilterByUntil(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
 
 	// until=300 means created_at <= 300
-	events := queryPebble(t, s, ctx, []*ReqFilter{{Until: toPtr[int64](300)}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Until: new(int64(300))}})
 	require.Len(t, events, 3)
 
 	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
@@ -235,7 +235,7 @@ func TestPebbleStorage_Query_FilterBySinceAndUntil(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("4444444444444444444444444444444444444444444444444444444444444444", pubkey, 1, 400))
 
 	// since=200, until=300 means 200 <= created_at <= 300
-	events := queryPebble(t, s, ctx, []*ReqFilter{{Since: toPtr[int64](200), Until: toPtr[int64](300)}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Since: new(int64(200)), Until: new(int64(300))}})
 	require.Len(t, events, 2)
 
 	assert.Equal(t, "3333333333333333333333333333333333333333333333333333333333333333", events[0].ID)
@@ -304,7 +304,7 @@ func TestPebbleStorage_Query_MultipleKindsWithLimit(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("5555555555555555555555555555555555555555555555555555555555555555", pubkey, 1, 500))
 
 	// Query kinds 1 and 2 with limit=3
-	events := queryPebble(t, s, ctx, []*ReqFilter{{Kinds: []int64{1, 2}, Limit: toPtr[int64](3)}})
+	events := queryPebble(t, s, ctx, []*ReqFilter{{Kinds: []int64{1, 2}, Limit: new(int64(3))}})
 	require.Len(t, events, 3)
 
 	// Should be the 3 newest
@@ -614,7 +614,7 @@ func TestPebbleStorage_Query_MultipleFilters_WithLimit(t *testing.T) {
 	// NIP-01: "only return events from the first filter's limit"
 	// filter1 has limit=2, filter2 has no limit
 	events := queryPebble(t, s, ctx, []*ReqFilter{
-		{Kinds: []int64{1}, Limit: toPtr[int64](2)},
+		{Kinds: []int64{1}, Limit: new(int64(2))},
 		{Kinds: []int64{3}},
 	})
 	require.Len(t, events, 2, "should respect first filter's limit")
@@ -774,7 +774,7 @@ func TestPebbleStorage_Query_AuthorsAndKindsWithLimit(t *testing.T) {
 	events := queryPebble(t, s, ctx, []*ReqFilter{{
 		Authors: []string{pubkey},
 		Kinds:   []int64{1},
-		Limit:   toPtr[int64](2),
+		Limit:   new(int64(2)),
 	}})
 	require.Len(t, events, 2)
 
@@ -855,7 +855,7 @@ func TestPebbleStorage_Query_FilterByIDs_WithLimit(t *testing.T) {
 			"2222222222222222222222222222222222222222222222222222222222222222",
 			"3333333333333333333333333333333333333333333333333333333333333333",
 		},
-		Limit: toPtr[int64](2),
+		Limit: new(int64(2)),
 	}})
 	require.Len(t, events, 2)
 
@@ -934,8 +934,8 @@ func TestPebbleStorage_Query_FilterByIDsAndSinceUntil(t *testing.T) {
 			"2222222222222222222222222222222222222222222222222222222222222222",
 			"3333333333333333333333333333333333333333333333333333333333333333",
 		},
-		Since: toPtr[int64](150),
-		Until: toPtr[int64](250),
+		Since: new(int64(150)),
+		Until: new(int64(250)),
 	}})
 	require.Len(t, events, 1)
 	assert.Equal(t, "2222222222222222222222222222222222222222222222222222222222222222", events[0].ID)

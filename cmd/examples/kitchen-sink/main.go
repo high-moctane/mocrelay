@@ -179,7 +179,7 @@ func main() {
 				AuthRequired:     true,
 			},
 			Retention: []*mocrelay.RelayRetention{
-				{Kinds: []int64{4, 13, 14, 1059, 10050}, Time: intPtr(0)},
+				{Kinds: []int64{4, 13, 14, 1059, 10050}, Time: new(int64(0))},
 			},
 		},
 	})
@@ -202,4 +202,5 @@ func main() {
 	}
 }
 
-func intPtr(n int64) *int64 { return &n }
+//go:fix inline
+func intPtr(n int64) *int64 { return new(n) }

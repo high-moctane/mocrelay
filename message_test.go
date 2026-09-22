@@ -177,7 +177,7 @@ func TestServerMsg_MarshalJSON(t *testing.T) {
 		},
 		{
 			name: "COUNT with approximate",
-			msg:  NewServerCountMsg("sub1", 100, ptr(true)),
+			msg:  NewServerCountMsg("sub1", 100, new(true)),
 			want: `["COUNT","sub1",{"approximate":true,"count":100}]`,
 		},
 	}
@@ -259,6 +259,7 @@ func TestServerMsg_Event(t *testing.T) {
 	}
 }
 
+//go:fix inline
 func ptr[T any](v T) *T {
-	return &v
+	return new(v)
 }

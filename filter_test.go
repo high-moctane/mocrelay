@@ -152,9 +152,9 @@ func TestReqFilter_MarshalJSON(t *testing.T) {
 		Authors: []string{"def"},
 		Kinds:   []int64{1, 2},
 		Tags:    map[string][]string{"e": {"xyz"}},
-		Since:   ptr(int64(100)),
-		Until:   ptr(int64(200)),
-		Limit:   ptr(int64(10)),
+		Since:   new(int64(100)),
+		Until:   new(int64(200)),
+		Limit:   new(int64(10)),
 	}
 
 	got, err := json.Marshal(f)
@@ -239,12 +239,12 @@ func TestReqFilter_Valid(t *testing.T) {
 		},
 		{
 			name:   "since > until",
-			filter: &ReqFilter{Since: ptr(int64(200)), Until: ptr(int64(100)), Tags: map[string][]string{}},
+			filter: &ReqFilter{Since: new(int64(200)), Until: new(int64(100)), Tags: map[string][]string{}},
 			want:   false,
 		},
 		{
 			name:   "negative limit",
-			filter: &ReqFilter{Limit: ptr(int64(-1)), Tags: map[string][]string{}},
+			filter: &ReqFilter{Limit: new(int64(-1)), Tags: map[string][]string{}},
 			want:   false,
 		},
 	}
@@ -321,22 +321,22 @@ func TestReqFilter_Match(t *testing.T) {
 		},
 		{
 			name:   "since match",
-			filter: &ReqFilter{Since: ptr(int64(500)), Tags: map[string][]string{}},
+			filter: &ReqFilter{Since: new(int64(500)), Tags: map[string][]string{}},
 			want:   true,
 		},
 		{
 			name:   "since no match",
-			filter: &ReqFilter{Since: ptr(int64(2000)), Tags: map[string][]string{}},
+			filter: &ReqFilter{Since: new(int64(2000)), Tags: map[string][]string{}},
 			want:   false,
 		},
 		{
 			name:   "until match",
-			filter: &ReqFilter{Until: ptr(int64(2000)), Tags: map[string][]string{}},
+			filter: &ReqFilter{Until: new(int64(2000)), Tags: map[string][]string{}},
 			want:   true,
 		},
 		{
 			name:   "until no match",
-			filter: &ReqFilter{Until: ptr(int64(500)), Tags: map[string][]string{}},
+			filter: &ReqFilter{Until: new(int64(500)), Tags: map[string][]string{}},
 			want:   false,
 		},
 		{

@@ -16,12 +16,10 @@ A middleware-composable [Nostr](https://nostr.com/) relay library for Go.
 
 ## Requirements
 
-- Go 1.25 or later
-- `GOEXPERIMENT=jsonv2` environment variable
+- Go 1.27 or later
 
-```bash
-export GOEXPERIMENT=jsonv2
-```
+mocrelay uses `encoding/json/v2`, which graduated from `GOEXPERIMENT=jsonv2`
+in Go 1.27. No environment variable is needed.
 
 ## Installation
 
