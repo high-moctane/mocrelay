@@ -2,8 +2,6 @@ pre-commit:
   commands:
     fix:
       glob: "*.go"
-      env:
-        GOEXPERIMENT: jsonv2
       run: go fix ./...
       stage_fixed: true
     fmt:

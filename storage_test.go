@@ -24,8 +24,9 @@ func makeEvent(id, pubkey string, kind int64, createdAt int64, tags ...Tag) *Eve
 	}
 }
 
+//go:fix inline
 func toPtr[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 // queryInMemory is a test helper that collects events from Query into a slice.
@@ -376,7 +377,7 @@ func TestInMemoryStorage_Query_WithLimit(t *testing.T) {
 		_, _ = s.Store(ctx, makeEvent(fmt.Sprintf("event-%d", i), "pubkey01", 1, int64(i*100)))
 	}
 
-	events := queryInMemory(t, s, ctx, []*ReqFilter{{Limit: toPtr[int64](3)}})
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{Limit: new(int64(3))}})
 	require.Len(t, events, 3)
 
 	// Should be the 3 newest
@@ -392,7 +393,7 @@ func TestInMemoryStorage_Query_LimitZero(t *testing.T) {
 	_, _ = s.Store(ctx, makeEvent("event-1", "pubkey01", 1, 100))
 	_, _ = s.Store(ctx, makeEvent("event-2", "pubkey01", 1, 200))
 
-	events := queryInMemory(t, s, ctx, []*ReqFilter{{Limit: toPtr[int64](0)}})
+	events := queryInMemory(t, s, ctx, []*ReqFilter{{Limit: new(int64(0))}})
 	assert.Nil(t, events)
 }
 
@@ -488,7 +489,7 @@ func TestInMemoryStorage_Query_MultipleFiltersWithLimit(t *testing.T) {
 	// NIP-01: "only return events from the first filter's limit"
 	// First filter's limit=1 is applied globally
 	events := queryInMemory(t, s, ctx, []*ReqFilter{
-		{Limit: toPtr[int64](1)},
+		{Limit: new(int64(1))},
 		{}, // This filter has no limit, but first filter's limit applies globally
 	})
 	require.Len(t, events, 1)

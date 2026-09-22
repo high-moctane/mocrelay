@@ -344,10 +344,9 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		allErrs = errors.Join(allErrs, e)
 	}
 
-	var wsErr websocket.CloseError
 	if errors.Is(allErrs, io.EOF) {
 		logger.InfoContext(ctx, "connection end")
-	} else if errors.As(allErrs, &wsErr) {
+	} else if wsErr, ok := errors.AsType[websocket.CloseError](allErrs); ok {
 		logger.InfoContext(ctx, "connection end", "code", wsErr.Code, "reason", wsErr.Reason)
 	} else if errors.Is(allErrs, context.Canceled) {
 		logger.InfoContext(ctx, "connection end (canceled)")

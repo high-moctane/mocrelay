@@ -629,6 +629,32 @@ Exceptions:
 - `encoding/json` insufficient for Nostr's strict requirements
 - No extra fields allowed, specific escape rules
 
+**Go 1.27 / `encoding/json/v2` graduation**:
+
+`encoding/json/v2` graduated from `GOEXPERIMENT=jsonv2` in Go 1.27, so the
+environment variable is no longer set anywhere (CI, lefthook, README). The
+minimum supported Go version is therefore **1.27**.
+
+⚠️ The graduation **removed the `format` struct tag**
+([go.dev/issue/79071](https://go.dev/issue/79071)). `Event.CreatedAt` used to
+carry `json:"created_at,format:unix"`; the opt-in switch that restores the tag
+(`ExperimentalSupportFormatTag`) lives in an internal package and is documented
+as inaccessible to public code, so there is no way to keep the tag.
+
+The conversion now lives in the unexported `eventWire` struct in `event.go`,
+which mirrors `Event` field-for-field with `CreatedAt int64` and is used by
+`Event.MarshalJSONTo` / `Event.UnmarshalJSONFrom`. Two invariants to preserve
+when touching it:
+
+- **Field order must match `Event`** — it determines JSON member order.
+- **Decode with `time.Unix(sec, 0).UTC()`**, matching what json/v2's
+  `format:unix` did internally. Using local time here would silently change
+  `CreatedAt.Location()` for every parsed event.
+
+The public API is unchanged: `Event.CreatedAt` is still `time.Time`, and the
+emitted bytes are identical to the pre-1.27 output (verified by diffing marshal
+/ unmarshal results across both toolchains; only stdlib error *wording* differs).
+
 #### Dependencies
 
 - **secp256k1**: `github.com/btcsuite/btcd/btcec/v2/schnorr` (pure Go, BIP-340)

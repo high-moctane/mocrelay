@@ -3,6 +3,7 @@ package mocrelay
 import (
 	"context"
 	"errors"
+	"slices"
 )
 
 // Middleware wraps a Handler to add functionality.
@@ -102,8 +103,8 @@ func NewSimpleMiddleware(bases ...SimpleMiddlewareBase) Middleware {
 
 			// OnEnd all bases (reverse order, always called)
 			defer func() {
-				for i := len(bases) - 1; i >= 0; i-- {
-					endMsg, endErr := bases[i].OnEnd(ctx)
+				for _, base := range slices.Backward(bases) {
+					endMsg, endErr := base.OnEnd(ctx)
 					err = errors.Join(err, endErr)
 					if endMsg != nil {
 						select {
@@ -246,9 +247,9 @@ func simpleMiddlewarePipelineLoop(
 
 			// Apply HandleServerMsg through all bases (innermost to outermost)
 			out := msg
-			for i := len(bases) - 1; i >= 0; i-- {
+			for _, base := range slices.Backward(bases) {
 				var handleErr error
-				out, handleErr = bases[i].HandleServerMsg(ctx, out)
+				out, handleErr = base.HandleServerMsg(ctx, out)
 				if handleErr != nil {
 					return handleErr
 				}

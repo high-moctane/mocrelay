@@ -38,11 +38,29 @@ const (
 type Event struct {
 	ID        string    `json:"id"`
 	Pubkey    string    `json:"pubkey"`
-	CreatedAt time.Time `json:"created_at,format:unix"`
+	CreatedAt time.Time `json:"created_at"`
 	Kind      int64     `json:"kind"`
 	Tags      []Tag     `json:"tags"`
 	Content   string    `json:"content"`
 	Sig       string    `json:"sig"`
+}
+
+// eventWire mirrors Event on the wire, with created_at as a Unix timestamp.
+//
+// Go 1.27 removed the `format` tag from encoding/json/v2 when the package
+// graduated from GOEXPERIMENT=jsonv2 (https://go.dev/issue/79071). The only
+// opt-in switch lives in an internal package and is explicitly documented as
+// inaccessible to public code, so the time.Time <-> Unix seconds conversion
+// is done here instead. Field order matches Event so the emitted JSON object
+// keeps its NIP-01 member order.
+type eventWire struct {
+	ID        string `json:"id"`
+	Pubkey    string `json:"pubkey"`
+	CreatedAt int64  `json:"created_at"`
+	Kind      int64  `json:"kind"`
+	Tags      []Tag  `json:"tags"`
+	Content   string `json:"content"`
+	Sig       string `json:"sig"`
 }
 
 // Tag represents a tag in a Nostr event.
@@ -98,12 +116,19 @@ func (t Tag) Value() string {
 // MarshalJSONTo implements json.MarshalerTo to ensure NIP-01 compliant output.
 // Tags is always marshaled as [] (never null).
 func (e Event) MarshalJSONTo(enc *jsontext.Encoder) error {
-	type EventAlias Event
-	alias := EventAlias(e)
-	if alias.Tags == nil {
-		alias.Tags = []Tag{}
+	wire := eventWire{
+		ID:        e.ID,
+		Pubkey:    e.Pubkey,
+		CreatedAt: e.CreatedAt.Unix(),
+		Kind:      e.Kind,
+		Tags:      e.Tags,
+		Content:   e.Content,
+		Sig:       e.Sig,
 	}
-	return json.MarshalEncode(enc, &alias)
+	if wire.Tags == nil {
+		wire.Tags = []Tag{}
+	}
+	return json.MarshalEncode(enc, &wire)
 }
 
 // UnmarshalJSONFrom implements json.UnmarshalerFrom to validate field count
@@ -156,9 +181,21 @@ func (e *Event) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	}
 
 	// Unmarshal with strict options
-	type EventAlias Event
-	alias := (*EventAlias)(e)
-	return json.Unmarshal(val, alias, json.RejectUnknownMembers(true))
+	var wire eventWire
+	if err := json.Unmarshal(val, &wire, json.RejectUnknownMembers(true)); err != nil {
+		return err
+	}
+
+	*e = Event{
+		ID:        wire.ID,
+		Pubkey:    wire.Pubkey,
+		CreatedAt: time.Unix(wire.CreatedAt, 0).UTC(),
+		Kind:      wire.Kind,
+		Tags:      wire.Tags,
+		Content:   wire.Content,
+		Sig:       wire.Sig,
+	}
+	return nil
 }
 
 // EventType returns the type of the event based on its kind.
