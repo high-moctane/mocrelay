@@ -17,10 +17,12 @@ jobs:
   auto-tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
+          # The last step pushes the tag with these credentials.
+          persist-credentials: true
 
       - name: Determine latest tag
         id: latest
@@ -103,7 +105,7 @@ jobs:
             if [ -n "$pr_number" ]; then
               echo "- PR: #${pr_number} by \`${pr_author}\`"
             else
-              echo "- Push by \`${{ github.actor }}\`"
+              echo "- Push by \`${GITHUB_ACTOR}\`"
             fi
             if [ "${{ steps.latest.outputs.bootstrap }}" = "true" ]; then
               echo "- **Bootstrap mode**: no \`v*\` tag exists yet."

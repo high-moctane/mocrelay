@@ -9,11 +9,14 @@ permissions:
 jobs:
   dependabot:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    # github.actor is whoever triggered the latest run, not the PR's author.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
+      # The outputs are unused; this step is the gate. It fails unless the
+      # PR's first commit is Dependabot's own, with a verified signature.
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
