@@ -6,6 +6,10 @@ updates:
       interval: weekly
       day: thursday
       timezone: Asia/Tokyo
+    # Merged PRs are tagged and published without a human look, so give the
+    # community a week to catch a compromised release first.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps"
     ignore:
@@ -20,8 +24,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "ci"
-    reviewers:
-      - high-moctane
     open-pull-requests-limit: 5
