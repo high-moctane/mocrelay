@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Dependabot's PRs are merged by auto-merge under GITHUB_TOKEN, and a push
+  # made with GITHUB_TOKEN never triggers workflows. The daily run is what
+  # tests and tags those commits, and it also catches a new Go release
+  # (go-version: stable) breaking main.
+  schedule:
+    - cron: "37 20 * * *" # 05:37 JST
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,3 +40,101 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  # Tags the tested commit when a Go-relevant change has landed since the
+  # latest tag. Comparing against the latest tag rather than a single push
+  # event means a run that was skipped or failed is made up by the next one.
+  tag:
+    needs: test
+    # Forks don't cut releases.
+    if: >-
+      github.repository == 'high-moctane/mocrelay'
+      && github.ref == 'refs/heads/main'
+      && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to push the release tag
+    # Serialize tag pushes so that two runs don't race into the same version.
+    concurrency:
+      group: auto-tag
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          # The tag is pushed with these credentials.
+          persist-credentials: true
+
+      - name: Determine next tag
+        id: next
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          note() { echo "$1"; echo "- $1" >> "$GITHUB_STEP_SUMMARY"; }
+          echo "## Auto Tag" >> "$GITHUB_STEP_SUMMARY"
+
+          latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            echo "::error::No v* tag found. Push the first one by hand."
+            exit 1
+          fi
+          base=$(git rev-list -n1 "$latest")
+          if git merge-base --is-ancestor "$GITHUB_SHA" "$base"; then
+            note "Already released in \`$latest\`."
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$base" "$GITHUB_SHA"; then
+            echo "::error::$latest is not an ancestor of $GITHUB_SHA."
+            exit 1
+          fi
+
+          # main only takes squash merges, so each commit is one PR.
+          # Dependabot-only changes -> patch. Anything else -> minor.
+          bump=
+          for commit in $(git rev-list --reverse "$base..$GITHUB_SHA"); do
+            files=$(git diff-tree --no-commit-id --name-only -r "$commit")
+            if ! grep -qE '(^|/)[^/]+\.go$|(^|/)go\.(mod|sum)$' <<< "$files"; then
+              continue
+            fi
+            author=$(gh api "repos/$GITHUB_REPOSITORY/commits/$commit/pulls" --jq '.[0].user.login // ""')
+            note "Go-relevant: \`${commit:0:7}\` by \`${author:-unknown}\`"
+            if [ "$author" = "dependabot[bot]" ]; then
+              bump=${bump:-patch}
+            else
+              bump=minor
+            fi
+          done
+          if [ -z "$bump" ]; then
+            note "No Go-relevant changes since \`$latest\`."
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          case "$bump" in
+            minor) next="v$major.$((minor + 1)).0" ;;
+            patch) next="v$major.$minor.$((patch + 1))" ;;
+          esac
+          note "\`$latest\` -> \`$next\` ($bump)"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Push tag
+        if: steps.next.outputs.tag != ''
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          echo "- ✅ Pushed \`$TAG\` at \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Have the proxy fetch the new version now, so that `go get` sees it and
+      # sum.golang.org records its checksum. The tag stands either way.
+      - name: Notify the Go module proxy
+        if: steps.next.outputs.tag != ''
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          module=$(awk '$1 == "module" { print $2 }' go.mod)
+          if ! curl -fsS "https://proxy.golang.org/$module/@v/$TAG.info"; then
+            echo "::warning::proxy.golang.org could not fetch $module@$TAG yet."
+          fi
