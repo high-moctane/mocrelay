@@ -14,6 +14,17 @@ go test ./...      # Test
 lefthook install  # Install git hooks (optional; requires lefthook binary)
 ```
 
+## Releases and Versioning
+
+- **v0.y.z until the API settles**, then v1. v2+ would need the `/vN` import path suffix.
+- **Do not tag by hand.** The `tag` job in `ci.yml` tags the tested commit: patch if every Go-relevant commit since the latest tag came from a Dependabot PR, minor otherwise. It reconciles against the latest `v*` tag, so a skipped or failed run is made up by the next one.
+- **Why a daily `schedule`**: Dependabot PRs are merged by auto-merge under `GITHUB_TOKEN`, and those merges trigger neither `push` nor `pull_request: closed`. A PAT or App token would also work, but workflows started by Dependabot can only read Dependabot secrets, which would put a long-lived token next to a third-party action. The daily run also catches a new Go release breaking main (`go-version: stable` is deliberate: for a library, finding out early beats pinning).
+  - Scheduled workflows on public repositories stop after 60 days without activity (GitHub emails a warning). Nothing new needs tagging then; only the new-Go canary goes quiet.
+- **If a tag is missing**: run `gh workflow run ci.yml -R high-moctane/mocrelay --ref main` first. Tag by hand only if that fails, with the same rule, as a **lightweight tag** on the merge commit, then warm the proxy with `curl https://proxy.golang.org/github.com/high-moctane/mocrelay/@v/vX.Y.Z.info` (`@v/list` is populated lazily, so a fresh tag may not show there yet).
+  - `gh api -X POST .../git/refs` returns **404**, not 403, when the token lacks the `workflow` scope and the target commit's workflows differ from main. Pushing the tag over SSH is not subject to that scope.
+- **Not tagging is also a release decision.** A dependency bump can be harmless for one consumer, but `go get` treats the latest tag as the recommended version, so leaving a bump untagged keeps shipping the old dependency to everyone else.
+- **Retract rather than delete** a bad version; deleting a tag does not remove it from the module proxy cache.
+
 ## Development Principles
 
 - **LLM-assisted development**: Consistency and quality through collaboration
@@ -655,10 +666,35 @@ The public API is unchanged: `Event.CreatedAt` is still `time.Time`, and the
 emitted bytes are identical to the pre-1.27 output (verified by diffing marshal
 / unmarshal results across both toolchains; only stdlib error *wording* differs).
 
+**Verifying serialization changes**:
+
+- Put the same throwaway test in two worktrees and diff the output of the old
+  and new code (e.g. `GOTOOLCHAIN=local` vs `GOTOOLCHAIN=go1.27.1`). Cover nil
+  fields, negative timestamps, `int64` max, multibyte content and a non-UTC
+  location.
+- Against a running relay, `nak verify` exiting silently is the strongest
+  round-trip check: the relay re-serializes what it stored, so a single changed
+  byte breaks the event id hash and the signature check. For relays that
+  require AUTH, use a throwaway key, never a personal one:
+  `SEC=$(nak key generate); nak req -k 1 -l 5 --auth --sec "$SEC" wss://... | nak verify`
+
 #### Dependencies
+
+Six direct dependencies: bleve, btcec, pebble, coder/websocket,
+prometheus/client_golang, testify. Reviewed in 2026-05: all are widely used and
+audited, nothing worth dropping.
 
 - **secp256k1**: `github.com/btcsuite/btcd/btcec/v2/schnorr` (pure Go, BIP-340)
 - Minimize external dependencies
+
+#### WebSocket (`coder/websocket`)
+
+- **`Conn.Ping` needs a reader**: the pong is only processed while some
+  goroutine is inside `Conn.Read`. The relay's readLoop is that goroutine.
+- **Write timeouts are hard**: when the write ctx expires, the library closes
+  the connection via `context.AfterFunc`, so a blocked `Conn.Write` always
+  returns.
+- Responding to the peer's pings is automatic.
 
 ### NIP-01 Key Points
 
